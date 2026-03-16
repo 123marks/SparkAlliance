@@ -3,8 +3,8 @@
     <!-- Welcome Hero -->
     <div class="welcome-section">
       <div class="w-content">
-        <h1>早上好，张同学 👋</h1>
-        <p class="subtitle">今天是你加入 Spark Alliance 的第 24 天，继续你的发现之旅吧！</p>
+        <h1>{{ greeting }}，{{ userName }} 👋</h1>
+        <p class="subtitle">今天是你加入 Spark Alliance 的第 {{ daysSinceJoined }} 天，继续你的发现之旅吧！</p>
       </div>
       <div class="w-illustration">
         <div class="glow-sphere"></div>
@@ -36,6 +36,34 @@
       </div>
     </div>
 
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <router-link to="/app/chat" class="action-card chat-action">
+        <span class="action-icon">💬</span>
+        <div class="action-info">
+          <h4>AI 智能答疑</h4>
+          <p>拍照识题 · 分步讲解 · 多学科覆盖</p>
+        </div>
+        <span class="action-arrow">→</span>
+      </router-link>
+      <router-link to="/app/wall" class="action-card wall-action">
+        <span class="action-icon">📝</span>
+        <div class="action-info">
+          <h4>校园墙</h4>
+          <p>吐槽 · 求助 · 表白 · 二手交易</p>
+        </div>
+        <span class="action-arrow">→</span>
+      </router-link>
+      <router-link to="/app/profile" class="action-card profile-action">
+        <span class="action-icon">🎯</span>
+        <div class="action-info">
+          <h4>我的目标</h4>
+          <p>日/周/月计划 · 星空领域激励</p>
+        </div>
+        <span class="action-arrow">→</span>
+      </router-link>
+    </div>
+
     <!-- Main Dashboard Areas -->
     <div class="dashboard-grid">
       <!-- Left Column -->
@@ -43,17 +71,17 @@
         <div class="card recent-chats">
           <div class="card-header">
             <h3>最近 AI 辅导</h3>
-            <button class="btn-text">查看全部</button>
+            <router-link to="/app/chat" class="btn-text">查看全部</router-link>
           </div>
           <div class="card-body">
-            <div class="chat-item" v-for="i in 3" :key="'chat-'+i">
+            <div class="chat-item" v-for="chat in recentChats" :key="chat.title">
               <div class="c-icon">🧠</div>
               <div class="c-info">
-                <h4>深入理解操作系统内存管理机制</h4>
-                <span>今天 10:30 &middot; 包含 12 条对话</span>
+                <h4>{{ chat.title }}</h4>
+                <span>{{ chat.time }} &middot; {{ chat.msgCount }} 条对话</span>
               </div>
             </div>
-            <button class="btn-outline w-full mt-4">+ 新建对话</button>
+            <router-link to="/app/chat" class="btn-outline w-full mt-4">+ 新建对话</router-link>
           </div>
         </div>
       </div>
@@ -66,27 +94,12 @@
             <button class="btn-text">添加</button>
           </div>
           <div class="card-body timeline">
-            <div class="tl-item">
-              <div class="tl-dot highlight"></div>
+            <div class="tl-item" v-for="event in upcomingEvents" :key="event.title">
+              <div class="tl-dot" :class="event.status"></div>
               <div class="tl-content">
-                <span class="time">14:00 - 15:30</span>
-                <h4>微机原理与接口技术 实验课</h4>
-                <span class="location">教四 402 机房</span>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot"></div>
-              <div class="tl-content">
-                <span class="time">18:00</span>
-                <h4>算法设计小组讨论</h4>
-                <span class="location">图书馆 3B 研讨室</span>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot empty"></div>
-              <div class="tl-content">
-                <span class="time">22:00</span>
-                <h4>提交《软件工程》需求分析报告</h4>
+                <span class="time">{{ event.time }}</span>
+                <h4>{{ event.title }}</h4>
+                <span v-if="event.location" class="location">{{ event.location }}</span>
               </div>
             </div>
           </div>
@@ -95,6 +108,51 @@
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAuth } from '../../composables/useAuth'
+
+const { user } = useAuth()
+
+// 根据时间段动态生成问候语
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour < 6) return '夜深了'
+  if (hour < 12) return '早上好'
+  if (hour < 14) return '中午好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
+})
+
+// 用户名优先取 Supabase user_metadata 中的 nickname
+const userName = computed(() => {
+  if (user.value?.user_metadata?.nickname) return user.value.user_metadata.nickname
+  if (user.value?.email) return user.value.email.split('@')[0]
+  return '同学'
+})
+
+// 计算加入天数
+const daysSinceJoined = computed(() => {
+  if (!user.value?.created_at) return 1
+  const createdAt = new Date(user.value.created_at)
+  const now = new Date()
+  return Math.max(1, Math.ceil((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)))
+})
+
+// 模拟数据
+const recentChats = [
+  { title: '深入理解操作系统内存管理', time: '今天 10:30', msgCount: 12 },
+  { title: '帮你润色学术论文摘要', time: '今天 09:15', msgCount: 8 },
+  { title: 'Vue 3 组合式 API 最佳实践', time: '昨天 20:00', msgCount: 15 },
+]
+
+const upcomingEvents = [
+  { time: '14:00 - 15:30', title: '微机原理与接口技术 实验课', location: '教四 402 机房', status: 'highlight' },
+  { time: '18:00', title: '算法设计小组讨论', location: '图书馆 3B 研讨室', status: '' },
+  { time: '22:00', title: '提交《软件工程》需求分析报告', location: '', status: 'empty' },
+]
+</script>
 
 <style scoped>
 .app-home {
@@ -133,8 +191,41 @@
   margin-bottom: 32px;
 }
 
+/* Quick Actions */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 20px 24px;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+.action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+.chat-action:hover { border-color: rgba(79, 142, 247, 0.4); }
+.wall-action:hover { border-color: rgba(139, 92, 246, 0.4); }
+.profile-action:hover { border-color: rgba(249, 115, 22, 0.4); }
+.action-icon { font-size: 28px; flex-shrink: 0; }
+.action-info h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.action-info p { font-size: 12px; color: var(--color-text-muted); }
+.action-arrow { margin-left: auto; font-size: 20px; color: var(--color-text-muted); transition: transform 0.2s; }
+.action-card:hover .action-arrow { transform: translateX(4px); color: white; }
+
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: 1fr; }
+  .quick-actions { grid-template-columns: 1fr; }
 }
 
 .stat-card {
