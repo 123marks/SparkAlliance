@@ -89,18 +89,22 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫拦截
-router.beforeEach((to, _from, next) => {
-  const isAuthenticated = localStorage.getItem('spark_auth_token') !== null;
-  // TODO: 后续接入真实鉴权逻辑
+import { supabase } from '../supabase'
 
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    // 强制跳转登录
-    // 在开发测试阶段可以暂时允许过去，但按照要求我们严格保护 /app
-    // 这里我们可以临时写一个提示，如果没登录跳转登录，为了方便测试，我留了个后门(手动localStorage.setItem)
+// 路由守卫拦截
+router.beforeEach(async (to, _from, next) => {
+  // Check if route requires auth
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
+  
+  // Get active session from Supabase
+  const { data: { session } } = await supabase.auth.getSession();
+  const isAuthenticated = !!session;
+
+  if (requiresAuth && !isAuthenticated) {
+    // Force to login
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated) {
-    // 已登录不允许去登录页
+    // Redirect away from auth pages if already logged in
     next({ name: 'AppHome' })
   } else {
     next()

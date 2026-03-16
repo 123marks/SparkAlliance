@@ -20,17 +20,17 @@
         
         <form @submit.prevent="handleRegister" class="auth-form">
           <div class="form-group">
-            <input type="text" id="nickname" class="floating-input" placeholder=" " required />
+            <input type="text" id="nickname" v-model="nickname" class="floating-input" placeholder=" " required />
             <label for="nickname" class="floating-label">昵称</label>
           </div>
 
           <div class="form-group">
-            <input type="text" id="username" class="floating-input" placeholder=" " required />
-            <label for="username" class="floating-label">学号 / 邮箱</label>
+            <input type="text" id="username" v-model="email" class="floating-input" placeholder=" " required />
+            <label for="username" class="floating-label">邮箱</label>
           </div>
 
           <div class="form-group">
-            <input :type="showPwd ? 'text' : 'password'" id="password" class="floating-input" placeholder=" " required />
+            <input :type="showPwd ? 'text' : 'password'" id="password" v-model="password" class="floating-input" placeholder=" " required />
             <label for="password" class="floating-label">密码</label>
             <button type="button" class="eye-btn" @click="showPwd = !showPwd">
               <span class="eye-icon">{{ showPwd ? '👀' : '👁️' }}</span>
@@ -55,6 +55,9 @@
               <span>我已阅读并同意 <a href="#" class="text-brand">服务条款</a> 与 <a href="#" class="text-brand">隐私政策</a></span>
             </label>
           </div>
+          
+          <p v-if="successMsg" class="success-msg">{{ successMsg }}</p>
+          <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
           <button type="submit" class="submit-btn" :class="{ loading: isLoading }">
             <span v-if="!isLoading">立即注册</span>
@@ -73,17 +76,44 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '../../supabase'
 
 const router = useRouter()
 const showPwd = ref(false)
 const isLoading = ref(false)
+const nickname = ref('')
+const email = ref('')
+const password = ref('')
+const errorMsg = ref('')
+const successMsg = ref('')
 
-const handleRegister = () => {
+const handleRegister = async () => {
+  if (!email.value || !password.value || !nickname.value) return
+  
   isLoading.value = true
-  setTimeout(() => {
-    isLoading.value = false
-    router.push('/login')
-  }, 1200)
+  errorMsg.value = ''
+  successMsg.value = ''
+  
+  const { error } = await supabase.auth.signUp({
+    email: email.value,
+    password: password.value,
+    options: {
+      data: {
+        nickname: nickname.value
+      }
+    }
+  })
+
+  isLoading.value = false
+
+  if (error) {
+    errorMsg.value = '注册失败: ' + error.message
+  } else {
+    successMsg.value = '注册成功！请检查邮箱完成验证，或直接登录。'
+    setTimeout(() => {
+      router.push('/login')
+    }, 2000)
+  }
 }
 </script>
 
@@ -119,9 +149,12 @@ const handleRegister = () => {
 .dropdown-icon { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--color-text-secondary); pointer-events: none; }
 
 .eye-btn { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--color-text-secondary); }
-.form-options { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.form-options { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-top: 8px; }
 .remember-me { display: flex; align-items: flex-start; gap: 8px; color: var(--color-text-secondary); cursor: pointer; line-height: 1.4; }
 .remember-me input { margin-top: 3px; }
+
+.error-msg { color: #ef4444; font-size: 14px; margin-top: -8px; margin-bottom: 8px; }
+.success-msg { color: #10b981; font-size: 14px; margin-top: -8px; margin-bottom: 8px; }
 
 .submit-btn { height: 48px; background: var(--gradient-brand); border: none; border-radius: 12px; color: white; font-weight: 600; font-size: 16px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; }
 .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }

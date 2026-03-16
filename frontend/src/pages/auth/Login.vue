@@ -20,18 +20,20 @@
         
         <form @submit.prevent="handleLogin" class="auth-form">
           <div class="form-group">
-            <input type="text" id="username" class="floating-input" placeholder=" " required />
-            <label for="username" class="floating-label">学号 / 邮箱</label>
+            <input type="text" id="username" v-model="email" class="floating-input" placeholder=" " required />
+            <label for="username" class="floating-label">邮箱</label>
           </div>
 
           <div class="form-group">
-            <input :type="showPwd ? 'text' : 'password'" id="password" class="floating-input" placeholder=" " required />
+            <input :type="showPwd ? 'text' : 'password'" id="password" v-model="password" class="floating-input" placeholder=" " required />
             <label for="password" class="floating-label">密码</label>
             <button type="button" class="eye-btn" @click="showPwd = !showPwd">
               <!-- SVG Eye icon omitted for brevity -->
               <span class="eye-icon">{{ showPwd ? '👀' : '👁️' }}</span>
             </button>
           </div>
+          
+          <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
           <div class="form-options">
             <label class="remember-me">
@@ -62,19 +64,33 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '../../supabase'
 
 const router = useRouter()
 const showPwd = ref(false)
 const isLoading = ref(false)
+const email = ref('')
+const password = ref('')
+const errorMsg = ref('')
 
-const handleLogin = () => {
+const handleLogin = async () => {
+  if (!email.value || !password.value) return
+  
   isLoading.value = true
-  setTimeout(() => {
-    isLoading.value = false
-    // Mock login setting
-    localStorage.setItem('spark_auth_token', 'mock_token_123')
+  errorMsg.value = ''
+  
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value,
+  })
+
+  isLoading.value = false
+
+  if (error) {
+    errorMsg.value = '登录失败: ' + error.message
+  } else {
     router.push('/app/home')
-  }, 1200)
+  }
 }
 </script>
 
@@ -251,6 +267,14 @@ const handleLogin = () => {
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
+  margin-top: 8px;
+}
+
+.error-msg {
+  color: #ef4444;
+  font-size: 14px;
+  margin-top: -8px;
+  margin-bottom: 8px;
 }
 
 .remember-me {
