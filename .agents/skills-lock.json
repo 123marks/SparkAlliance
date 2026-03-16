@@ -1,0 +1,470 @@
+{
+  "version": 1,
+  "skills": {
+    "ckm:banner-design": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "2237d5aafec7ab0223a91a9c4a13a8d25a4bd8a29b4ae9f9ea74d2cbfb9c6f91"
+    },
+    "ckm:brand": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "a5f623ca3998b832a4a254426bc184479bf1cfbf4275b786a6319d014d06803c"
+    },
+    "ckm:design": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "356a9ffc8ae2174dee4ac0b35458b383756e349dfa00de17b79394154cc99905"
+    },
+    "ckm:design-system": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "0206bc1d866ba6a93c6683d28b801314979fd164939d53830a7592ce0fb7a8a2"
+    },
+    "ckm:slides": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "f3e6594f5dd3f341afbd2b6c71d8b7cc44a97cdb85f76d5868b715f650c97ac2"
+    },
+    "ckm:ui-styling": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "b5f892864e479f969820c353f44faeedc61981bf2d7a854367069a80e0a264e1"
+    },
+    "document-writer": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "6cad7a49f40d2af90908286adba4dd54f04e21e01817223b2cccde97a9b3f2a1"
+    },
+    "jimliu/baoyu-skills@baoyu-article-illustrator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "a3a98e860273a83fdae33abe37d2966deecd3b9af64528fb114e909fc672e533"
+    },
+    "jimliu/baoyu-skills@baoyu-comic": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "71375dde9a016da9943639f9e3d790747d117fccc5c0efaae524400ab1f5e974"
+    },
+    "jimliu/baoyu-skills@baoyu-cover-image": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "3b28a1b6267b4271e81b8c2de4b282c25d5b2361b3f75debd6dd3e2c8142a1fa"
+    },
+    "jimliu/baoyu-skills@baoyu-format-markdown": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "030ad84ce17c83a1eb929db38a9d22a76b2446e1613aeb7e897138cdf4c1c214"
+    },
+    "jimliu/baoyu-skills@baoyu-image-gen": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "0c04236b1d617190bb411329dec4f80f930473dd54527f94122c6037ae0857e8"
+    },
+    "jimliu/baoyu-skills@baoyu-infographic": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e27d110cf4a85a6d8779aa8221aa410c3c9eaedd6513eaa055d05cb94ac54622"
+    },
+    "jimliu/baoyu-skills@baoyu-slide-deck": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "ffe402a0d84e270e6efe983329dad265086074a82ab255cebe8df5d2ac1ff35d"
+    },
+    "jimliu/baoyu-skills@baoyu-url-to-markdown": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "033297c059e0da146527ab94c546d92cdd07b10b0f94518213005f7abef721e8"
+    },
+    "motion": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "88f028610d2a273dd1de1b79c0e4cc70ed041105af86f890520ff9b1c674352e"
+    },
+    "nuxt": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "e814b473cac8105db33cbd6ddc5ac9d000faf4d4f3e28df4aa7a8113bb668f8e"
+    },
+    "nuxt-better-auth": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "e35f17abf74dae1fe90b9d28834f4ac5fba13f5a65e3d94338df0df1ae634fc7"
+    },
+    "nuxt-content": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "9d5e16da7f37310d26cebaec959dffd09679a37f7501fe1611af0a92a733336c"
+    },
+    "nuxt-modules": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "f7ae266745c7b11396afea8ab7d2f0443e11764c5592f0d7f6385b9249864324"
+    },
+    "nuxt-seo": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "7cf2663b401426360699c0fe8f5f369e565191583c0d009ef64ebb412f17e163"
+    },
+    "nuxt-studio": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "a3a77a0a5a6da15fd1055289592f32e43a9b1b901c046350f2790f77db395d1d"
+    },
+    "nuxt-ui": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "6954d6eee3f091d66d76c3c1d006e3e5f2ae101bfb46c3fbe714adad39f6caef"
+    },
+    "nuxthub": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "f366b6a08c9a6806a4b0de604fd2128116455eb70bace08a8701023f9c7853e1"
+    },
+    "obra/superpowers@brainstorming": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "8eade6507fe44bf075e25fac144272304f4e17da536bcea82538848dcf356466"
+    },
+    "obra/superpowers@dispatching-parallel-agents": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e153771fa002f5f7ad6396a896925ab795e13127f30f161f5f1bcfd196bbc9cb"
+    },
+    "obra/superpowers@executing-plans": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "3c914077b898a436a853c404f9f091061179ae62cd01d3f0d276524d5b37796f"
+    },
+    "obra/superpowers@finishing-a-development-branch": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "d1b51e7f3e29710bfc157de3f805b7f7882997e27c41e137537afdbe58f8a2d4"
+    },
+    "obra/superpowers@receiving-code-review": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "a93d7621aea05a1952ecca4e80414334b7bfcc33fe79663e6069fd6d0a8df87b"
+    },
+    "obra/superpowers@requesting-code-review": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "431b0e530caf98db667c5f72566e4379bcf2980041c77051438ff565c73d7289"
+    },
+    "obra/superpowers@subagent-driven-development": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "451e5fe2fe61ac52679b01bd133e36e5b9317abe03fff0cf3ac71cdb36b4baa7"
+    },
+    "obra/superpowers@systematic-debugging": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "5a9cafc9a5e0faeb3157e07a0f325b9e949726f8cb2f6bf283e79c2ed0e5f86f"
+    },
+    "obra/superpowers@test-driven-development": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "09654415d4c9d8090feb95a79fb76a2a83a3a44b601bac1891695a3190fb014f"
+    },
+    "obra/superpowers@using-git-worktrees": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "ce290b66504a51fe6aa9bb4ebd1ef810ec70be28d01cc0db536620a9b81f4ebd"
+    },
+    "obra/superpowers@using-superpowers": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "a76764bf7943a631a7a23c9e6336363293675094c202e017e810c6b8359e09d8"
+    },
+    "obra/superpowers@verification-before-completion": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "cb7eb559b96f2c8cf6d5bba7ca2f23937138c5cf3c7d83b4810d9640aa1c7159"
+    },
+    "obra/superpowers@writing-plans": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e0756449e399e389365af604bec72c0d02b27d826c879c2b2b65a25ff5d6d15d"
+    },
+    "obra/superpowers@writing-skills": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "c701228254a4f2b074b606146144a34d46752fd0f592fc5cca2f43ce73d3b8e2"
+    },
+    "openakita/skills@algorithmic-art": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "8fd8bc8fb8ec116a184977d40a3cd53b7a3a475af9eec4f54b7b14b03bf09667"
+    },
+    "openakita/skills@apify-scraper": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "d16b68cbe0d3d4019acc61adb868bfcc2f2f124961c5291d66e6050eac5dbf25"
+    },
+    "openakita/skills@bilibili-watcher": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e3e8dcbe577d8282de0a8b7d0e0460f64a346c3ca881a7e884307c29ad092d95"
+    },
+    "openakita/skills@canvas-design": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "94f31ab69d416e2308f52fc818418de7d0220f280cf3df9ef196e69f2b7ff5ff"
+    },
+    "openakita/skills@changelog-generator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "95dfd722ace6b063b5ec67405e49b877188fbeaf73cdd594849d911da21a97b8"
+    },
+    "openakita/skills@chinese-novelist": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "46d99f0b70b19796b7b7e0ffd1a1dd32327e063402858a5748fa3d95c44ea4a1"
+    },
+    "openakita/skills@chinese-writing": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "67e2576b4d563531eee1c86640a75d14338363b66e879ce301b91d8486c0b778"
+    },
+    "openakita/skills@code-review": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "df3548a4190d8cfc1761a9a3139d274a6ad91cabda8afd7f94023f850663e324"
+    },
+    "openakita/skills@content-research-writer": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e3feb7236640ef0951178b611155d6d0ca0c4f7a595e63060ed70b4d5284dc26"
+    },
+    "openakita/skills@datetime-tool": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "c52abd4a2fa5a11834091c5ca371404781c800d9616768af48bd9e4481f102fb"
+    },
+    "openakita/skills@doc-coauthoring": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "da6b3a486d130aa5d6f8f99ebdabfae9ea7e8ed8693173470e0866c2aaf8d83a"
+    },
+    "openakita/skills@docx": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e6464327db956defa05f6b7bf1bf4e8036c22c59bcb9c3a1a924089221817031"
+    },
+    "openakita/skills@douyin-tool": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "fefa63b9337a4f4240c9822dcbaf63d4c4dec4076f77fb6cbde2ad2ecd0349cc"
+    },
+    "openakita/skills@file-manager": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "def1f1e20707f330f65ff829402b224895fa5407d5c0d1b23ed6c162f923781b"
+    },
+    "openakita/skills@frontend-design": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "01d2910040153e691074c76794a84a6f64dbfa52f0660615b3e57d02cce39aca"
+    },
+    "openakita/skills@github-automation": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "0a35e59c1c0d22108902db738fe473186ff11f28e1692f4dbbf415475f07a1cb"
+    },
+    "openakita/skills@gmail-automation": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "c6f26b01d13c8743dde9efd05ff6e94567199241de6b7c0ae7331ce7e703e794"
+    },
+    "openakita/skills@google-calendar-automation": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "e8d402d06e8215342f874bbbb8e4b2fe09bc041612c3f33fd4ce07c7d88d3d5c"
+    },
+    "openakita/skills@image-understander": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "293bd3502b224232bbba376cc10d93219556339939daf5a7db903550197b9909"
+    },
+    "openakita/skills@image-understanding": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "3d04b202234e01733a78cf39958f5a806cf57823e1ede78a13113954ee28bbf9"
+    },
+    "openakita/skills@internal-comms": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "6c0200c220e6469160248cea0e42159cf85f0fce2afe6ff4b749242238676add"
+    },
+    "openakita/skills@knowledge-capture": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "19bff83da4aa1e8756a6edb9d339491a5787b62d61e210b6763ebe7101d458b3"
+    },
+    "openakita/skills@mcp-builder": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "be9cf8410205ca3fca7dfbce06066ba1da11bb4413447cdb66b7956249b3827e"
+    },
+    "openakita/skills@mcp-installer": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "2363a899cb22575112af128a6283bc3040f22bf98cad3659472acd53ab85e078"
+    },
+    "openakita/skills@notebooklm": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "7fe23cd66da6ab54efb5387954833186820ea8cfed307293d24c2bad2e7466ac"
+    },
+    "openakita/skills@obsidian-skills": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "ca8574cd03a55479ace62a93c8b88984a37df0995b3dbe98f5a80eddf11fc744"
+    },
+    "openakita/skills@pdf": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "a667c83e01ba44980c5a54082beafd862c28d022bfd0e7c9fef12681647335a1"
+    },
+    "openakita/skills@ppt-creator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "92baa31489ed8f64f437a6143303a8980bd80c0fc073f1cf8c06a936a1701d1f"
+    },
+    "openakita/skills@pptx": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "efb862bea32eb333bf57df4beee3efbdeb32bd1e9102d2cc3714cd500ed6f692"
+    },
+    "openakita/skills@pretty-mermaid": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "aaae686cd3e209f88114a19e0e76b4e09388974e35e86cacf77f5699d05ac58d"
+    },
+    "openakita/skills@slack-gif-creator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "2ce7066af08213d34f841f2b127057cfddc90568244e0475dbcb393eece7895e"
+    },
+    "openakita/skills@summarizer": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "aa792dfe08fe4a45abab41a96acd0e48d154885f175d7d432798d91ea90a05fb"
+    },
+    "openakita/skills@theme-factory": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "5a28ba5420a33497d7caadaa0140df0817ab3382e4460e345ec341e3e56a7586"
+    },
+    "openakita/skills@todoist-task": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "086c2d2a1cdaa00a8f6e99ecceebce23637f4542fe5d68d0ff29a96d4db43c1a"
+    },
+    "openakita/skills@translate-pdf": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "d86a829c21d0b636a0be1a1951cbfc238f5448439c3738d19b31925364c1adfd"
+    },
+    "openakita/skills@video-downloader": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "235c5a94847a259ff4cf2be2b087e0852735ac471c32c5694b88e9f5465d7521"
+    },
+    "openakita/skills@web-artifacts-builder": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "4b268d67be36acfbf976f07bed97bf1f85ed337c5354701cf2f765bdbaa01a8e"
+    },
+    "openakita/skills@webapp-testing": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "51d6c6ba4997a95f4faa55b2e9ab93484f704235cb23c1d7adcc71f5ab7bd172"
+    },
+    "openakita/skills@wechat-article": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "f272430f6a64f8ab60e05bf56303caba1d3648360bdfb4f41ef5c93c353037f3"
+    },
+    "openakita/skills@xiaohongshu-creator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "38780a5a5e7a1b6671168ffb5c86c5ed5803df72db3028bde8a2ade6dfd2a5a2"
+    },
+    "openakita/skills@xlsx": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "a1d21b2deb820a57f29fe98e17ff76ca95f47e03750ccd7f281712f3e4c234ae"
+    },
+    "openakita/skills@youtube-summarizer": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "8b64bebaef122d43d539807c2e82ba06211adb28434ce88351b7c789daa7cf07"
+    },
+    "openakita/skills@yuque-skills": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "91661c89bdcf10922a45897a6eb23d71f999e163d3b7b5c000fd3a13def21edd"
+    },
+    "pnpm": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "999ed1ace847ce7897ec596fa92630bafb3532b592956045a3915136499d6635"
+    },
+    "reka-ui": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "293d1660c244cbfe3136b66c3457f2a804a548e24557211d0a9f5cbe51e08d69"
+    },
+    "self-improvement": {
+      "source": "peterskoett/self-improving-agent",
+      "sourceType": "github",
+      "computedHash": "a0513374219f6c3a7521b3806f813aaa8facc70387f1439222f1fa056da9075e"
+    },
+    "skill-creator": {
+      "source": "openakita/openakita",
+      "sourceType": "github",
+      "computedHash": "792c20e0efe9647378810b03b83663fe2decb0648add9f7db348c957eb6c4a0f"
+    },
+    "tresjs": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "7b4129ceec635bbe8d362a9d7dd50e85c785dc2afe4311540c89a353da4a0b71"
+    },
+    "ts-library": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "5bcf87721302cb40e3e760271279bd72c106c085b8c4a82196dd5d8cabe4e0dc"
+    },
+    "tsdown": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "501987d6365b280f4c5d8506e50b4556d341bcf35325a78a521d8800c9afdd27"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "6337038fe1fe6bbe1b9f252ab678ee575859190bab6f0f246f4061824eb40875"
+    },
+    "vite": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "bfce47b3705ca5d9ae2ac38f273b2a024f56c0ea8b75860d0b40cdb905cf235b"
+    },
+    "vitest": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "4180d5256b0da05f5d39f15bc9a0850d67fe87e8bf7d7bd6ff28f0fb795dce5c"
+    },
+    "vue": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "30afec05f0f4127ab4d8789ee07d8b7b009edc5aa674d48ba30a7b6869c5e3f1"
+    },
+    "vueuse": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "ff9bc247f9a44c09839ae34c67128bf9fe297a505998c8285cb156816648e397"
+    }
+  }
+}

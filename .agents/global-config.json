@@ -1,0 +1,115 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "星火校园 (Spark Alliance)",
+    "description": "大学生一站式数字生活与学习平台",
+    "root": "C:\\Users\\whw\\Desktop\\Spark-Alliance"
+  },
+  
+  "skills": {
+    "directory": ".agents/.agents/skills",
+    "autoLoad": true,
+    "enabled": [
+      "ui-ux-pro-max",
+      "self-improvement",
+      "systematic-debugging",
+      "test-driven-development",
+      "vue",
+      "nuxt"
+    ],
+    "categories": {
+      "ai-assistant": [
+        "self-improvement",
+        "systematic-debugging",
+        "test-driven-development"
+      ],
+      "frontend": [
+        "ui-ux-pro-max",
+        "ckm-design",
+        "ckm-ui-styling",
+        "vue",
+        "nuxt"
+      ],
+      "backend": [
+        "systematic-debugging",
+        "test-driven-development"
+      ],
+      "productivity": [
+        "todoist-task",
+        "xlsx"
+      ]
+    }
+  },
+  
+  "mcp": {
+    "directory": ".agents/mcp-services",
+    "autoLoad": true,
+    "servers": {
+      "filesystem": {
+        "enabled": true,
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\whw\\Desktop\\Spark-Alliance"],
+        "description": "文件系统访问"
+      },
+      "github": {
+        "enabled": true,
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "description": "GitHub集成"
+      },
+      "brave-search": {
+        "enabled": true,
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "description": "网络搜索"
+      }
+    }
+  },
+  
+  "agents": {
+    "directory": "codex-control",
+    "collaboration": {
+      "enabled": true,
+      "workflow": [
+        {
+          "phase": "前端设计",
+          "developer": "copilot",
+          "reviewers": ["qodercli", "opencode-cli"]
+        },
+        {
+          "phase": "核心功能开发",
+          "developer": "qodercli",
+          "reviewers": ["copilot", "iflow"]
+        },
+        {
+          "phase": "辅助功能开发",
+          "developer": "opencode-cli",
+          "reviewers": ["qodercli", "iflow"]
+        },
+        {
+          "phase": "测试与文档",
+          "developer": "iflow",
+          "reviewers": ["qodercli", "opencode-cli"]
+        }
+      ]
+    }
+  },
+  
+  "rules": {
+    "fileManagement": {
+      "overwriteSameTopic": true,
+      "avoidDuplicates": true,
+      "cleanTempFiles": true
+    },
+    "development": {
+      "codeComments": true,
+      "unitTests": true,
+      "designPatterns": true,
+      "performanceOptimization": true
+    },
+    "git": {
+      "autoCommit": true,
+      "commitMessage": "feat: {phase} - {timestamp}"
+    }
+  }
+}

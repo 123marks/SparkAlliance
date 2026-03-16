@@ -1,0 +1,231 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\Users\\whw\\Desktop\\Spark-Alliance"
+      ],
+      "description": "文件系统操作 - 读写项目文件",
+      "enabled": true
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub集成 - 仓库管理、Issues、PR",
+      "enabled": true,
+      "required": true,
+      "setupInstructions": "需要设置GITHUB_TOKEN环境变量，访问 https://github.com/settings/tokens 创建"
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "description": "Brave搜索 - 网络搜索功能",
+      "enabled": true,
+      "required": false,
+      "setupInstructions": "需要设置BRAVE_API_KEY环境变量，访问 https://brave.com/search/api/ 获取"
+    }
+  },
+  
+  "futureMcpServers": {
+    "postgres": {
+      "package": "@modelcontextprotocol/server-postgres",
+      "description": "PostgreSQL数据库 - 生产环境数据存储",
+      "priority": "high",
+      "stage": "阶段四：电商功能开发",
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    },
+    "redis": {
+      "package": "@modelcontextprotocol/server-redis",
+      "description": "Redis缓存 - 会话管理和缓存",
+      "priority": "high",
+      "stage": "阶段四：电商功能开发"
+    },
+    "playwright": {
+      "package": "@executeautomation/playwright-mcp-server",
+      "repo": "microsoft/playwright-mcp",
+      "description": "Playwright浏览器自动化 - UI测试",
+      "priority": "medium",
+      "stage": "阶段五：移动端开发"
+    },
+    "arxiv": {
+      "package": "@modelcontextprotocol/server-arxiv",
+      "description": "ArXiv学术论文搜索 - AI学术功能",
+      "priority": "high",
+      "stage": "阶段二：AI功能开发"
+    },
+    "memory": {
+      "package": "@modelcontextprotocol/server-memory",
+      "description": "对话记忆存储 - AI上下文管理",
+      "priority": "high",
+      "stage": "阶段二：AI功能开发"
+    },
+    "slack": {
+      "package": "@modelcontextprotocol/server-slack",
+      "description": "Slack集成 - 团队通知和协作",
+      "priority": "medium",
+      "stage": "阶段三：社交功能开发"
+    },
+    "stripe": {
+      "package": "@modelcontextprotocol/server-stripe",
+      "description": "Stripe支付 - 电商交易支付",
+      "priority": "high",
+      "stage": "阶段四：电商功能开发"
+    },
+    "firebase": {
+      "package": "@modelcontextprotocol/server-firebase",
+      "description": "Firebase移动后端 - 移动端服务",
+      "priority": "medium",
+      "stage": "阶段五：移动端开发"
+    },
+    "aws": {
+      "repo": "awslabs/mcp",
+      "description": "AWS服务集成 - 云服务管理",
+      "priority": "low",
+      "stage": "阶段四：电商功能开发"
+    }
+  },
+  
+  "customMcpServers": {
+    "campus-data": {
+      "description": "校园数据MCP - 课程表、成绩、校园新闻",
+      "priority": "high",
+      "status": "planning",
+      "features": [
+        "获取课程表",
+        "查询成绩",
+        "校园新闻",
+        "食堂菜单",
+        "图书馆座位"
+      ]
+    },
+    "social-features": {
+      "description": "社交功能MCP - 好友、群聊、动态",
+      "priority": "high",
+      "status": "planning",
+      "features": [
+        "好友关系管理",
+        "群聊消息处理",
+        "动态发布",
+        "点赞评论",
+        "消息通知"
+      ]
+    },
+    "trading-system": {
+      "description": "交易系统MCP - 商品、订单、支付",
+      "priority": "high",
+      "status": "planning",
+      "features": [
+        "商品发布",
+        "订单管理",
+        "支付处理",
+        "信用评分",
+        "配送管理"
+      ]
+    },
+    "task-system": {
+      "description": "任务系统MCP - 任务、进度、成就",
+      "priority": "high",
+      "status": "planning",
+      "features": [
+        "任务创建",
+        "进度追踪",
+        "星空点亮",
+        "成就系统",
+        "游戏化激励"
+      ]
+    }
+  },
+  
+  "installationStatus": {
+    "inspector": {
+      "package": "@modelcontextprotocol/inspector",
+      "status": "installed",
+      "version": "latest",
+      "installedAt": "2026-03-15"
+    },
+    "filesystem": {
+      "package": "@modelcontextprotocol/server-filesystem",
+      "status": "installed",
+      "version": "latest",
+      "installedAt": "2026-03-15"
+    },
+    "github": {
+      "package": "@modelcontextprotocol/server-github",
+      "status": "installed",
+      "version": "latest",
+      "installedAt": "2026-03-15",
+      "note": "已弃用但仍可使用，建议使用github/github-mcp-server"
+    },
+    "brave-search": {
+      "package": "@modelcontextprotocol/server-brave-search",
+      "status": "installed",
+      "version": "latest",
+      "installedAt": "2026-03-15",
+      "note": "已弃用但仍可使用"
+    }
+  },
+  
+  "environmentVariables": {
+    "required": [
+      {
+        "name": "GITHUB_TOKEN",
+        "description": "GitHub个人访问令牌",
+        "getFrom": "https://github.com/settings/tokens",
+        "permissions": ["repo", "issues", "pull_requests"]
+      },
+      {
+        "name": "BRAVE_API_KEY",
+        "description": "Brave搜索API密钥",
+        "getFrom": "https://brave.com/search/api/",
+        "freeQuota": "2000次/月"
+      }
+    ],
+    "optional": [
+      {
+        "name": "DATABASE_URL",
+        "description": "PostgreSQL数据库连接字符串",
+        "stage": "阶段四"
+      },
+      {
+        "name": "REDIS_URL",
+        "description": "Redis连接字符串",
+        "stage": "阶段四"
+      },
+      {
+        "name": "STRIPE_API_KEY",
+        "description": "Stripe API密钥",
+        "stage": "阶段四"
+      }
+    ]
+  },
+  
+  "testingCommands": {
+    "inspector": "mcp-inspector",
+    "filesystem": "mcp-inspector npx -y @modelcontextprotocol/server-filesystem C:\\Users\\whw\\Desktop\\Spark-Alliance",
+    "github": "mcp-inspector npx -y @modelcontextprotocol/server-github",
+    "brave-search": "mcp-inspector npx -y @modelcontextprotocol/server-brave-search"
+  },
+  
+  "resources": {
+    "official": [
+      "https://modelcontextprotocol.io/",
+      "https://github.com/modelcontextprotocol/inspector",
+      "https://github.com/modelcontextprotocol/registry"
+    ],
+    "community": [
+      "https://github.com/punkpeye/awesome-mcp-servers",
+      "https://github.com/yzfly/Awesome-MCP-ZH",
+      "https://github.com/PrefectHQ/fastmcp"
+    ]
+  }
+}
