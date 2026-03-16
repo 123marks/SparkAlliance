@@ -34,10 +34,10 @@
 
       <div class="sidebar-footer">
         <div class="user-mini-card">
-          <div class="u-avatar"></div>
+          <div class="u-avatar">{{ avatarInitial }}</div>
           <div class="u-info" v-if="!isCollapsed">
-            <h5>张同学</h5>
-            <span>计算机工程</span>
+            <h5>{{ userName }}</h5>
+            <span>{{ userEmail }}</span>
           </div>
         </div>
         <button class="logout-btn" @click="handleLogout" v-if="!isCollapsed">退出登录</button>
@@ -59,6 +59,18 @@
           <button class="icon-btn notif-btn">
             🔔 <span class="badge"></span>
           </button>
+          <div class="user-dropdown" @click="showDropdown = !showDropdown">
+            <div class="dd-avatar">{{ avatarInitial }}</div>
+            <div class="dd-menu" v-if="showDropdown">
+              <div class="dd-header">
+                <strong>{{ userName }}</strong>
+                <span>{{ userEmail }}</span>
+              </div>
+              <div class="dd-divider"></div>
+              <router-link to="/app/profile" class="dd-item" @click="showDropdown = false">👤 个人中心</router-link>
+              <div class="dd-item" @click="handleLogout">🚪 退出登录</div>
+            </div>
+          </div>
         </div>
       </header>
       
@@ -77,10 +89,28 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuth } from '../../composables/useAuth'
+import { supabase } from '../../supabase'
 
 const router = useRouter()
 const route = useRoute()
 const isCollapsed = ref(false)
+const showDropdown = ref(false)
+
+const { user } = useAuth()
+
+const userName = computed(() => {
+  if (user.value?.user_metadata?.nickname) return user.value.user_metadata.nickname
+  if (user.value?.email) return user.value.email.split('@')[0]
+  return '同学'
+})
+
+const userEmail = computed(() => user.value?.email || '')
+
+const avatarInitial = computed(() => {
+  const name = userName.value
+  return name ? name.charAt(0).toUpperCase() : '?'
+})
 
 const currentPageTitle = computed(() => {
   switch (route.name) {
@@ -92,8 +122,9 @@ const currentPageTitle = computed(() => {
   }
 })
 
-const handleLogout = () => {
-  localStorage.removeItem('spark_auth_token')
+const handleLogout = async () => {
+  await supabase.auth.signOut()
+  showDropdown.value = false
   router.push('/login')
 }
 </script>
@@ -227,6 +258,8 @@ const handleLogout = () => {
   border-radius: 50%;
   background: linear-gradient(135deg, var(--color-brand-purple), var(--color-brand-orange));
   flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px; color: white;
 }
 
 .u-info {
@@ -252,6 +285,45 @@ const handleLogout = () => {
   transition: transform 0.2s;
 }
 .logout-btn-icon:hover { transform: scale(1.1); }
+
+/* User Dropdown */
+.user-dropdown { position: relative; cursor: pointer; }
+.dd-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: white;
+  transition: box-shadow 0.2s;
+}
+.dd-avatar:hover { box-shadow: 0 0 0 3px rgba(79, 142, 247, 0.3); }
+.dd-menu {
+  position: absolute;
+  top: 48px; right: 0;
+  width: 220px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  z-index: 100;
+  overflow: hidden;
+  animation: ddSlide 0.15s ease-out;
+}
+@keyframes ddSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.dd-header { padding: 16px; }
+.dd-header strong { display: block; font-size: 14px; margin-bottom: 4px; }
+.dd-header span { font-size: 12px; color: var(--color-text-muted); }
+.dd-divider { height: 1px; background: var(--color-border); }
+.dd-item {
+  display: block;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  transition: background 0.2s;
+  cursor: pointer;
+  text-decoration: none;
+}
+.dd-item:hover { background: rgba(255,255,255,0.05); color: white; }
 
 
 /* Main Content */

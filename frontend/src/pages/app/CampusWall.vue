@@ -6,95 +6,63 @@
       <div class="feed-header">
         <h1 class="page-title">校园动态墙</h1>
         <div class="tabs">
-          <button class="tab active">推荐</button>
-          <button class="tab">最新</button>
-          <button class="tab">关注</button>
-          <button class="tab">热议表白</button>
+          <button v-for="tab in tabList" :key="tab" class="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">{{ tab }}</button>
         </div>
       </div>
 
-      <!-- Composer Placeholder -->
-      <div class="composer-card">
-        <div class="c-avatar"></div>
-        <input type="text" placeholder="分享你的星火校园新鲜事..." class="c-input" />
-        <button class="c-btn">图片</button>
+      <!-- Composer -->
+      <div class="composer-card" :class="{ expanded: composerExpanded }">
+        <div class="c-avatar">{{ avatarInitial }}</div>
+        <div class="c-input-area" v-if="!composerExpanded">
+          <input type="text" placeholder="分享你的星火校园新鲜事..." class="c-input" @focus="composerExpanded = true" />
+        </div>
+        <div class="c-expanded" v-else>
+          <textarea v-model="newPostContent" placeholder="写下你想说的..." class="c-textarea" rows="3" ref="composerTextarea"></textarea>
+          <div class="c-toolbar">
+            <div class="c-tools">
+              <button class="tool-btn">🖼️ 图片</button>
+              <button class="tool-btn">📎 文件</button>
+              <label class="anon-toggle">
+                <input type="checkbox" v-model="isAnonymous" />
+                <span>匿名发布</span>
+              </label>
+            </div>
+            <div class="c-actions">
+              <button class="c-cancel" @click="composerExpanded = false; newPostContent = ''">取消</button>
+              <button class="c-submit" @click="submitPost" :disabled="!newPostContent.trim()">发布</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Feed List -->
       <div class="feed-list">
-        <!-- Post 1 -->
-        <div class="post-card">
+        <div class="post-card" v-for="(post, index) in filteredPosts" :key="index">
           <div class="post-header">
             <div class="p-author">
-              <div class="p-avatar" style="background: linear-gradient(135deg, #10b981, #3b82f6)"></div>
+              <div class="p-avatar" :style="{ background: post.avatarBg }">
+                <span v-if="post.isAnonymous" class="anon-icon">🕵️</span>
+                <span v-else>{{ post.authorInitial }}</span>
+              </div>
               <div class="p-info">
-                <h4>计科吴彦祖 <span class="tag">身份认证</span></h4>
-                <span class="time">10 分钟前</span>
+                <h4>{{ post.author }} <span class="tag" :class="post.tagClass">{{ post.tagText }}</span></h4>
+                <span class="time">{{ post.time }}</span>
               </div>
             </div>
             <button class="more-btn">•••</button>
           </div>
           <div class="post-content">
-            <p>有没有兄弟知道软工的课设如果使用 Vue3，老师那边查重容忍度高不高啊？我用 Composition API 写了一套，感觉大家代码结构都很像 😂</p>
+            <p>{{ post.content }}</p>
           </div>
-          <div class="post-tags">
-            <span class="p-tag">#软件工程</span>
-            <span class="p-tag">#求助交流</span>
+          <div class="post-tags" v-if="post.tags.length">
+            <span class="p-tag" v-for="tag in post.tags" :key="tag">#{{ tag }}</span>
           </div>
           <div class="post-actions">
-            <button class="action-btn"><span class="icon">👍</span> 24</button>
-            <button class="action-btn"><span class="icon">💬</span> 8</button>
+            <button class="action-btn" :class="{ active: post.liked }" @click="toggleLike(post)">
+              <span class="icon">{{ post.liked ? '❤️' : '👍' }}</span> {{ post.likes }}
+            </button>
+            <button class="action-btn"><span class="icon">💬</span> {{ post.comments }}</button>
             <button class="action-btn"><span class="icon">🔁</span></button>
-          </div>
-        </div>
-
-        <!-- Post 2 -->
-        <div class="post-card">
-          <div class="post-header">
-            <div class="p-author">
-              <div class="p-avatar" style="background: rgba(255,255,255,0.1)">
-                 <span class="anon-icon">🕵️</span>
-              </div>
-              <div class="p-info">
-                <h4>匿名同学 <span class="tag anon">半匿名</span></h4>
-                <span class="time">1 小时前</span>
-              </div>
-            </div>
-          </div>
-          <div class="post-content">
-            <p>今天在二食堂二楼那个打麻辣烫的阿姨，手真的太抖了！好几片肉硬生生地被抖回了锅里！心碎 💔</p>
-          </div>
-          <div class="post-tags">
-            <span class="p-tag">#生活吐槽</span>
-          </div>
-          <div class="post-actions">
-            <button class="action-btn"><span class="icon">👍</span> 156</button>
-            <button class="action-btn"><span class="icon">💬</span> 45</button>
-            <button class="action-btn"><span class="icon">🔁</span></button>
-          </div>
-        </div>
-
-        <!-- Post 3 -->
-        <div class="post-card">
-          <div class="post-header">
-            <div class="p-author">
-              <div class="p-avatar" style="background: linear-gradient(135deg, #8b5cf6, #ec4899)"></div>
-              <div class="p-info">
-                <h4>校园社团联盟 <span class="tag official">官方</span></h4>
-                <span class="time">昨天 18:00</span>
-              </div>
-            </div>
-          </div>
-          <div class="post-content">
-            <p>【百团大战预告】本周六，中心广场，校团委联合 80+ 社团等你来玩！现场扫码加入即送精美文创，还有随机掉落的抽奖机会哦！🎉</p>
-            <div class="post-image-mock">
-              <span class="img-icon">🖼️ 海报图片</span>
-            </div>
-          </div>
-          <div class="post-actions">
-            <button class="action-btn active"><span class="icon">❤️</span> 890</button>
-            <button class="action-btn"><span class="icon">💬</span> 120</button>
-            <button class="action-btn"><span class="icon">🔁</span> 34</button>
           </div>
         </div>
       </div>
@@ -102,11 +70,111 @@
     </div>
 
     <!-- Floating Action Button -->
-    <button class="fab">
+    <button class="fab" @click="composerExpanded = true; scrollToTop()">
       <span class="cross">+</span>
     </button>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, nextTick } from 'vue'
+import { useAuth } from '../../composables/useAuth'
+
+const { user } = useAuth()
+
+const avatarInitial = computed(() => {
+  const name = user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '?'
+  return name.charAt(0).toUpperCase()
+})
+
+const tabList = ['推荐', '最新', '关注', '热议表白']
+const activeTab = ref('推荐')
+const composerExpanded = ref(false)
+const newPostContent = ref('')
+const isAnonymous = ref(false)
+
+interface Post {
+  author: string;
+  authorInitial: string;
+  avatarBg: string;
+  isAnonymous: boolean;
+  tagText: string;
+  tagClass: string;
+  time: string;
+  content: string;
+  tags: string[];
+  likes: number;
+  comments: number;
+  liked: boolean;
+  category: string;
+}
+
+const posts = ref<Post[]>([
+  {
+    author: '计科吴彦祖', authorInitial: '计', avatarBg: 'linear-gradient(135deg, #10b981, #3b82f6)',
+    isAnonymous: false, tagText: '身份认证', tagClass: '', time: '10 分钟前',
+    content: '有没有兄弟知道软工的课设如果使用 Vue3，老师那边查重容忍度高不高啊？我用 Composition API 写了一套，感觉大家代码结构都很像 😂',
+    tags: ['软件工程', '求助交流'], likes: 24, comments: 8, liked: false, category: '推荐'
+  },
+  {
+    author: '匿名同学', authorInitial: '🕵️', avatarBg: 'rgba(255,255,255,0.1)',
+    isAnonymous: true, tagText: '半匿名', tagClass: 'anon', time: '1 小时前',
+    content: '今天在二食堂二楼那个打麻辣烫的阿姨，手真的太抖了！好几片肉硬生生地被抖回了锅里！心碎 💔',
+    tags: ['生活吐槽'], likes: 156, comments: 45, liked: false, category: '推荐'
+  },
+  {
+    author: '校园社团联盟', authorInitial: '校', avatarBg: 'linear-gradient(135deg, #8b5cf6, #ec4899)',
+    isAnonymous: false, tagText: '官方', tagClass: 'official', time: '昨天 18:00',
+    content: '【百团大战预告】本周六，中心广场，校团委联合 80+ 社团等你来玩！现场扫码加入即送精美文创，还有随机掉落的抽奖机会哦！🎉',
+    tags: [], likes: 890, comments: 120, liked: true, category: '推荐'
+  },
+  {
+    author: '深夜食堂', authorInitial: '深', avatarBg: 'linear-gradient(135deg, #f97316, #ef4444)',
+    isAnonymous: false, tagText: '身份认证', tagClass: '', time: '3 小时前',
+    content: '致暗恋了两年的你：每次在图书馆遇到你，你总戴着那副白色的无线耳机，翻开的书旁边永远放着一杯冰美式。我不知道你是谁，但我想认识你。如果你看到了，回复我一句「我也是」就好。',
+    tags: ['表白墙'], likes: 342, comments: 89, liked: false, category: '热议表白'
+  },
+])
+
+const filteredPosts = computed(() => {
+  if (activeTab.value === '推荐' || activeTab.value === '最新') return posts.value
+  if (activeTab.value === '热议表白') return posts.value.filter(p => p.category === '热议表白' || p.tags.includes('表白墙'))
+  return posts.value
+})
+
+const toggleLike = (post: Post) => {
+  post.liked = !post.liked
+  post.likes += post.liked ? 1 : -1
+}
+
+const submitPost = () => {
+  if (!newPostContent.value.trim()) return
+  const authorName = isAnonymous.value ? '匿名同学' : (user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '同学')
+  posts.value.unshift({
+    author: authorName,
+    authorInitial: isAnonymous.value ? '🕵️' : authorName.charAt(0),
+    avatarBg: isAnonymous.value ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple))',
+    isAnonymous: isAnonymous.value,
+    tagText: isAnonymous.value ? '半匿名' : '刚刚发布',
+    tagClass: isAnonymous.value ? 'anon' : 'new',
+    time: '刚刚',
+    content: newPostContent.value,
+    tags: [],
+    likes: 0,
+    comments: 0,
+    liked: false,
+    category: '推荐'
+  })
+  newPostContent.value = ''
+  composerExpanded.value = false
+}
+
+const scrollToTop = () => {
+  nextTick(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+</script>
 
 <style scoped>
 .wall-layout {
@@ -142,13 +210,30 @@
   border: 1px solid var(--color-border);
   border-radius: 16px;
   padding: 16px;
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: flex-start; gap: 16px;
   margin-bottom: 32px;
+  transition: all 0.3s;
 }
-.c-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--color-brand-purple), var(--color-brand-orange)); flex-shrink: 0; }
-.c-input { flex: 1; background: rgba(0,0,0,0.2); border: 1px solid var(--color-border); height: 44px; border-radius: 22px; padding: 0 20px; color: white; outline: none; transition: border-color 0.2s; }
+.composer-card.expanded { flex-direction: column; }
+.c-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--color-brand-purple), var(--color-brand-orange)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: white; }
+.c-input-area { flex: 1; }
+.c-input { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--color-border); height: 44px; border-radius: 22px; padding: 0 20px; color: white; outline: none; transition: border-color 0.2s; }
 .c-input:focus { border-color: var(--color-brand-blue); }
-.c-btn { background: transparent; border: none; color: var(--color-brand-blue); font-weight: 500; cursor: pointer; }
+.c-expanded { width: 100%; }
+.c-textarea { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--color-border); border-radius: 12px; padding: 16px; color: white; outline: none; resize: vertical; font-family: inherit; font-size: 15px; line-height: 1.6; transition: border-color 0.2s; }
+.c-textarea:focus { border-color: var(--color-brand-blue); }
+.c-toolbar { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.c-tools { display: flex; gap: 8px; align-items: center; }
+.tool-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.tool-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+.anon-toggle { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 13px; cursor: pointer; }
+.anon-toggle input { accent-color: var(--color-brand-purple); }
+.c-actions { display: flex; gap: 8px; }
+.c-cancel { background: transparent; border: 1px solid var(--color-border); color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+.c-cancel:hover { background: rgba(255,255,255,0.05); }
+.c-submit { background: var(--gradient-brand); border: none; color: white; padding: 8px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity 0.2s; }
+.c-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+.tag.new { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #10b981; }
 
 /* Feed */
 .feed-list {

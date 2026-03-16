@@ -9,12 +9,12 @@
       <!-- Profile Header -->
       <div class="profile-header">
         <div class="p-avatar-wrapper">
-          <div class="p-avatar"></div>
+          <div class="p-avatar">{{ avatarInitial }}</div>
           <button class="edit-avatar-btn">📷</button>
         </div>
         <div class="p-info">
-          <h1>张同学 <span class="badge pro">PRO</span></h1>
-          <p>计算机科学与技术学院 &middot; 2024级硕士</p>
+          <h1>{{ userName }} <span class="badge pro">PRO</span></h1>
+          <p>{{ userEmail }} &middot; 加入了 {{ daysSinceJoined }} 天</p>
           <div class="bio">"代码改变世界，探索从未停止。"</div>
         </div>
         <div class="header-actions">
@@ -121,6 +121,26 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useAuth } from '../../composables/useAuth'
+
+const { user } = useAuth()
+
+// 用户信息
+const userName = computed(() => {
+  if (user.value?.user_metadata?.nickname) return user.value.user_metadata.nickname
+  if (user.value?.email) return user.value.email.split('@')[0]
+  return '同学'
+})
+const userEmail = computed(() => user.value?.email || '')
+const avatarInitial = computed(() => userName.value ? userName.value.charAt(0).toUpperCase() : '?')
+const daysSinceJoined = computed(() => {
+  if (!user.value?.created_at) return 1
+  const diff = new Date().getTime() - new Date(user.value.created_at).getTime()
+  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+})
+
+// 热力图随机强度
 const getRandomIntensity = () => {
   const rand = Math.random();
   if (rand < 0.6) return 'lv-0';
@@ -166,7 +186,7 @@ const getRandomIntensity = () => {
 }
 
 .p-avatar-wrapper { position: relative; }
-.p-avatar { width: 140px; height: 140px; border-radius: 50%; background: linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple)); border: 4px solid var(--color-bg-primary); box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+.p-avatar { width: 140px; height: 140px; border-radius: 50%; background: linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple)); border: 4px solid var(--color-bg-primary); box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 800; color: white;}
 .edit-avatar-btn { position: absolute; bottom: 8px; right: 8px; width: 36px; height: 36px; border-radius: 50%; background: var(--color-bg-card); border: 1px solid var(--color-border); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .edit-avatar-btn:hover { background: rgba(255,255,255,0.1); }
 
