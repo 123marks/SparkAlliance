@@ -75,6 +75,15 @@
 - ✅ 总计安装：92个skills
 - ✅ 安装位置：`C:\Users\whw\Desktop\Spark-Alliance\skills\.agents\skills\`
 
+**Skills新增（2026-03-17）：**
+- ✅ 安装 blader/claudeception - 自动进化技能（干活时自动总结经验，保存成 Skill）
+- ✅ 安装 chiroro-jr/pencil-design-skill - 无限画布（兼容 Figma，自带设计规范）
+- ✅ 安装 pleaseprompto/notebooklm-skill - NotebookLM 集成（批量生成风格化 PPT）
+- ✅ 安装 anthropics/skills@theme-factory - 主题工厂（批量生成风格化主题）
+- ✅ 安装 gbsoss/skill-from-masters - 搜索专家方法论，自动转化为技能
+- ✅ 安装 sickn33/antigravity-awesome-skills@nanobanana-ppt-skills - 分析文档做 PPT 大纲
+- ✅ 总计安装：99个skills（新增6个）
+
 **效果评估：**
 - 开发工具准备就绪
 - PUA引擎可用于提升AI开发效率
@@ -481,6 +490,27 @@
 - 新增3.9 AI学习助手模块设计
 - 新增3.10 学习资源中心模块设计
 
+### 2026-03-17
+
+**完成工作：**
+- 安装6个新的热门技能包（来自 skills.sh）
+- 更新 .agents/README.md 文档，添加新技能说明
+- 更新 docs/AGENTS.md 文档，记录技能安装进度
+
+**新增技能：**
+- claudeception - 自动进化技能
+- pencil-design - 无限画布设计工具
+- notebooklm - NotebookLM 集成
+- theme-factory - 主题工厂
+- skill-from-masters - 专家方法论转化
+- nanobanana-ppt-skills - PPT 大纲生成
+
+**遇到问题：**
+- homunculus 和 Skill Vision Control 技能在 skills.sh 上未找到
+
+**解决方案：**
+- 已安装其他可用的热门技能替代
+
 ---
 
 ## 📋 待开发功能清单
@@ -625,6 +655,7 @@
 | v1.1 | 2026-03-16 | 补充前端MVP骨架开发日志 |
 | v1.2 | 2026-03-16 | 新增Spark Talent、星火资讯两大模块待开发清单 |
 | v1.3 | 2026-03-16 | 新增AI选课助手、学长推荐系统、AI学习助手、学习资源中心四大模块待开发清单 |
+| v1.4 | 2026-03-17 | 新增6个热门技能包安装记录，更新技能总数至99个 |
 
 ---
 

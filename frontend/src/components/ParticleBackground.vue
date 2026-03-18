@@ -1,141 +1,175 @@
 <template>
-  <canvas ref="canvasEl" class="particle-background"></canvas>
+  <canvas ref="canvasRef" class="particle-background"></canvas>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 
-const canvasEl = ref<HTMLCanvasElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
 let animationFrameId: number;
+let particles: Particle[] = [];
+let mouse = { x: -1000, y: -1000 };
 
 interface Particle {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
-  radius: number;
+  baseX: number;
+  baseY: number;
+  size: number;
+  density: number;
   color: string;
 }
 
-onMounted(() => {
-  const canvas = canvasEl.value;
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+const colors = [
+  'rgba(59, 130, 246, 0.7)', // blue-500
+  'rgba(139, 92, 246, 0.7)', // violet-500
+  'rgba(236, 72, 153, 0.7)', // pink-500
+  'rgba(20, 184, 166, 0.7)'  // teal-500
+];
 
-  let width = window.innerWidth;
-  let height = window.innerHeight;
-  canvas.width = width;
-  canvas.height = height;
-
-  const particles: Particle[] = [];
-  const particleCount = Math.floor((width * height) / 15000);
-  const colors = ['rgba(99, 102, 241, 0.6)', 'rgba(168, 85, 247, 0.6)', 'rgba(236, 72, 153, 0.6)'];
-
+const initParticles = (canvas: HTMLCanvasElement) => {
+  particles = [];
+  // Adjust density: one particle per 12000 pixels
+  const particleCount = Math.floor((canvas.width * canvas.height) / 12000); 
+  
   for (let i = 0; i < particleCount; i++) {
+    const size = Math.random() * 2 + 1;
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+    const density = Math.random() * 30 + 1;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    
     particles.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      radius: Math.random() * 2 + 1,
-      color: colors[Math.floor(Math.random() * colors.length)]
+      x, y, baseX: x, baseY: y, size, density, color
     });
   }
+};
 
-  // Mouse interaction
-  let mouseX = -1000;
-  let mouseY = -1000;
-
-  const handleMouseMove = (e: MouseEvent) => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
-  };
-
-  window.addEventListener('mousemove', handleMouseMove);
-
-  const resize = () => {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
-  };
-
-  window.addEventListener('resize', resize);
-
-  const draw = () => {
-    ctx.clearRect(0, 0, width, height);
-
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-
-      // Move interaction
-      const dx = mouseX - p.x;
-      const dy = mouseY - p.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance < 150) {
-        const forceDirectionX = dx / distance;
-        const forceDirectionY = dy / distance;
-        const force = (150 - distance) / 150;
-        
-        p.vx -= forceDirectionX * force * 0.2;
-        p.vy -= forceDirectionY * force * 0.2;
+const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  for (let i = 0; i < particles.length; i++) {
+    let p = particles[i];
+    
+    // Calculate distance to mouse
+    let dx = mouse.x - p.x;
+    let dy = mouse.y - p.y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Force field mechanics
+    let maxDistance = 150;
+    
+    // Repel from mouse smoothly
+    if (distance < maxDistance) {
+      let forceDirectionX = dx / distance;
+      let forceDirectionY = dy / distance;
+      let force = (maxDistance - distance) / maxDistance;
+      let directionX = forceDirectionX * force * p.density * 0.5;
+      let directionY = forceDirectionY * force * p.density * 0.5;
+      
+      p.x -= directionX;
+      p.y -= directionY;
+    } else {
+      // Return to base position with spring effect
+      if (p.x !== p.baseX) {
+        let dx = p.x - p.baseX;
+        p.x -= dx / 20;
       }
-
-      // Apply friction
-      p.vx *= 0.99;
-      p.vy *= 0.99;
-
-      p.x += p.vx;
-      p.y += p.vy;
-
-      // Wrap around screen
-      if (p.x < 0) p.x = width;
-      if (p.x > width) p.x = 0;
-      if (p.y < 0) p.y = height;
-      if (p.y > height) p.y = 0;
-
-      // Enforce base speed
-      const currentSpeed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      if(currentSpeed < 0.1) {
-        p.vx += (Math.random() - 0.5) * 0.1;
-        p.vy += (Math.random() - 0.5) * 0.1;
-      }
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.fill();
-
-      // Connect particles
-      for (let j = i + 1; j < particles.length; j++) {
-        const p2 = particles[j];
-        const dx2 = p.x - p2.x;
-        const dy2 = p.y - p2.y;
-        const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-
-        if (distance2 < 120) {
-          ctx.beginPath();
-          ctx.strokeStyle = `rgba(255, 255, 255, ${0.15 * (1 - distance2 / 120)})`;
-          ctx.lineWidth = 1;
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
+      if (p.y !== p.baseY) {
+        let dy = p.y - p.baseY;
+        p.y -= dy / 20;
       }
     }
+    
+    // Subtle continuous floating motion if not heavily interacting
+    if (distance >= maxDistance * 0.8) {
+        p.y += Math.sin(Date.now() / 1000 + p.density) * 0.2;
+        p.x += Math.cos(Date.now() / 1500 + p.density) * 0.2;
+    }
+    
+    // Draw particle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = p.color;
+    
+    // Draw with soft glow
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = p.color;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  
+  // Draw connecting lines based on proximity
+  connectParticles(ctx);
+  
+  animationFrameId = requestAnimationFrame(() => animate(ctx, canvas));
+};
 
-    animationFrameId = requestAnimationFrame(draw);
-  };
+const connectParticles = (ctx: CanvasRenderingContext2D) => {
+  let opacityValue = 1;
+  const maxDistance = 100;
+  
+  for (let a = 0; a < particles.length; a++) {
+    for (let b = a; b < particles.length; b++) {
+      let dx = particles[a].x - particles[b].x;
+      let dy = particles[a].y - particles[b].y;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < maxDistance) {
+        opacityValue = 1 - (distance / maxDistance);
+        ctx.strokeStyle = `rgba(180, 180, 180, ${opacityValue * 0.15})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(particles[a].x, particles[a].y);
+        ctx.lineTo(particles[b].x, particles[b].y);
+        ctx.stroke();
+      }
+    }
+  }
+};
 
-  draw();
+const handleResize = () => {
+  if (canvasRef.value) {
+    canvasRef.value.width = window.innerWidth;
+    canvasRef.value.height = window.innerHeight;
+    initParticles(canvasRef.value); // Re-init on resize to fill new areas
+  }
+};
 
-  onBeforeUnmount(() => {
-    cancelAnimationFrame(animationFrameId);
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('resize', resize);
-  });
+const handleMouseMove = (e: MouseEvent) => {
+  mouse.x = e.x;
+  mouse.y = e.y;
+};
+
+const handleMouseLeave = () => {
+  mouse.x = -1000;
+  mouse.y = -1000;
+};
+
+onMounted(() => {
+  if (!canvasRef.value) return;
+  const canvas = canvasRef.value;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) return;
+  
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  
+  initParticles(canvas);
+  animate(ctx, canvas);
+  
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseleave', handleMouseLeave);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('mousemove', handleMouseMove);
+  window.removeEventListener('mouseleave', handleMouseLeave);
+  cancelAnimationFrame(animationFrameId);
 });
 </script>
 
@@ -148,5 +182,13 @@ onMounted(() => {
   height: 100vh;
   z-index: -1;
   pointer-events: none;
+  background: transparent;
+  /* Add subtle fade-in transition on load */
+  animation: fadeIn 2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 </style>

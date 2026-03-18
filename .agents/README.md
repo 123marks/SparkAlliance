@@ -28,7 +28,16 @@ Spark-Alliance/
 
 ---
 
-## 🎯 已安装的Skills（93个）
+## 🎯 已安装的Skills（99个）
+
+### 🆕 新增技能（6个）- 2026-03-17
+来自 skills.sh 热门技能：
+- ✅ **claudeception** - 自动进化（干活时自动总结经验，保存成 Skill）
+- ✅ **pencil-design** - 无限画布（兼容 Figma，自带设计规范）
+- ✅ **notebooklm** - NotebookLM 集成（批量生成风格化 PPT，100 页风格统一）
+- ✅ **skill-from-masters** - 搜索专家方法论，自动转化为技能
+- ✅ **theme-factory** - 主题工厂（批量生成风格化主题）
+- ✅ **nanobanana-ppt-skills** - 分析文档做 PPT 大纲，一键合成
 
 ### AI助手类（66个）
 来自 openakita/openakita：

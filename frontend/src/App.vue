@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import MouseFollower from './components/MouseFollower.vue'
+import ParticleBackground from './components/ParticleBackground.vue'
 import { useAuth } from './composables/useAuth'
 
 const { initAuth } = useAuth()
@@ -11,6 +12,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <ParticleBackground />
   <MouseFollower />
   
   <router-view v-slot="{ Component }">

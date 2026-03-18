@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "skills": {
+    "claudeception": {
+      "source": "blader/claudeception",
+      "sourceType": "github",
+      "computedHash": "91151fed2806458fe9847a8b70efba138f807f86570a8392d19c871bdf949c30"
+    },
+    "nanobanana-ppt-skills": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "d745ed22b8c8459ab6d7f7e4be0bf9fc69cd050944bbe8a4b9eb0886ea259f63"
+    },
+    "notebooklm": {
+      "source": "pleaseprompto/notebooklm-skill",
+      "sourceType": "github",
+      "computedHash": "40877d53667ab1d100695e3b171c305a9c341fa251835af1c6f5d8a910f3ac6f"
+    },
+    "pencil-design": {
+      "source": "chiroro-jr/pencil-design-skill",
+      "sourceType": "github",
+      "computedHash": "f04f1121eaa74ff4faad70a967fecfb0b5d5e40abfd0cc4de1c71afd4f6749e4"
+    },
+    "pua": {
+      "source": "tanweai/pua",
+      "sourceType": "github",
+      "computedHash": "8daed3baecba2a2636bd39dcac61a74193cc4e9eb386629ba227a8ea44f3abcd"
+    },
+    "skill-from-masters": {
+      "source": "gbsoss/skill-from-masters",
+      "sourceType": "github",
+      "computedHash": "ca2876ff93f39251ad5c23acdaf50f86c1fb791651429b2ed31f45756fbc02dc"
+    },
+    "theme-factory": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "0290eabfd6fea9fcfd59c12de15e3f4046593185089956802b6d48ba1d07f428"
+    }
+  }
+}

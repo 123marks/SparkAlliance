@@ -61,3 +61,51 @@ a, button {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-border);
 }
+
+/* --- UI/UX Pro Max Global Styles --- */
+
+/* 1. Accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-brand-blue);
+  outline-offset: 2px;
+}
+
+/* 2. Touch Targets (Apple HIG / Material Design min 44px) */
+button {
+  min-height: 44px; /* Ensure all buttons are tap-friendly */
+}
+
+/* 3. Spring Physics & Animations */
+.spring-transition {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.spring-hover {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              box-shadow 0.4s ease, border-color 0.4s ease, background 0.4s ease;
+  will-change: transform, box-shadow;
+}
+
+.spring-hover:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+}
+
+.spring-hover:active {
+  transform: translateY(2px) scale(0.96);
+  transition: transform 0.1s ease;
+}
+
+/* 4. Enhanced Glassmorphism (ui-ux-pro-max standard) */
+.glass-pro {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.glass-pro-hover:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
