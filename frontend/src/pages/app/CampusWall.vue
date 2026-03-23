@@ -425,6 +425,39 @@
         </div>
       </Transition>
     </Teleport>
+    <!-- 申诉 Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="appealModalOpen" class="composer-overlay" @click.self="appealModalOpen = false">
+          <div class="report-modal" style="max-width: 420px;">
+            <div class="modal-header">
+              <h3>📋 申诉评论隐藏</h3>
+              <button class="modal-close" @click="appealModalOpen = false">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+
+            <p class="report-tip">你的评论因被多次举报已被系统自动隐藏。如果你认为这是误判，请说明理由：</p>
+
+            <div class="report-desc-area">
+              <label>申诉理由（必填）</label>
+              <textarea v-model="appealReason" placeholder="请说明为什么认为该评论不应被隐藏..." class="c-textarea" rows="4" :maxlength="500"></textarea>
+            </div>
+
+            <p class="report-disclaimer">
+              ⚠️ 每条评论仅可申诉一次。管理员将在 48 小时内审核。
+            </p>
+
+            <div class="c-actions" style="justify-content: flex-end; margin-top: 16px;">
+              <button class="c-cancel" @click="appealModalOpen = false">取消</button>
+              <button class="c-submit" @click="submitAppeal" :disabled="!appealReason.trim() || isSubmittingAppeal">
+                {{ isSubmittingAppeal ? '提交中...' : '提交申诉' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- 图片放大 Lightbox -->
     <Teleport to="body">
