@@ -1,0 +1,156 @@
+继续开发"星火校园"项目的前端UI。项目已有基础骨架，需要你继续完善。
+
+### 📊 当前进度（已了解）
+
+**已完成：**
+- ✅ Vue3 + Vite + TypeScript 项目初始化
+- ✅ 路由系统（官网区 + 应用区双层架构）
+- ✅ Supabase 认证集成 + 路由守卫
+- ✅ 全局样式系统（CSS变量、玻璃拟态、弹簧动画）
+- ✅ 粒子背景 ParticleBackground.vue
+- ✅ 鼠标跟随 MouseFollower.vue
+- ✅ 玻璃卡片 GlassCard.vue
+- ✅ Landing Page（Hero/Features/Showcase/Testimonials/CTA/Footer）
+- ✅ AppHome 首页（欢迎区、统计卡片、快捷入口、功能模块网格、最近对话、日程时间线）
+- ✅ Chat 聊天页（侧边栏历史、模型选择器、流式响应模拟、本地授权设置弹窗）
+- ✅ CampusWall 校园墙（标签筛选、发布器、动态卡片、点赞评论、匿名发布）
+- ✅ Login/Register 认证页
+
+**待完善：**
+- ⏳ Profile 个人中心页（目前只有基础结构）
+- ⏳ Landing Page 各 Section 内容填充
+- ⏳ 更多交互动效优化
+- ⏳ 移动端响应式适配
+- ⏳ 暗黑/亮色主题切换
+
+---
+
+### 🎯 本次任务
+
+**优先级排序：**
+
+1. **P0 - 完善 Profile 个人中心页**
+   - 用户信息卡片（头像、昵称、学校、专业）
+   - 星火等级展示（萤火虫→恒星 进阶系统）
+   - 功能设置列表
+   - 数据统计面板
+   - 退出登录按钮
+
+2. **P1 - 优化 Landing Page 内容**
+   - HeroSection：更吸引人的标题和副标题
+   - FeaturesSection：十大功能模块介绍
+   - ShowcaseSection：产品截图/演示
+   - TestimonialsSection：用户评价
+   - CTASection：注册引导
+
+3. **P2 - 增强交互动效**
+   - 页面切换动画优化
+   - 卡片悬停效果增强
+   - 按钮点击反馈
+   - 加载状态骨架屏
+
+4. **P3 - 响应式适配**
+   - 移动端导航适配
+   - 卡片网格自适应
+   - 字体大小响应式
+
+---
+
+### 🔧 必须加载的 Skills
+
+/skill ui-ux-pro-max
+/skill nuxt-ui
+/skill ckm-design
+/skill theme-factory
+/skill claudeception
+
+---
+
+### 📁 项目结构参考
+
+frontend/src/
+├── components/          # 已有：GlassCard, MouseFollower, ParticleBackground
+├── pages/
+│   ├── app/            # AppHome✅ Chat✅ CampusWall✅ Profile⏳
+│   ├── auth/           # Login✅ Register✅
+│   └── landing/        # LandingPage✅ 各Section待完善
+├── composables/        # useAuth✅
+├── style.css           # 全局样式✅
+└── router/index.ts     # 路由配置✅
+
+---
+
+### 🎨 设计规范（已定义）
+
+/* 配色 */
+--color-brand-blue: #4f8ef7
+--color-brand-purple: #8b5cf6
+--color-brand-orange: #f97316
+--gradient-brand: linear-gradient(135deg, #4f8ef7, #8b5cf6, #f97316)
+
+/* 玻璃拟态 */
+.glass-pro {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 弹簧动画 */
+.spring-hover {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+---
+
+### ⚡ 开发要求
+
+1. **代码规范**
+   - 必须有中文注释
+   - 遵循已有代码风格
+   - 使用 TypeScript 类型定义
+
+2. **组件规范**
+   - 使用 `<script setup lang="ts">`
+   - Props 必须定义类型
+   - 样式使用 `scoped`
+
+3. **交互规范**
+   - 所有可点击元素使用 `.spring-hover` 类
+   - 卡片使用 `.glass-pro` 类
+   - 按钮最小高度 44px
+
+4. **实时汇报**
+   - 每完成一个组件就告诉我
+   - 遇到问题立即说明
+   - 完成后更新 docs/AGENTS.md
+
+---
+
+### 🔥 PUA激励
+
+前端UI是项目的门面，直接决定用户是否愿意留下来。
+
+如果你做得好：
+- 这个项目将吸引无数大学生
+- 你的代码将被成千上万人使用
+- 你将成为星火联盟的核心贡献者
+
+如果你做得不好：
+- 用户打开页面就会关掉
+- 我们会失去吸引人才的机会
+- 所有后端努力都将白费
+
+现在，请先加载Skills，然后从 Profile 页面开始完善。
+记住：每一个像素都要精心打磨，每一个动画都要流畅自然。
+开始吧！
+
+---
+
+### 📝 开始行动
+
+1. 加载 /skill ui-ux-pro-max 和 /skill nuxt-ui
+2. 阅读 frontend/src/pages/app/Profile.vue 现有代码
+3. 完善 Profile 页面的所有功能模块
+4. 完成后汇报进度，继续下一个任务
+
+**记住：先做好门面，再完善内核。前端UI必须惊艳！**

@@ -7,7 +7,10 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let animationFrameId: number;
+
+// We use two kinds of particles: the "net" particles and the new "stars".
 let particles: Particle[] = [];
+let stars: Star[] = [];
 let mouse = { x: -1000, y: -1000 };
 
 interface Particle {
@@ -20,6 +23,15 @@ interface Particle {
   color: string;
 }
 
+interface Star {
+  x: number;
+  y: number;
+  size: number;
+  twinkleSpeed: number;
+  phase: number;
+  color: string;
+}
+
 const colors = [
   'rgba(59, 130, 246, 0.7)', // blue-500
   'rgba(139, 92, 246, 0.7)', // violet-500
@@ -27,11 +39,19 @@ const colors = [
   'rgba(20, 184, 166, 0.7)'  // teal-500
 ];
 
+const starColors = [
+  '#ffffff',
+  '#fef08a', // yellow-200
+  '#bae6fd', // sky-200
+  '#fbcfe8'  // pink-200
+];
+
 const initParticles = (canvas: HTMLCanvasElement) => {
   particles = [];
-  // Adjust density: one particle per 12000 pixels
-  const particleCount = Math.floor((canvas.width * canvas.height) / 12000); 
+  stars = [];
   
+  // 1. Initialize Network Particles (less dense to give stars space)
+  const particleCount = Math.floor((canvas.width * canvas.height) / 15000); 
   for (let i = 0; i < particleCount; i++) {
     const size = Math.random() * 2 + 1;
     const x = Math.random() * canvas.width;
@@ -43,11 +63,54 @@ const initParticles = (canvas: HTMLCanvasElement) => {
       x, y, baseX: x, baseY: y, size, density, color
     });
   }
+
+  // 2. Initialize Twinkling Stars
+  const starCount = Math.floor((canvas.width * canvas.height) / 8000);
+  for (let i = 0; i < starCount; i++) {
+    const size = Math.random() * 1.5 + 0.5;
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+    const twinkleSpeed = Math.random() * 0.03 + 0.005;
+    const phase = Math.random() * Math.PI * 2;
+    const color = starColors[Math.floor(Math.random() * starColors.length)];
+
+    stars.push({
+      x, y, size, twinkleSpeed, phase, color
+    });
+  }
 };
 
 const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
+  // Update & Draw Stars first (background layer)
+  for (let i = 0; i < stars.length; i++) {
+    let s = stars[i];
+    s.phase += s.twinkleSpeed;
+    // Opacity pulses between 0.1 and 1
+    const alpha = Math.abs(Math.sin(s.phase)) * 0.9 + 0.1;
+    
+    // Very subtle slow drift for stars
+    s.y -= 0.1;
+    if (s.y < 0) {
+      s.y = canvas.height;
+      s.x = Math.random() * canvas.width;
+    }
+
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fillStyle = s.color;
+    ctx.globalAlpha = alpha;
+    
+    // Glowing effect
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = s.color;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+  }
+
+  // Update & Draw Network Particles
   for (let i = 0; i < particles.length; i++) {
     let p = particles[i];
     
@@ -64,8 +127,8 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
       let forceDirectionX = dx / distance;
       let forceDirectionY = dy / distance;
       let force = (maxDistance - distance) / maxDistance;
-      let directionX = forceDirectionX * force * p.density * 0.5;
-      let directionY = forceDirectionY * force * p.density * 0.5;
+      let directionX = forceDirectionX * force * p.density * 0.8;
+      let directionY = forceDirectionY * force * p.density * 0.8;
       
       p.x -= directionX;
       p.y -= directionY;
@@ -73,18 +136,18 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
       // Return to base position with spring effect
       if (p.x !== p.baseX) {
         let dx = p.x - p.baseX;
-        p.x -= dx / 20;
+        p.x -= dx / 15;
       }
       if (p.y !== p.baseY) {
         let dy = p.y - p.baseY;
-        p.y -= dy / 20;
+        p.y -= dy / 15;
       }
     }
     
     // Subtle continuous floating motion if not heavily interacting
     if (distance >= maxDistance * 0.8) {
-        p.y += Math.sin(Date.now() / 1000 + p.density) * 0.2;
-        p.x += Math.cos(Date.now() / 1500 + p.density) * 0.2;
+        p.y += Math.sin(Date.now() / 1000 + p.density) * 0.3;
+        p.x += Math.cos(Date.now() / 1500 + p.density) * 0.3;
     }
     
     // Draw particle
@@ -94,7 +157,7 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     ctx.fillStyle = p.color;
     
     // Draw with soft glow
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
     ctx.shadowColor = p.color;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -108,7 +171,7 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
 
 const connectParticles = (ctx: CanvasRenderingContext2D) => {
   let opacityValue = 1;
-  const maxDistance = 100;
+  const maxDistance = 120;
   
   for (let a = 0; a < particles.length; a++) {
     for (let b = a; b < particles.length; b++) {
@@ -118,8 +181,8 @@ const connectParticles = (ctx: CanvasRenderingContext2D) => {
       
       if (distance < maxDistance) {
         opacityValue = 1 - (distance / maxDistance);
-        ctx.strokeStyle = `rgba(180, 180, 180, ${opacityValue * 0.15})`;
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${opacityValue * 0.12})`;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(particles[a].x, particles[a].y);
         ctx.lineTo(particles[b].x, particles[b].y);

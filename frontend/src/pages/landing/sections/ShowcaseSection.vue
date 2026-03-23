@@ -35,7 +35,7 @@
 
         <!-- Visual Block (Bento Box Concept) -->
         <div class="visual-bento" :class="{ 'is-visible': isVisible }">
-          <div class="bento-card bento-1">
+          <div class="bento-card bento-1 spring-hover">
             <div class="b-header">
               <div class="dots"><span/><span/><span/></div>
               <div class="title-bar">AI 聊天界面</div>
@@ -47,7 +47,7 @@
             </div>
           </div>
           
-          <div class="bento-card bento-2">
+          <div class="bento-card bento-2 spring-hover">
             <div class="b-header">
               <div class="title-bar">数据统计</div>
             </div>
@@ -60,7 +60,7 @@
             </div>
           </div>
           
-          <div class="bento-card bento-3">
+          <div class="bento-card bento-3 spring-hover">
              <div class="b-body float-profile">
                <div class="avatar-ring text-center">
                  <div class="p-avatar"></div>

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS posts (
   author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   is_anonymous BOOLEAN DEFAULT false,
+  anonymous_seed UUID DEFAULT gen_random_uuid(),
   category TEXT DEFAULT 'general',
   likes_count INT DEFAULT 0,
   comments_count INT DEFAULT 0,
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS comments (
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
   author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
+  is_anonymous BOOLEAN DEFAULT false,
+  anonymous_seed UUID DEFAULT gen_random_uuid(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

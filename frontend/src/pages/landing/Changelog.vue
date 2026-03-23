@@ -42,6 +42,44 @@
 <script setup lang="ts">
 const changelog = [
   {
+    version: 'v0.7.0',
+    date: '2026-03-18',
+    title: 'UI/UX Pro Max 视觉特效升级',
+    type: 'major',
+    changes: [
+      { type: 'feat', text: '动态粒子背景 (ParticleBackground)：Canvas 物理引擎 + 鼠标斥力场' },
+      { type: 'feat', text: '弹簧指针 (MouseFollower)：双核驱动架构（核心点 + 拖尾环），hover 磁吸反馈' },
+      { type: 'feat', text: '全局 spring-hover / glass-pro 动效工具类注入' },
+      { type: 'improve', text: '按钮最小触控区域统一为 44px（Apple HIG 无障碍标准）' },
+      { type: 'improve', text: ':focus-visible 全局焦点圈，提升键盘无障碍体验' },
+    ]
+  },
+  {
+    version: 'v0.6.0',
+    date: '2026-03-18',
+    title: '认证流程打磨 & 交互升级',
+    type: 'major',
+    changes: [
+      { type: 'feat', text: 'AppLayout 集成 Supabase logout + 用户头像下拉菜单' },
+      { type: 'feat', text: '个人中心展示真实用户数据（姓名、邮箱、注册天数）' },
+      { type: 'feat', text: '校园墙：可展开发帖器 + Tab 标签切换 + 点赞交互' },
+      { type: 'improve', text: 'Sidebar 底部显示用户首字母头像 + 昵称' },
+    ]
+  },
+  {
+    version: 'v0.5.0',
+    date: '2026-03-18',
+    title: 'Supabase 深度集成 & 官网内容扩展',
+    type: 'major',
+    changes: [
+      { type: 'feat', text: '配置 Supabase 环境变量 + 生成 7 张核心数据表 SQL Schema' },
+      { type: 'feat', text: '开发完整文档中心 (Docs)：侧边栏导航 + FAQ + 快速开始指南' },
+      { type: 'feat', text: '社区页面 (Community)：社区频道卡片 + 热门话题 + 统计数据' },
+      { type: 'feat', text: '更新日志页面 (Changelog)：版本时间线 UI' },
+      { type: 'improve', text: 'AppHome 集成 useAuth 显示动态问候与用户数据' },
+    ]
+  },
+  {
     version: 'v0.4.0',
     date: '2026-03-16',
     title: 'Supabase 鉴权集成 & AI 对话交互',

@@ -74,7 +74,15 @@ const routes: Array<RouteRecordRaw> = [
         path: 'profile',
         name: 'AppProfile',
         component: Profile
-      }
+      },
+      { path: 'news', name: 'AppNews', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'schedule', name: 'AppSchedule', component: () => import('../pages/app/Schedule.vue') },
+      { path: 'courses', name: 'AppCourses', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'shop', name: 'AppShop', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'health', name: 'AppHealth', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'resources', name: 'AppResources', component: () => import('../pages/app/Placeholder.vue') },
+      { path: 'mentors', name: 'AppMentors', component: () => import('../pages/app/Placeholder.vue') }
     ]
   },
   // 404
