@@ -263,7 +263,10 @@
                     <div class="c-meta">
                       <span class="c-name">{{ getCommentAuthorDisplay(comment).name }}</span>
                       <span class="c-time">{{ comment.time }}</span>
-                      <button v-if="comment.isOwn" class="c-delete" @click="deleteComment(comment.id)">删除</button>
+                      <button v-if="comment.isOwn" class="c-delete" @click="deleteComment(comment.id)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        删除
+                      </button>
                     </div>
                     <!-- 回复标记 -->
                     <div class="c-reply-tag" v-if="comment.replyToName">
@@ -291,7 +294,8 @@
                       </button>
                       <button class="c-reply-btn" @click="setReplyTo(comment)">回复</button>
                       <button v-if="!comment.isOwn" class="c-report-btn" @click="openCommentReport(comment)" title="举报此评论">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+                        举报
                       </button>
                     </div>
                   </div>
@@ -1944,10 +1948,12 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
 .c-time { font-size: 11px; color: var(--color-text-muted); }
 .c-delete {
   background: transparent; border: none;
-  color: var(--color-text-muted); font-size: 11px;
-  cursor: pointer; margin-left: auto; padding: 0;
+  color: rgba(255,255,255,0.3); font-size: 11px;
+  cursor: pointer; margin-left: auto; padding: 3px 8px;
+  border-radius: 6px; transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 3px;
 }
-.c-delete:hover { color: #f43f5e; }
+.c-delete:hover { color: #f43f5e; background: rgba(244,63,94,0.08); }
 .c-text { font-size: 14px; color: var(--color-text-primary); line-height: 1.5; word-break: break-word; }
 .c-media { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .c-media-img { max-width: 120px; max-height: 120px; border-radius: 8px; object-fit: cover; cursor: pointer; }
@@ -2168,5 +2174,47 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   font-size: 10px; font-weight: 700;
   letter-spacing: 1px; line-height: 1;
   color: rgba(255,255,255,0.7);
+}
+
+/* ====== 评论举报 / 隐藏 / 申诉 ====== */
+.comment-hidden {
+  opacity: 0.5;
+}
+.hidden-comment-placeholder {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; width: 100%;
+  color: rgba(255,255,255,0.35); font-size: 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px; border: 1px dashed rgba(255,255,255,0.06);
+}
+.hidden-own-banner {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; margin-bottom: 6px;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.12);
+  border-radius: 8px;
+  font-size: 11px; color: #fbbf24;
+}
+.appeal-btn {
+  margin-left: auto; background: transparent;
+  border: 1px solid rgba(251,191,36,0.25);
+  color: #fbbf24; padding: 2px 10px; border-radius: 6px;
+  font-size: 11px; cursor: pointer; transition: all 0.15s;
+}
+.appeal-btn:hover {
+  background: rgba(251,191,36,0.12);
+  border-color: rgba(251,191,36,0.4);
+}
+.c-report-btn {
+  background: none; border: none;
+  color: rgba(255,255,255,0.3); cursor: pointer;
+  padding: 2px 0; font-size: 12px;
+  transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+}
+.c-report-btn:hover {
+  color: #f87171;
+}
+.text-muted {
+  opacity: 0.5; text-decoration: line-through;
 }
 </style>
