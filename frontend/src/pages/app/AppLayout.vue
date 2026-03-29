@@ -170,10 +170,8 @@
       <!-- 主内容区 — 可自由滚动 -->
       <main class="main-content">
         <div class="view-container">
-          <router-view v-slot="{ Component, route }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" :key="route.path" />
-            </transition>
+          <router-view v-slot="{ Component }">
+            <component :is="Component" />
           </router-view>
         </div>
       </main>

@@ -276,6 +276,7 @@ const coreFeatures = [
   { title: '学习资源', desc: '优质资料共享', to: '/app/resources', active: true, bg: 'linear-gradient(135deg, #f97316, #ef4444)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>' },
   { title: '星火人才', desc: '双向寻访匹配', to: '/app/talent', active: true, bg: 'linear-gradient(135deg, #f43f5e, #8b5cf6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' },
   { title: '星火资讯', desc: '全网热点聚合', to: '/app/news', active: true, bg: 'linear-gradient(135deg, #06b6d4, #3b82f6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path><path d="M21 12h-6a2 2 0 0 0-2 2v6"></path><path d="M21 12l-6 6"></path><path d="M21 12v6"></path></svg>' },
+  { title: '星火共创', desc: '项目展示与协作', to: '/app/cocreate', active: true, bg: 'linear-gradient(135deg, #8b5cf6, #f97316)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>' },
 ]
 
 // 即将上线提示

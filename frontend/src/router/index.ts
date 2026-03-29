@@ -73,6 +73,7 @@ const routes: Array<RouteRecordRaw> = [
       { path: 'resources', name: 'AppResources', component: () => import('../pages/app/Resources.vue') },
       { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Talent.vue') },
       { path: 'news', name: 'AppNews', component: () => import('../pages/app/News.vue') },
+      { path: 'cocreate', name: 'AppCoCreate', component: () => import('../pages/app/CoCreate.vue') },
       // 个人
       { path: 'profile', name: 'AppProfile', component: Profile },
       { path: 'feedback', name: 'AppFeedback', component: () => import('../pages/app/Placeholder.vue') }
