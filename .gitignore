@@ -1,0 +1,36 @@
+# ====== 系统文件 ======
+.DS_Store
+Thumbs.db
+*.log
+
+# ====== AI工具配置（不需要提交） ======
+.agents/
+.arts/
+.claude/
+.codeartsdoer/
+.codebuddy/
+.factory/
+.iflow/
+.kiro/
+.qoder/
+.trae/
+.windsurf/
+.gemini/
+skills-lock.json
+
+# ====== Node.js ======
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# ====== 环境变量 ======
+.env
+.env.local
+.env.*.local
+
+# ====== IDE ======
+.vscode/
+.idea/
+*.swp
+*.swo

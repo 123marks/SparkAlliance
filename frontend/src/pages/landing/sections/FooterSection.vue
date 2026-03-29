@@ -7,7 +7,7 @@
       <div class="footer-grid">
         <!-- 品牌列 -->
         <div class="brand-col">
-          <h3 class="logo">✦ Spark Alliance</h3>
+          <h3 class="logo"><img src="/spark-logo.png" alt="Spark" style="width:24px;height:24px;object-fit:contain;vertical-align:-4px;margin-right:6px;border-radius:3px" /> SparkAlliance</h3>
           <p class="desc">点亮校园时光，连接你我他。用 AI 赋能新时代的大学生生活体验。</p>
           <div class="social-links">
             <a href="#" class="social-icon" title="微信">

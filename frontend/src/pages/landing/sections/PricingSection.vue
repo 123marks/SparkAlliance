@@ -1,5 +1,5 @@
 <template>
-  <section class="pricing-section" ref="sectionRef">
+  <section id="pricing" class="pricing-section" ref="sectionRef">
     <div class="pricing-header" :class="{ 'is-visible': isVisible }">
       <span class="eyebrow">会员计划</span>
       <h2 class="title">选择适合你的方案</h2>

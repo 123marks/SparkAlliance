@@ -4,7 +4,7 @@
 
       <!-- Feed 顶栏 -->
       <div class="feed-header">
-        <h1 class="page-title">校园动态墙</h1>
+        <h1 class="page-title">校园墙</h1>
         <div class="tabs">
           <button v-for="tab in tabList" :key="tab" class="tab" :class="{ active: activeTab === tab }" @click="switchTab(tab)">{{ tab }}</button>
         </div>
@@ -117,10 +117,6 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
               分享
             </button>
-            <button class="action-btn" @click="openReport(post)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
-              举报
-            </button>
           </div>
         </div>
       </div>
@@ -138,7 +134,7 @@
           <div class="composer-modal">
             <!-- 顶部 -->
             <div class="modal-header">
-              <div class="modal-avatar">{{ avatarInitial }}</div>
+              <img src="/spark-logo.png" alt="Spark" class="modal-avatar-img" />
               <h3>发布新动态</h3>
               <button class="modal-close" @click="toggleComposer">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -640,21 +636,6 @@ const onImagesSelected = (e: Event) => {
 
   applySelectedFiles(selectedFiles, previewUrls, nextFiles)
   input.value = ''
-  return
-  // 过滤超过 50MB 的文件，最多 9 张
-  const valid = files
-    .filter(f => f.size < 50 * 1024 * 1024)
-    .slice(0, 9 - selectedFiles.value.length)
-  
-  if (valid.length < files.length) {
-    showToast('部分文件超过 50MB 限制，已跳过', 'error')
-  }
-
-  selectedFiles.value = [...selectedFiles.value, ...valid]
-  previewUrls.value = selectedFiles.value.map(f => URL.createObjectURL(f))
-  
-  // 重置 input，避免选同一文件不触发 change
-  input.value = ''
 }
 
 const removeFile = (index: number) => {
@@ -798,14 +779,14 @@ const formatTime = (dateStr: string): string => {
 }
 
 onMounted(() => {
+  // 获取帖子数据
   if (user.value) {
     fetchPosts()
   } else {
     setTimeout(fetchPosts, 1000)
   }
-})
 
-onMounted(() => {
+  // 订阅评论实时更新
   commentsRealtimeChannel = supabase
     .channel('campus-wall-comments')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, async (payload) => {
@@ -821,18 +802,25 @@ onMounted(() => {
       }
     })
     .subscribe()
+
+  // 点击页面其他区域关闭下拉菜单
+  document.addEventListener('click', closeDropdown)
 })
 
-// 清理 ObjectURL
+// 清理资源
 onBeforeUnmount(() => {
+  // 清理 ObjectURL
   previewUrls.value.forEach(url => URL.revokeObjectURL(url))
-})
+  commentPreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
 
-onBeforeUnmount(() => {
+  // 清理 Realtime 订阅
   if (commentsRealtimeChannel) {
     supabase.removeChannel(commentsRealtimeChannel)
     commentsRealtimeChannel = null
   }
+
+  // 移除事件监听
+  document.removeEventListener('click', closeDropdown)
 })
 
 // ====== 发布权限 ======
@@ -1152,11 +1140,6 @@ const onCommentFileSelected = (e: Event) => {
 
   applySelectedFiles(commentFiles, commentPreviewUrls, nextFiles)
   input.value = ''
-  return
-  const legacyFiles = Array.from(input.files || []).slice(0, 4)
-  commentFiles.value = [...commentFiles.value, ...legacyFiles].slice(0, 4)
-  commentPreviewUrls.value = commentFiles.value.map(f => URL.createObjectURL(f))
-  input.value = ''
 }
 const removeCommentFile = (i: number) => {
   URL.revokeObjectURL(commentPreviewUrls.value[i])
@@ -1373,8 +1356,6 @@ const toggleDropdown = (postId: string) => {
 
 // 点击页面其他区域关闭下拉
 const closeDropdown = () => { activeDropdown.value = null }
-onMounted(() => { document.addEventListener('click', closeDropdown) })
-onBeforeUnmount(() => { document.removeEventListener('click', closeDropdown) })
 
 // ====== 删除帖子 ======
 const deletePost = async (post: Post) => {
@@ -1772,6 +1753,11 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   background: linear-gradient(135deg, var(--color-brand-purple), var(--color-brand-orange));
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 16px; color: white; flex-shrink: 0;
+}
+.modal-avatar-img {
+  width: 40px; height: 40px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+  border: 2px solid rgba(139, 92, 246, 0.3);
 }
 .modal-header h3 { flex: 1; font-size: 16px; font-weight: 700; color: white; }
 .modal-close {

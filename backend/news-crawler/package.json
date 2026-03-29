@@ -1,0 +1,14 @@
+{
+  "name": "spark-news-crawler",
+  "version": "1.0.0",
+  "description": "星火资讯 — 多平台爬虫服务",
+  "type": "module",
+  "scripts": {
+    "crawl": "node crawler.js",
+    "crawl:once": "node crawler.js --once",
+    "setup": "npm install"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

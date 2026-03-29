@@ -2,16 +2,17 @@
   <nav class="landing-navbar" :class="{ scrolled: isScrolled }">
     <div class="nav-inner">
       <router-link to="/" class="logo">
-        <span class="logo-mark">✦</span>
-        <span class="logo-text">Spark Alliance</span>
+        <img src="/spark-logo.png" alt="Spark" class="logo-img" />
+        <span class="logo-text">SparkAlliance</span>
       </router-link>
 
       <!-- 桌面端导航 -->
       <div class="nav-links desktop-only">
+        <a href="#features" @click.prevent="scrollTo('features')">功能</a>
+        <a href="#pricing" @click.prevent="scrollTo('pricing')">定价</a>
         <router-link to="/community">社区</router-link>
         <router-link to="/docs">文档</router-link>
         <router-link to="/changelog">更新日志</router-link>
-        <a href="#">关于</a>
       </div>
       <div class="auth-buttons desktop-only">
         <router-link to="/login" class="btn-ghost">登录</router-link>
@@ -32,10 +33,11 @@
       <Transition name="menu-fade">
         <div class="mobile-menu" v-if="isMobileMenuOpen">
           <div class="m-nav-links">
+            <a href="#features" @click="isMobileMenuOpen = false; scrollTo('features')">功能</a>
+            <a href="#pricing" @click="isMobileMenuOpen = false; scrollTo('pricing')">定价</a>
             <router-link to="/community" @click="isMobileMenuOpen = false">社区</router-link>
             <router-link to="/docs" @click="isMobileMenuOpen = false">文档</router-link>
             <router-link to="/changelog" @click="isMobileMenuOpen = false">更新日志</router-link>
-            <a href="#" @click="isMobileMenuOpen = false">关于</a>
           </div>
           <div class="m-auth-buttons">
             <router-link to="/login" class="btn-ghost m-btn" @click="isMobileMenuOpen = false">登录</router-link>
@@ -55,6 +57,12 @@ const isScrolled = ref(false)
 
 const handleScroll = () => {
   isScrolled.value = window.scrollY > 32
+}
+
+// 平滑滚动到锚点
+const scrollTo = (id: string) => {
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 onMounted(() => {
@@ -103,14 +111,17 @@ onBeforeUnmount(() => {
   gap: 8px;
   z-index: 1001;
 }
-.logo-mark {
-  font-size: 20px;
-  color: var(--color-brand-purple);
+.logo-img {
+  width: 28px; height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 .logo-text {
   font-weight: 800;
   font-size: 17px;
-  color: white;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   letter-spacing: 0.3px;
 }
 

@@ -55,34 +55,27 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true }, // 添加路由元信息用于拦截
     redirect: '/app/home',
     children: [
-      {
-        path: 'home',
-        name: 'AppHome',
-        component: AppHome
-      },
-      {
-        path: 'chat',
-        name: 'AppChat',
-        component: Chat
-      },
-      {
-        path: 'wall',
-        name: 'AppWall',
-        component: CampusWall
-      },
-      {
-        path: 'profile',
-        name: 'AppProfile',
-        component: Profile
-      },
-      { path: 'news', name: 'AppNews', component: () => import('../pages/app/Placeholder.vue') },
-      { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Placeholder.vue') },
+      // 核心功能
+      { path: 'home', name: 'AppHome', component: AppHome },
+      { path: 'chat', name: 'AppChat', component: Chat },
+      { path: 'companion', name: 'AppCompanion', component: () => import('../pages/app/Companion.vue') },
+      // 生活服务
       { path: 'schedule', name: 'AppSchedule', component: () => import('../pages/app/Schedule.vue') },
-      { path: 'courses', name: 'AppCourses', component: () => import('../pages/app/Placeholder.vue') },
-      { path: 'shop', name: 'AppShop', component: () => import('../pages/app/Placeholder.vue') },
-      { path: 'health', name: 'AppHealth', component: () => import('../pages/app/Placeholder.vue') },
-      { path: 'resources', name: 'AppResources', component: () => import('../pages/app/Placeholder.vue') },
-      { path: 'mentors', name: 'AppMentors', component: () => import('../pages/app/Placeholder.vue') }
+      { path: 'planner', name: 'AppPlanner', component: () => import('../pages/app/Planner.vue') },
+      { path: 'shop', name: 'AppShop', component: () => import('../pages/app/Shop.vue') },
+      { path: 'health', name: 'AppHealth', component: () => import('../pages/app/Health.vue') },
+      // 社区互动
+      { path: 'wall', name: 'AppWall', component: CampusWall },
+      { path: 'tarot', name: 'AppTarot', component: () => import('../pages/app/Tarot.vue') },
+      { path: 'study-room', name: 'AppStudyRoom', component: () => import('../pages/app/StudyRoom.vue') },
+      // 学习成长
+      { path: 'mentors', name: 'AppMentors', component: () => import('../pages/app/Mentors.vue') },
+      { path: 'resources', name: 'AppResources', component: () => import('../pages/app/Resources.vue') },
+      { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Talent.vue') },
+      { path: 'news', name: 'AppNews', component: () => import('../pages/app/News.vue') },
+      // 个人
+      { path: 'profile', name: 'AppProfile', component: Profile },
+      { path: 'feedback', name: 'AppFeedback', component: () => import('../pages/app/Placeholder.vue') }
     ]
   },
   // 404
@@ -103,7 +96,7 @@ import { supabase } from '../supabase'
 router.beforeEach(async (to, _from, next) => {
   // Check if route requires auth
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-  
+
   // Get active session from Supabase
   const { data: { session } } = await supabase.auth.getSession();
   const isAuthenticated = !!session;

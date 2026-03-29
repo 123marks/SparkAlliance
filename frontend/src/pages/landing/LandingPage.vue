@@ -1,5 +1,6 @@
 <template>
   <div class="landing-page">
+    <CosmicBackground />
     <LandingNavbar />
     <HeroSection />
     <FeaturesSection />
@@ -14,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import CosmicBackground from '../../components/CosmicBackground.vue'
 import LandingNavbar from './LandingNavbar.vue'
 import HeroSection from './sections/HeroSection.vue'
 import FeaturesSection from './sections/FeaturesSection.vue'

@@ -1,5 +1,5 @@
 <template>
-  <section class="features-section" ref="sectionRef">
+  <section id="features" class="features-section" ref="sectionRef">
     <div class="features-container">
       <!-- Section 头部 -->
       <div class="features-header" :class="{ 'is-visible': isVisible }">
