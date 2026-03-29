@@ -15,7 +15,7 @@
       <div class="cta-content">
         <span class="cta-eyebrow">开始你的星火之旅</span>
         <h2>准备好颠覆你的<br/><span class="text-gradient">校园体验</span>了吗？</h2>
-        <p>加入先行者的行列，一起共建最智能的星火校园社区。<br/>完全免费，即刻开始。</p>
+        <p>加入先行者的行列，一起共建最智能的星火校园社区。<br/>基础功能永久免费，AI 助手按需升级。</p>
         
         <!-- 信任标志 -->
         <div class="trust-badges">

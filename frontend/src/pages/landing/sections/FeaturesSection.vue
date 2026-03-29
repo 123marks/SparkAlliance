@@ -10,9 +10,10 @@
 
       <!-- 第一层：3 个核心功能大卡片 + 追光效果 -->
       <div class="main-grid">
-        <div
+        <router-link
           v-for="(feature, index) in coreFeatures"
           :key="feature.title"
+          :to="feature.to"
           class="feature-card"
           :class="{ 'is-visible': isVisible }"
           :style="{ transitionDelay: `${0.1 + index * 0.1}s` }"
@@ -43,55 +44,20 @@
               <span class="dh-label">{{ feature.dataHighlight.label }}</span>
             </div>
             
-            <!-- 迷你预览 -->
-            <div class="preview-box">
-              <!-- AI 聊天预览 -->
-              <template v-if="feature.previewType === 'chat'">
-                <div class="mini-chat">
-                  <div class="mini-bubble ai">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
-                    你好，遇到难题了吗？拍照给我看看 📸
-                  </div>
-                  <div class="mini-bubble user">帮我解释一下偏导数的链式法则</div>
-                </div>
-              </template>
-              <!-- 动态墙预览 -->
-              <template v-if="feature.previewType === 'feed'">
-                <div class="mini-feed">
-                  <div class="mini-post">
-                    <div class="mini-avatar" style="background: linear-gradient(135deg, #8b5cf6, #f43f5e)"></div>
-                    <div class="mini-lines"><div class="line" style="width:70%"></div><div class="line" style="width:50%"></div></div>
-                    <span class="mini-likes">❤️ 128</span>
-                  </div>
-                  <div class="mini-post faded">
-                    <div class="mini-avatar" style="background: linear-gradient(135deg, #3b82f6, #06b6d4)"></div>
-                    <div class="mini-lines"><div class="line" style="width:80%"></div><div class="line" style="width:40%"></div></div>
-                    <span class="mini-likes">💬 56</span>
-                  </div>
-                </div>
-              </template>
-              <!-- 社交预览 -->
-              <template v-if="feature.previewType === 'social'">
-                <div class="mini-social">
-                  <div class="social-avatars">
-                    <div class="s-avatar" style="background: linear-gradient(135deg, #10b981, #3b82f6)"></div>
-                    <div class="s-avatar overlap" style="background: linear-gradient(135deg, #8b5cf6, #ec4899)"></div>
-                    <div class="s-avatar overlap" style="background: linear-gradient(135deg, #f97316, #f43f5e)"></div>
-                    <span class="s-more">+12</span>
-                  </div>
-                  <div class="social-text">在线聊天中...</div>
-                </div>
-              </template>
+            <!-- 进入按钮 -->
+            <div class="card-cta">
+              <span class="cta-text">进入体验 →</span>
             </div>
           </div>
-        </div>
+        </router-link>
       </div>
 
       <!-- 第二层：拓展功能中卡片 -->
       <div class="expand-grid">
-        <div
+        <router-link
           v-for="(feature, index) in expandFeatures"
           :key="feature.title"
+          :to="feature.to"
           class="feature-card-sm"
           :class="{ 'is-visible': isVisible }"
           :style="{ transitionDelay: `${0.4 + index * 0.08}s` }"
@@ -104,14 +70,15 @@
             <p class="sm-desc">{{ feature.desc }}</p>
           </div>
           <span class="sm-badge" :class="feature.status">{{ feature.statusText }}</span>
-        </div>
+        </router-link>
       </div>
 
       <!-- 第三层：未来规划时间线 -->
       <div class="future-grid">
-        <div
+        <router-link
           v-for="(feature, index) in futureFeatures"
           :key="feature.title"
+          :to="feature.to"
           class="feature-card-xs"
           :class="{ 'is-visible': isVisible }"
           :style="{ transitionDelay: `${0.7 + index * 0.08}s` }"
@@ -120,8 +87,8 @@
             <span v-html="feature.svg"></span>
           </div>
           <span class="xs-title">{{ feature.title }}</span>
-          <span class="xs-badge">即将推出</span>
-        </div>
+          <span class="xs-badge" :class="feature.badgeClass || ''">{{ feature.statusText }}</span>
+        </router-link>
       </div>
     </div>
   </section>
@@ -154,50 +121,50 @@ const resetSpotlight = (index: number) => {
 // 核心功能数据
 const coreFeatures = [
   {
-    title: 'AI 学习助手',
-    tags: ['DeepSeek', '豆包', '本地授权'],
-    desc: '24小时智能答疑，支持拍照识题、分步讲解、举一反三，你的私人 AI 学伴',
+    title: 'AI 智能助手',
+    tags: ['DeepSeek', '豆包', '千问', '多模型API'],
+    desc: '接入顶级大模型 API，24h智能答疑、分步讲解、举一反三，免费用户每天 20 次，付费解锁无限',
     iconBg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.1))',
     accentColor: '#4f8ef7',
-    previewType: 'chat',
+    to: '/app/chat',
     svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4f8ef7" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
-    dataHighlight: { value: '24h', label: '全天候 AI 响应' }
+    dataHighlight: { value: '多模型', label: 'API 智能调度' }
   },
   {
     title: '校园动态墙',
-    tags: ['半匿名', '实时', 'AI审核'],
+    tags: ['半匿名', '实时', 'AI审核', '图文混排'],
     desc: '表白、寻物、拼车、吐槽……半匿名公开讨论，让每个校园故事被看见',
     iconBg: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(236, 72, 153, 0.1))',
     accentColor: '#8b5cf6',
-    previewType: 'feed',
+    to: '/app/wall',
     svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
     dataHighlight: { value: '实时', label: '动态零延迟' }
   },
   {
-    title: '社交伴侣',
-    tags: ['AI人格', '群聊', '朋友圈'],
-    desc: '人格化"星火助手"陪你聊天，真人社交加好友，三人+AI 混合群聊玩法',
+    title: '星火伴侣',
+    tags: ['AI原生对话', '群组协作', '开放社交'],
+    desc: '顺应 AI 时代的新型社交——AI 助手无缝融入群聊、智能匹配兴趣伙伴、人+AI 协作新范式',
     iconBg: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.1))',
     accentColor: '#10b981',
-    previewType: 'social',
+    to: '/app/companion',
     svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>',
-    dataHighlight: { value: '3+AI', label: '混合群聊模式' }
+    dataHighlight: { value: '人+AI', label: '新型社交范式' }
   }
 ]
 
-// 拓展功能
+// 拓展功能（已开发的模块）
 const expandFeatures = [
-  { title: 'AI 选课助手', desc: '课程评价 + AI 智能推荐 + 学长经验 + 雷达图对比', status: 'dev', statusText: '开发中', iconBg: 'rgba(59,130,246,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>' },
-  { title: '智能日程', desc: '可视化日历、课表导入、AI 智能提醒', status: 'dev', statusText: '开发中', iconBg: 'rgba(20,184,166,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>' },
-  { title: '校园购物', desc: 'C2C 二手交易、校区标签匹配、交易保障', status: 'plan', statusText: '规划中', iconBg: 'rgba(249,115,22,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>' },
-  { title: '目标任务', desc: '日/周/月计划、AI 规划、星空领域视觉激励', status: 'plan', statusText: '规划中', iconBg: 'rgba(236,72,153,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>' },
+  { title: '智能日程', desc: '可视化日历、课表导入、AI 智能提醒', status: 'live', statusText: '已上线', to: '/app/schedule', iconBg: 'rgba(20,184,166,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>' },
+  { title: '校园购物', desc: 'C2C 二手交易、基于IP优先推送近距离商品、支持快递', status: 'live', statusText: '已上线', to: '/app/shop', iconBg: 'rgba(249,115,22,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>' },
+  { title: '星火规划', desc: 'AI 目标拆分、日/周/月计划、成就勋章激励', status: 'live', statusText: '已上线', to: '/app/planner', iconBg: 'rgba(236,72,153,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>' },
+  { title: '星火自习室', desc: '番茄钟专注、学习房间、排行榜互助', status: 'live', statusText: '已上线', to: '/app/study-room', iconBg: 'rgba(16,185,129,0.12)', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>' },
 ]
 
-// 未来功能
+// 已完成/进行中功能
 const futureFeatures = [
-  { title: '星火人才 (Spark Talent)', iconBg: 'rgba(244,63,94,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>' },
-  { title: '星火资讯', iconBg: 'rgba(59,130,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path></svg>' },
-  { title: '学长推荐系统', iconBg: 'rgba(139,92,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>' },
+  { title: '星火人才', to: '/app/talent', statusText: '已上线', badgeClass: 'live', iconBg: 'rgba(244,63,94,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>' },
+  { title: '星火资讯', to: '/app/news', statusText: '已上线', badgeClass: 'live', iconBg: 'rgba(59,130,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path></svg>' },
+  { title: '星火共创', to: '/app/cocreate', statusText: '已上线', badgeClass: 'live', iconBg: 'rgba(139,92,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>' },
 ]
 
 onMounted(() => {
@@ -449,6 +416,14 @@ onBeforeUnmount(() => { observer?.disconnect() })
 }
 .xs-title { font-size: 13px; font-weight: 600; flex: 1; color: var(--color-text-secondary); }
 .xs-badge { font-size: 9px; padding: 2px 8px; border-radius: 999px; background: rgba(139,92,246,0.12); color: #a78bfa; font-weight: 600; flex-shrink: 0; }
+.xs-badge.live { background: rgba(16,185,129,0.12); color: #34d399; }
+
+/* 可点击卡片 */
+.feature-card, .feature-card-sm, .feature-card-xs { text-decoration: none; color: inherit; cursor: pointer; }
+.card-cta { margin-top: auto; padding-top: 12px; }
+.cta-text { font-size: 12px; color: rgba(139,92,246,0.5); font-weight: 600; transition: color 0.2s; }
+.feature-card:hover .cta-text { color: rgba(139,92,246,0.9); }
+.sm-badge.live { background: rgba(16,185,129,0.12); color: #34d399; }
 
 /* === 响应式 === */
 @media (max-width: 900px) {

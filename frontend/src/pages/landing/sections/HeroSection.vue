@@ -28,14 +28,16 @@
       <h1 class="main-title stagger-2">
         <span class="text-gradient">星火联盟</span><br/>专属数字时空
       </h1>
-      <p class="subtitle stagger-3">以本地化 AI 为驱动矩阵，一站式赋能大学生的学习、生活与社交</p>
+      <p class="subtitle stagger-3">接入 DeepSeek / 豆包 / 千问等顶级大模型 API，一站式赋能大学生与青年群体的学习、协作与成长</p>
 
       <!-- 功能亮点 -->
       <div class="highlight-tags stagger-4">
-        <span class="hl-tag">🤖 AI 智能答疑</span>
-        <span class="hl-tag">📝 校园动态墙</span>
-        <span class="hl-tag">💼 人才匹配</span>
-        <span class="hl-tag">📅 智能日程</span>
+        <router-link to="/app/chat" class="hl-tag clickable">🤖 多模型AI助手</router-link>
+        <router-link to="/app/wall" class="hl-tag clickable">📝 校园动态墙</router-link>
+        <router-link to="/app/talent" class="hl-tag clickable">💼 人才双向匹配</router-link>
+        <router-link to="/app/cocreate" class="hl-tag clickable">🚀 星火共创</router-link>
+        <router-link to="/app/schedule" class="hl-tag clickable">📅 智能日程</router-link>
+        <router-link to="/app/news" class="hl-tag clickable">📰 全网资讯聚合</router-link>
       </div>
 
       <!-- CTA 按钮 -->
@@ -47,8 +49,18 @@
       <!-- 状态信息 -->
       <div class="hero-stats stagger-5">
         <div class="stat-item">
-          <span class="stat-num">内测进行中</span>
-          <span class="stat-label">即将开放注册</span>
+          <span class="stat-num">12+</span>
+          <span class="stat-label">核心功能模块</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">多模型</span>
+          <span class="stat-label">API 驱动</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">🌏</span>
+          <span class="stat-label">面向全球化</span>
         </div>
       </div>
     </div>
@@ -243,6 +255,10 @@ import ParticleBackground from '../../../components/ParticleBackground.vue'
   border-color: rgba(255, 255, 255, 0.2);
   color: white;
 }
+.hl-tag.clickable {
+  cursor: pointer;
+  text-decoration: none;
+}
 
 /* CTA 按钮 */
 .cta-group {
@@ -296,6 +312,11 @@ import ParticleBackground from '../../../components/ParticleBackground.vue'
 .stat-num {
   font-weight: 700;
   color: var(--color-text-secondary);
+}
+.stat-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.1);
 }
 
 /* 底部滚动引导 */

@@ -3,7 +3,7 @@
     <div class="pricing-header" :class="{ 'is-visible': isVisible }">
       <span class="eyebrow">会员计划</span>
       <h2 class="title">选择适合你的方案</h2>
-      <p class="subtitle">从免费开始，随时升级解锁更多强大功能</p>
+      <p class="subtitle">基础功能永久免费，AI 调用需消耗额度，升级解锁无限 AI 与专属权益</p>
     </div>
 
     <div class="pricing-grid">
@@ -18,16 +18,16 @@
         </div>
         <p class="plan-desc">适合刚注册的新用户，体验核心功能</p>
         <ul class="plan-features">
-          <li>✅ AI 基础答疑 (20次/天)</li>
+          <li>✅ AI 智能助手 (20次/天)</li>
           <li>✅ 校园墙浏览与发帖</li>
-          <li>✅ 基础课程评价查看</li>
-          <li>✅ 学长经验文章浏览</li>
+          <li>✅ 智能日程管理</li>
+          <li>✅ 星火自习室</li>
+          <li>✅ 星火共创广场浏览</li>
           <li>✅ 每日热榜资讯阅读</li>
-          <li>❌ AI 智能选课推荐</li>
-          <li>❌ 一对一学长咨询</li>
-          <li>❌ 高级学习资源下载</li>
+          <li>❌ AI 无限调用额度</li>
+          <li>❌ 人才招募置顶展示</li>
         </ul>
-        <button class="plan-btn free-btn">免费注册</button>
+        <router-link to="/register" class="plan-btn free-btn">免费注册</router-link>
       </div>
 
       <!-- 高级版 (推荐) -->
@@ -41,16 +41,16 @@
         </div>
         <p class="plan-desc">解锁全部功能，成为学习效率达人</p>
         <ul class="plan-features">
-          <li>✅ AI 基础问答额度</li>
-          <li>✅ AI 智能选课推荐</li>
-          <li>✅ 一对一学长咨询</li>
-          <li>✅ 专属学习计划制定</li>
+          <li>✅ AI 无限调用额度</li>
+          <li>✅ 多模型切换 (DeepSeek/豆包/千问)</li>
+          <li>✅ 购物商品流量加持曝光</li>
+          <li>✅ 人才能力名片置顶</li>
+          <li>✅ 星火共创项目精选推荐</li>
           <li>✅ 全部学习资源下载</li>
-          <li>✅ 模拟考试系统</li>
-          <li>✅ 星火人才能力名片</li>
           <li>✅ 资讯深度 AI 解读</li>
+          <li>✅ 专属身份标识徽章</li>
         </ul>
-        <button class="plan-btn pro-btn">立即升级</button>
+        <router-link to="/register" class="plan-btn pro-btn">立即升级</router-link>
       </div>
 
       <!-- 年度版 -->
@@ -69,11 +69,11 @@
           <li>✅ 年度学习报告生成</li>
           <li>✅ 专属身份标识徽章</li>
           <li>✅ 新功能抢先体验</li>
-          <li>✅ 星火人才置顶展示</li>
+          <li>✅ 购物商品最高曝光加持</li>
           <li>✅ AI 简历诊断 (3次)</li>
           <li>✅ 年省 ¥40+</li>
         </ul>
-        <button class="plan-btn annual-btn">选择年度</button>
+        <router-link to="/register" class="plan-btn annual-btn">选择年度</router-link>
       </div>
     </div>
   </section>
@@ -260,6 +260,7 @@ onBeforeUnmount(() => {
 .pro-btn:hover { box-shadow: 0 8px 25px rgba(139,92,246,0.5); }
 .annual-btn { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
 .annual-btn:hover { background: rgba(249,115,22,0.25); }
+.plan-btn { text-decoration: none; text-align: center; display: block; }
 
 @media (max-width: 900px) {
   .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
