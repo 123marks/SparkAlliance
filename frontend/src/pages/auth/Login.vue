@@ -40,7 +40,7 @@
               <input type="checkbox" />
               <span>记住我</span>
             </label>
-            <a href="#" class="forgot-link">忘记密码？</a>
+            <router-link to="/forgot-password" class="forgot-link">忘记密码？</router-link>
           </div>
 
           <button type="submit" class="submit-btn" :class="{ loading: isLoading }">

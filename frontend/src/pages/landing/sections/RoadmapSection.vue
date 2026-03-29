@@ -57,7 +57,7 @@ const phases = [
     active: false,
     status: 'next',
     statusText: '即将开启',
-    features: ['AI 选课助手', '学长推荐系统', '智能日程', '健康打卡']
+    features: ['学长导师系统', '星火资讯聚合', '智能日程', '健康打卡']
   },
   {
     title: '生态扩展',

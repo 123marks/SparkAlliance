@@ -4,9 +4,13 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import LandingPage from '../pages/landing/LandingPage.vue'
 import Login from '../pages/auth/Login.vue'
 import Register from '../pages/auth/Register.vue'
+import ForgotPassword from '../pages/auth/ForgotPassword.vue'
 import Docs from '../pages/landing/Docs.vue'
 import Community from '../pages/landing/Community.vue'
 import Changelog from '../pages/landing/Changelog.vue'
+import Terms from '../pages/landing/Terms.vue'
+import Privacy from '../pages/landing/Privacy.vue'
+import About from '../pages/landing/About.vue'
 
 // 应用区
 import AppLayout from '../pages/app/AppLayout.vue'
@@ -33,6 +37,11 @@ const routes: Array<RouteRecordRaw> = [
     component: Register
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword
+  },
+  {
     path: '/docs',
     name: 'Docs',
     component: Docs
@@ -46,6 +55,21 @@ const routes: Array<RouteRecordRaw> = [
     path: '/changelog',
     name: 'Changelog',
     component: Changelog
+  },
+  {
+    path: '/terms',
+    name: 'Terms',
+    component: Terms
+  },
+  {
+    path: '/privacy',
+    name: 'Privacy',
+    component: Privacy
+  },
+  {
+    path: '/about',
+    name: 'About',
+    component: About
   },
 
   // ================= 应用区 (需登录鉴权) =================
