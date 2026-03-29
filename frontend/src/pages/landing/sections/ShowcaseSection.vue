@@ -67,7 +67,7 @@
                 </div>
 
                 <!-- 校园墙演示 -->
-                <div v-if="activeIdx === 1" key="wall" class="demo-panel demo-wall">
+                <div v-else-if="activeIdx === 1" key="wall" class="demo-panel demo-wall">
                   <div class="wall-tabs">
                     <span class="active">全部</span><span>表白</span><span>求助</span><span>吐槽</span><span>拼车</span>
                   </div>
@@ -82,7 +82,7 @@
                 </div>
 
                 <!-- 星火共创演示 -->
-                <div v-if="activeIdx === 2" key="cocreate" class="demo-panel demo-cocreate">
+                <div v-else-if="activeIdx === 2" key="cocreate" class="demo-panel demo-cocreate">
                   <div class="cc-header-bar"><span class="cc-tab active">🔥 广场</span><span class="cc-tab">我的</span><span class="cc-tab">申请</span><span class="cc-tab">+ 发布</span></div>
                   <div class="cc-project" v-for="proj in ccProjects" :key="proj.name">
                     <div class="cc-proj-top">
@@ -96,7 +96,7 @@
                 </div>
 
                 <!-- 星火人才演示 -->
-                <div v-if="activeIdx === 3" key="talent" class="demo-panel demo-talent">
+                <div v-else-if="activeIdx === 3" key="talent" class="demo-panel demo-talent">
                   <div class="talent-search"><input placeholder="搜索技能、职位、学校..." disabled /><span class="search-icon">🔍</span></div>
                   <div class="talent-cards">
                     <div class="talent-card" v-for="t in talents" :key="t.name">
@@ -109,7 +109,7 @@
                 </div>
 
                 <!-- 星火资讯演示 -->
-                <div v-if="activeIdx === 4" key="news" class="demo-panel demo-news">
+                <div v-else-if="activeIdx === 4" key="news" class="demo-panel demo-news">
                   <div class="news-tabs"><span class="active">热榜</span><span>科技</span><span>教育</span><span>AI</span></div>
                   <div class="news-item" v-for="n in newsItems" :key="n.title">
                     <div class="news-rank" :class="n.hot ? 'hot' : ''">{{ n.rank }}</div>
