@@ -37,12 +37,19 @@ CREATE INDEX IF NOT EXISTS idx_spark_messages_like_count ON spark_messages(like_
 
 ALTER TABLE spark_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sm_select" ON spark_messages;
 CREATE POLICY "sm_select" ON spark_messages FOR SELECT
   USING (visibility = 'public' OR author_id = auth.uid());
+
+DROP POLICY IF EXISTS "sm_insert" ON spark_messages;
 CREATE POLICY "sm_insert" ON spark_messages FOR INSERT
   WITH CHECK (auth.uid() = author_id);
+
+DROP POLICY IF EXISTS "sm_update" ON spark_messages;
 CREATE POLICY "sm_update" ON spark_messages FOR UPDATE
   USING (auth.uid() = author_id);
+
+DROP POLICY IF EXISTS "sm_delete" ON spark_messages;
 CREATE POLICY "sm_delete" ON spark_messages FOR DELETE
   USING (auth.uid() = author_id);
 
@@ -56,8 +63,11 @@ CREATE TABLE IF NOT EXISTS spark_message_likes (
 );
 
 ALTER TABLE spark_message_likes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "sml_select" ON spark_message_likes;
 CREATE POLICY "sml_select" ON spark_message_likes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "sml_insert" ON spark_message_likes;
 CREATE POLICY "sml_insert" ON spark_message_likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "sml_delete" ON spark_message_likes;
 CREATE POLICY "sml_delete" ON spark_message_likes FOR DELETE USING (auth.uid() = user_id);
 
 -- 3. 评论表
@@ -75,8 +85,11 @@ CREATE TABLE IF NOT EXISTS spark_message_comments (
 
 CREATE INDEX IF NOT EXISTS idx_smc_message ON spark_message_comments(message_id);
 ALTER TABLE spark_message_comments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "smc_select" ON spark_message_comments;
 CREATE POLICY "smc_select" ON spark_message_comments FOR SELECT USING (true);
+DROP POLICY IF EXISTS "smc_insert" ON spark_message_comments;
 CREATE POLICY "smc_insert" ON spark_message_comments FOR INSERT WITH CHECK (auth.uid() = author_id);
+DROP POLICY IF EXISTS "smc_delete" ON spark_message_comments;
 CREATE POLICY "smc_delete" ON spark_message_comments FOR DELETE USING (auth.uid() = author_id);
 
 -- 4. 私信表
@@ -91,8 +104,10 @@ CREATE TABLE IF NOT EXISTS spark_direct_messages (
 );
 
 ALTER TABLE spark_direct_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "sdm_select" ON spark_direct_messages;
 CREATE POLICY "sdm_select" ON spark_direct_messages FOR SELECT
   USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+DROP POLICY IF EXISTS "sdm_insert" ON spark_direct_messages;
 CREATE POLICY "sdm_insert" ON spark_direct_messages FOR INSERT
   WITH CHECK (auth.uid() = sender_id);
 
