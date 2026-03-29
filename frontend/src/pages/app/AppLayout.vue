@@ -149,6 +149,11 @@
               <span class="nav-label">星火资讯</span>
               <span class="nav-tooltip">星火资讯</span>
             </router-link>
+            <router-link to="/app/cocreate" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+              <span class="nav-label">星火共创</span>
+              <span class="nav-tooltip">星火共创</span>
+            </router-link>
           </div>
         </nav>
 
@@ -201,6 +206,7 @@ const searchMap: Record<string, string> = {
   '规划': '/app/planner', '目标': '/app/planner',
   '人才': '/app/talent', '求职': '/app/talent', '简历': '/app/talent',
   '资讯': '/app/news', '新闻': '/app/news',
+  '共创': '/app/cocreate', '项目': '/app/cocreate', '协作': '/app/cocreate',
   '资源': '/app/resources', '学习': '/app/resources',
   '学长': '/app/mentors', '分享': '/app/mentors',
   '伴侣': '/app/companion', '好友': '/app/companion', '社交': '/app/companion',
