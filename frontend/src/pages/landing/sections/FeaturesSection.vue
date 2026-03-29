@@ -222,9 +222,25 @@ onBeforeUnmount(() => { observer?.disconnect() })
 }
 .feature-card.is-visible { opacity: 1; transform: translateY(0); }
 .feature-card:hover {
-  transform: translateY(-6px);
+  transform: translateY(-8px) scale(1.01);
   box-shadow: 0 20px 48px rgba(0,0,0,0.4);
-  border-color: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* hover 发光效果 */
+.feature-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(139,92,246,0.15), transparent 50%);
+  border-radius: inherit;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.feature-card:hover::after {
+  opacity: 1;
 }
 
 /* 追光效果层 */

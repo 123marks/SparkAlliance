@@ -58,6 +58,36 @@
         </div>
       </div>
 
+      <!-- 邮件订阅 -->
+      <div class="newsletter-bar">
+        <div class="nl-content">
+          <div class="nl-text">
+            <h4>订阅星火动态</h4>
+            <p>每周获取产品更新、学习技巧和独家优惠</p>
+          </div>
+          <form class="nl-form" @submit.prevent="handleSubscribe">
+            <input
+              v-model="email"
+              type="email"
+              placeholder="your@email.com"
+              aria-label="邮箱地址"
+              required
+              :disabled="nlLoading"
+            />
+            <button type="submit" :disabled="nlLoading || !email">
+              {{ nlLoading ? '...' : '订阅' }}
+            </button>
+          </form>
+        </div>
+        <div role="status" aria-live="polite">
+          <Transition name="nl-msg">
+            <p v-if="nlSuccess" class="nl-success">订阅成功！感谢关注星火联盟</p>
+            <p v-else-if="nlError" class="nl-error">{{ nlError }}</p>
+          </Transition>
+        </div>
+        <p class="nl-hint">随时可取消订阅 · 绝无垃圾邮件</p>
+      </div>
+
       <div class="footer-bottom">
         <p>&copy; 2026 Spark Alliance. All rights reserved.</p>
         <p class="powered-by">
@@ -70,6 +100,45 @@
     </div>
   </footer>
 </template>
+
+<script setup lang="ts">
+import { ref, onBeforeUnmount } from 'vue'
+
+const email = ref('')
+const nlLoading = ref(false)
+const nlSuccess = ref(false)
+const nlError = ref('')
+let successTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearSuccessTimer = () => {
+  if (successTimer) {
+    clearTimeout(successTimer)
+    successTimer = null
+  }
+}
+
+const handleSubscribe = async () => {
+  if (!email.value) return
+  nlLoading.value = true
+  nlError.value = ''
+  try {
+    // 模拟提交 - 实际接入后替换为 supabase 调用
+    await new Promise(resolve => setTimeout(resolve, 800))
+    nlSuccess.value = true
+    email.value = ''
+    clearSuccessTimer()
+    successTimer = setTimeout(() => { nlSuccess.value = false }, 4000)
+  } catch {
+    nlError.value = '订阅失败，请稍后重试'
+  } finally {
+    nlLoading.value = false
+  }
+}
+
+onBeforeUnmount(() => {
+  clearSuccessTimer()
+})
+</script>
 
 <style scoped>
 .app-footer {
@@ -158,6 +227,117 @@
   transform: translateX(4px);
 }
 
+/* 邮件订阅 */
+.newsletter-bar {
+  margin-bottom: 48px;
+  padding: 32px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.05), rgba(59,130,246,0.05));
+  border: 1px solid rgba(139,92,246,0.1);
+  border-radius: 16px;
+}
+
+.nl-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.nl-text h4 {
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.nl-text p {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.nl-form {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nl-form input {
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  outline: none;
+  width: 220px;
+  transition: all 0.2s;
+}
+
+.nl-form input:focus {
+  border-color: rgba(139,92,246,0.4);
+  background: rgba(255,255,255,0.08);
+}
+
+.nl-form input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.nl-form button {
+  padding: 10px 20px;
+  background: var(--gradient-brand);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.nl-form button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+}
+
+.nl-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.nl-hint {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.nl-success {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #34d399;
+  text-align: center;
+  font-weight: 500;
+}
+
+.nl-error {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #f87171;
+  text-align: center;
+  font-weight: 500;
+}
+
+.nl-msg-enter-active,
+.nl-msg-leave-active {
+  transition: all 0.3s ease;
+}
+.nl-msg-enter-from,
+.nl-msg-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
 /* 底部版权 */
 .footer-bottom {
   border-top: 1px solid rgba(255,255,255,0.04);
@@ -187,6 +367,9 @@
 /* 响应式 */
 @media (max-width: 900px) {
   .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+  .nl-content { flex-direction: column; text-align: center; }
+  .nl-form { width: 100%; }
+  .nl-form input { flex: 1; width: auto; }
 }
 
 @media (max-width: 600px) {

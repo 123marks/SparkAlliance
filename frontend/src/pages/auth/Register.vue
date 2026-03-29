@@ -5,6 +5,9 @@
       <div class="floating-decorator decor-1"></div>
       <div class="floating-decorator decor-2"></div>
       <div class="floating-decorator decor-3"></div>
+      <div class="floating-particles">
+        <span v-for="i in 12" :key="i" class="particle" :style="{ left: (i * 8) + '%', animationDelay: (i * 0.5) + 's', animationDuration: (6 + i % 4) + 's' }"></span>
+      </div>
 
       <div class="brand-content">
         <router-link to="/" class="logo">✦ Spark Alliance</router-link>
@@ -455,7 +458,14 @@ const handleRegister = async () => {
 
 .brand-content { position: relative; z-index: 2; color: white; max-width: 520px; }
 .logo { font-size: 20px; font-weight: 800; color: var(--color-brand-blue); display: block; margin-bottom: 40px; text-decoration: none; }
-.slogan { font-size: 42px; font-weight: 800; line-height: 1.25; margin-bottom: 20px; }
+.slogan { font-size: 42px; font-weight: 800; line-height: 1.25; margin-bottom: 20px; background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #93c5fd 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; background-size: 200% 200%; animation: shimmer 4s ease-in-out infinite; }
+@keyframes shimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* 浮动粒子 */
+.floating-particles { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
+.particle { position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; background: rgba(139,92,246,0.4); animation: rise linear infinite; }
+.particle:nth-child(even) { background: rgba(79,142,247,0.4); width: 2px; height: 2px; }
+@keyframes rise { 0% { transform: translateY(0) scale(1); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 0.4; } 100% { transform: translateY(-100vh) scale(0.3); opacity: 0; } }
 .desc { font-size: 16px; color: var(--color-text-secondary); line-height: 1.7; margin-bottom: 40px; }
 
 .trust-metrics { display: flex; gap: 32px; }

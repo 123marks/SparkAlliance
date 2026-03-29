@@ -4,6 +4,10 @@
     <div class="brand-panel">
       <div class="floating-decorator decor-1"></div>
       <div class="floating-decorator decor-2"></div>
+      <div class="floating-decorator decor-3"></div>
+      <div class="floating-particles">
+        <span v-for="i in 12" :key="i" class="particle" :style="{ left: (i * 8) + '%', animationDelay: (i * 0.5) + 's', animationDuration: (6 + i % 4) + 's' }"></span>
+      </div>
 
       <div class="brand-content">
         <router-link to="/" class="logo">✦ Spark Alliance</router-link>
@@ -168,11 +172,19 @@ const handleLogin = async () => {
 .floating-decorator { position: absolute; border-radius: 50%; filter: blur(100px); z-index: 1; animation: float 12s ease-in-out infinite; }
 .decor-1 { top: 10%; left: 20%; width: 400px; height: 400px; background: rgba(139, 92, 246, 0.12); }
 .decor-2 { bottom: 10%; right: 15%; width: 450px; height: 450px; background: rgba(79, 142, 247, 0.12); animation-delay: -5s; }
+.decor-3 { top: 50%; left: 50%; width: 300px; height: 300px; background: rgba(236, 72, 153, 0.08); animation-delay: -3s; animation-duration: 15s; }
 @keyframes float { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-25px) scale(1.04); } }
+
+/* 动态粒子 */
+.floating-particles { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
+.particle { position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; background: rgba(139, 92, 246, 0.4); animation: rise linear infinite; }
+.particle:nth-child(even) { background: rgba(79, 142, 247, 0.4); width: 2px; height: 2px; }
+@keyframes rise { 0% { transform: translateY(0) scale(1); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 0.4; } 100% { transform: translateY(-100vh) scale(0.3); opacity: 0; } }
 
 .brand-content { position: relative; z-index: 2; color: white; max-width: 520px; }
 .logo { font-size: 20px; font-weight: 800; color: var(--color-brand-blue); display: block; margin-bottom: 40px; text-decoration: none; }
-.slogan { font-size: 44px; font-weight: 800; line-height: 1.2; margin-bottom: 20px; }
+.slogan { font-size: 44px; font-weight: 800; line-height: 1.2; margin-bottom: 20px; background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #93c5fd 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; background-size: 200% 200%; animation: shimmer 4s ease-in-out infinite; }
+@keyframes shimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 .desc { font-size: 16px; color: var(--color-text-secondary); line-height: 1.7; margin-bottom: 40px; }
 
 .trust-metrics { display: flex; gap: 32px; }
@@ -182,7 +194,11 @@ const handleLogin = async () => {
 
 /* 右侧表单 */
 .form-panel { flex: 0 0 45%; background: var(--color-bg-primary); display: flex; align-items: center; justify-content: center; padding: 40px; }
-.form-card { width: 100%; max-width: 420px; background: var(--color-bg-card); border: 1px solid var(--color-border); padding: 44px 40px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.form-card { width: 100%; max-width: 420px; background: var(--color-bg-card); border: 1px solid rgba(255,255,255,0.06); padding: 44px 40px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); position: relative; overflow: hidden; transition: transform 0.3s, box-shadow 0.3s; }
+.form-card::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: conic-gradient(from 0deg, transparent, rgba(139,92,246,0.06), transparent, rgba(79,142,247,0.06), transparent); animation: rotate-glow 8s linear infinite; z-index: 0; }
+.form-card > * { position: relative; z-index: 1; }
+@keyframes rotate-glow { to { transform: rotate(360deg); } }
+.form-card:hover { transform: translateY(-2px); box-shadow: 0 14px 50px rgba(0,0,0,0.6); }
 
 .form-header { text-align: center; margin-bottom: 28px; }
 .form-header h2 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }

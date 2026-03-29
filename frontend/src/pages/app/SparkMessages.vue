@@ -50,9 +50,10 @@
           <!-- 寄语卡片 -->
           <TransitionGroup name="card-list" tag="div" class="cards-grid">
             <div class="message-card" v-for="msg in filteredMessages" :key="msg.id" @click="openDetail(msg)">
-              <!-- 媒体区域 -->
+              <!-- 媒体区域：图片+视频 -->
               <div class="card-media" v-if="msg.mediaUrls?.length">
-                <img :src="msg.mediaUrls[0]" alt="" loading="lazy" @error="(e: Event) => (e.target as HTMLImageElement).style.display='none'" />
+                <video v-if="isVideoUrl(msg.mediaUrls[0])" :src="msg.mediaUrls[0]" class="card-media-el" muted playsinline preload="metadata" />
+                <img v-else :src="msg.mediaUrls[0]" alt="" class="card-media-el" loading="lazy" @error="(e: Event) => (e.target as HTMLImageElement).style.display='none'" />
                 <div class="media-count" v-if="msg.mediaUrls.length > 1">+{{ msg.mediaUrls.length - 1 }}</div>
               </div>
 
@@ -78,9 +79,8 @@
                     <span>{{ msg.liked ? '❤️' : '🤍' }}</span>
                     {{ msg.likeCount }}
                   </button>
-                  <button class="a-btn" @click.stop="openDetail(msg)">
-                    💬 {{ msg.commentCount }}
-                  </button>
+                  <button class="a-btn" @click.stop="openDetail(msg)">💬 {{ msg.commentCount }}</button>
+                  <button class="a-btn" @click.stop="shareMessage(msg)">📤</button>
                 </div>
               </div>
             </div>
@@ -145,10 +145,11 @@
               <span class="char-count" :class="{ warn: composeContent.length > 1800 }">{{ composeContent.length }} / 2000</span>
             </div>
 
-            <!-- 媒体上传 -->
+            <!-- 媒体上传预览 -->
             <div class="compose-media-preview" v-if="composePreviewUrls.length">
               <div class="preview-item" v-for="(url, i) in composePreviewUrls" :key="i">
-                <img :src="url" class="preview-img" />
+                <video v-if="composeFiles[i]?.type.startsWith('video')" :src="url" class="preview-img" muted />
+                <img v-else :src="url" class="preview-img" />
                 <button class="remove-btn" @click="removeComposeFile(i)">✕</button>
               </div>
             </div>
@@ -157,6 +158,7 @@
             <div class="compose-toolbar">
               <div class="compose-tools">
                 <button class="tool-btn" @click="composeImageInput?.click()">📷 图片</button>
+                <button class="tool-btn" @click="composeVideoInput?.click()">🎬 视频</button>
                 <label class="vis-toggle">
                   <input type="checkbox" v-model="composePrivate" />
                   <span>🔒 仅自己可见</span>
@@ -167,6 +169,7 @@
               </button>
             </div>
             <input ref="composeImageInput" type="file" accept="image/*" multiple hidden @change="onComposeMediaSelected" />
+            <input ref="composeVideoInput" type="file" accept="video/mp4,video/webm" hidden @change="onComposeMediaSelected" />
           </div>
         </div>
       </Transition>
@@ -198,9 +201,12 @@
               <!-- 内容 -->
               <p class="detail-content">{{ activeMessage.content }}</p>
 
-              <!-- 媒体 -->
+              <!-- 媒体：图片+视频 -->
               <div class="detail-media" v-if="activeMessage.mediaUrls?.length">
-                <img v-for="(url, i) in activeMessage.mediaUrls" :key="i" :src="url" class="detail-img" loading="lazy" />
+                <template v-for="(url, i) in activeMessage.mediaUrls" :key="i">
+                  <video v-if="isVideoUrl(url)" :src="url" class="detail-img" controls playsinline preload="metadata" />
+                  <img v-else :src="url" class="detail-img" loading="lazy" />
+                </template>
               </div>
 
               <!-- 互动栏 -->
@@ -209,6 +215,7 @@
                   {{ activeMessage.liked ? '❤️' : '🤍' }} {{ activeMessage.likeCount }} 共鸣
                 </button>
                 <button class="a-btn large">💬 {{ activeMessage.commentCount }} 评论</button>
+                <button class="a-btn large" @click="shareMessage(activeMessage)">📤 分享</button>
               </div>
 
               <!-- 评论区 -->
@@ -259,8 +266,22 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAuth } from '../../composables/useAuth'
+import { supabase } from '../../supabase'
 
 const { user } = useAuth()
+
+// ============ 工具函数 ============
+const isVideoUrl = (url: string) => /\.(mp4|webm|ogg)(\?|$)/i.test(url) || url.includes('video')
+
+const shareMessage = async (msg: SparkMessage) => {
+  const text = `【星火寄语】${msg.authorName}：${msg.content.slice(0, 80)}...`
+  if (navigator.share) {
+    try { await navigator.share({ title: '星火寄语', text, url: window.location.href }) } catch { /* 用户取消 */ }
+  } else {
+    await navigator.clipboard.writeText(text)
+    alert('✅ 寄语已复制到剪贴板')
+  }
+}
 
 // ============ 分类 ============
 const categories = [
@@ -274,7 +295,7 @@ const categories = [
 const activeCategory = ref('all')
 const getCategoryLabel = (cat: string) => categories.find(c => c.value === cat)?.label || cat
 
-// ============ 消息数据 (Mock → 后续对接 Supabase) ============
+// ============ 消息数据 ============
 interface SparkMessage {
   id: string
   authorId: string
@@ -309,18 +330,15 @@ const messages = ref<SparkMessage[]>([
   { id: '10', authorId: 'a10', authorName: '前端开发小陈', category: 'inspiration', content: '做了三年前端，最大的感悟是：技术只是工具，真正有价值的是你解决问题的能力和与人沟通的能力。别只低头写代码，多抬头看看这个世界。', mediaUrls: [], visibility: 'public', likeCount: 291, commentCount: 48, liked: false, createdAt: '2026-03-24T10:30:00Z' },
 ])
 
-// 筛选
 const filteredMessages = computed(() => {
   if (activeCategory.value === 'all') return messages.value
   return messages.value.filter(m => m.category === activeCategory.value)
 })
 
-// 热门排行（按点赞排序，取前5）
 const hotMessages = computed(() => {
   return [...messages.value].sort((a, b) => b.likeCount - a.likeCount).slice(0, 5)
 })
 
-// 总共鸣数
 const totalLikes = computed(() => messages.value.reduce((sum, m) => sum + m.likeCount, 0))
 
 // ============ 交互 ============
@@ -341,7 +359,6 @@ const formatTime = (dateStr: string): string => {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
-// 头像背景色
 const getAvatarBg = (name: string) => {
   const colors = [
     'linear-gradient(135deg,#8b5cf6,#4f8ef7)',
@@ -350,11 +367,10 @@ const getAvatarBg = (name: string) => {
     'linear-gradient(135deg,#6366f1,#ec4899)',
     'linear-gradient(135deg,#f59e0b,#ef4444)',
   ]
-  const idx = name.charCodeAt(0) % colors.length
-  return colors[idx]
+  return colors[name.charCodeAt(0) % colors.length]
 }
 
-// ============ 发布寄语 ============
+// ============ 发布寄语（含 Supabase Storage 上传） ============
 const showComposer = ref(false)
 const composeCategory = ref('to_youth')
 const composeContent = ref('')
@@ -362,6 +378,7 @@ const composePrivate = ref(false)
 const composeFiles = ref<File[]>([])
 const composePreviewUrls = ref<string[]>([])
 const composeImageInput = ref<HTMLInputElement | null>(null)
+const composeVideoInput = ref<HTMLInputElement | null>(null)
 const isSubmitting = ref(false)
 
 const composePlaceholder = computed(() => {
@@ -376,7 +393,7 @@ const composePlaceholder = computed(() => {
 
 const onComposeMediaSelected = (e: Event) => {
   const input = e.target as HTMLInputElement
-  const files = Array.from(input.files || [])
+  const files = Array.from(input.files || []).filter(f => f.size < 50 * 1024 * 1024) // 50MB限制
   composeFiles.value.push(...files)
   composePreviewUrls.value.push(...files.map(f => URL.createObjectURL(f)))
   input.value = ''
@@ -388,31 +405,68 @@ const removeComposeFile = (i: number) => {
   composePreviewUrls.value.splice(i, 1)
 }
 
-const submitMessage = () => {
+// 上传文件到 Supabase Storage
+const uploadFiles = async (files: File[]): Promise<string[]> => {
+  const urls: string[] = []
+  for (const file of files) {
+    const ext = file.name.split('.').pop()
+    const path = `messages/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('spark-messages').upload(path, file)
+    if (!error) {
+      const { data } = supabase.storage.from('spark-messages').getPublicUrl(path)
+      urls.push(data.publicUrl)
+    }
+  }
+  return urls
+}
+
+const submitMessage = async () => {
   if (!composeContent.value.trim() || isSubmitting.value) return
   isSubmitting.value = true
 
-  // 模拟提交，后续对接 Supabase
-  const newMsg: SparkMessage = {
-    id: Date.now().toString(),
-    authorId: user.value?.id || 'self',
-    authorName: user.value?.user_metadata?.nickname || '星火用户',
-    category: composeCategory.value,
-    content: composeContent.value,
-    mediaUrls: composePreviewUrls.value,
-    visibility: composePrivate.value ? 'private' : 'public',
-    likeCount: 0,
-    commentCount: 0,
-    liked: false,
-    createdAt: new Date().toISOString(),
-  }
+  try {
+    // 上传媒体文件（如果有）
+    let mediaUrls: string[] = []
+    if (composeFiles.value.length > 0) {
+      mediaUrls = await uploadFiles(composeFiles.value)
+    }
 
-  messages.value.unshift(newMsg)
-  composeContent.value = ''
-  composeFiles.value = []
-  composePreviewUrls.value = []
-  showComposer.value = false
-  isSubmitting.value = false
+    const newMsg: SparkMessage = {
+      id: Date.now().toString(),
+      authorId: user.value?.id || 'self',
+      authorName: user.value?.user_metadata?.nickname || '星火用户',
+      category: composeCategory.value,
+      content: composeContent.value,
+      mediaUrls,
+      visibility: composePrivate.value ? 'private' : 'public',
+      likeCount: 0,
+      commentCount: 0,
+      liked: false,
+      createdAt: new Date().toISOString(),
+    }
+
+    // 写入 Supabase 数据库（如果表存在则持久化）
+    if (user.value) {
+      await supabase.from('spark_messages').insert({
+        author_id: user.value.id,
+        author_name: newMsg.authorName,
+        category: newMsg.category,
+        content: newMsg.content,
+        media_urls: newMsg.mediaUrls,
+        visibility: newMsg.visibility,
+      }).then(() => {})
+    }
+
+    messages.value.unshift(newMsg)
+    composeContent.value = ''
+    composeFiles.value = []
+    composePreviewUrls.value = []
+    showComposer.value = false
+  } catch (err) {
+    console.error('发布失败', err)
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 // ============ 详情弹窗 ============
@@ -498,7 +552,7 @@ const sendDM = () => {
 .message-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 18px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
 .message-card:hover { border-color: rgba(139,92,246,0.2); background: rgba(139,92,246,0.03); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
 .card-media { margin: -18px -18px 14px; height: 160px; overflow: hidden; position: relative; }
-.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-media img, .card-media video, .card-media-el { width: 100%; height: 100%; object-fit: cover; }
 .media-count { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 10px; font-size: 12px; color: white; }
 .card-category { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
 .card-category.to_youth { background: rgba(139,92,246,0.12); color: #c4b5fd; }
