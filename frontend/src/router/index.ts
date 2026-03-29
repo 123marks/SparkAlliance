@@ -98,6 +98,7 @@ const routes: Array<RouteRecordRaw> = [
       { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Talent.vue') },
       { path: 'news', name: 'AppNews', component: () => import('../pages/app/News.vue') },
       { path: 'cocreate', name: 'AppCoCreate', component: () => import('../pages/app/CoCreate.vue') },
+      { path: 'messages', name: 'AppMessages', component: () => import('../pages/app/SparkMessages.vue') },
       // 个人
       { path: 'profile', name: 'AppProfile', component: Profile },
       { path: 'feedback', name: 'AppFeedback', component: () => import('../pages/app/Placeholder.vue') }

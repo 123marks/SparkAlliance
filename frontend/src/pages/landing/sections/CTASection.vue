@@ -33,6 +33,14 @@
           </div>
         </div>
 
+        <!-- 社交证明 -->
+        <div class="cta-social-proof">
+          <div class="cta-avatars">
+            <span class="cta-avatar" v-for="i in 4" :key="i" :style="{ background: avatarColors[i - 1] }">{{ avatarInitials[i - 1] }}</span>
+          </div>
+          <span class="cta-proof-text">已有 <strong>10,000+</strong> 大学生加入</span>
+        </div>
+
         <div class="action-btns">
           <router-link to="/register" class="btn-primary-large">
             极速启航，即刻加入
@@ -51,6 +59,14 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 const isVisible = ref(false)
 const sectionRef = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
+
+const avatarColors = [
+  'linear-gradient(135deg, #4f8ef7, #8b5cf6)',
+  'linear-gradient(135deg, #f97316, #f43f5e)',
+  'linear-gradient(135deg, #10b981, #3b82f6)',
+  'linear-gradient(135deg, #8b5cf6, #ec4899)',
+]
+const avatarInitials = ['李', '王', '张', '赵']
 
 onMounted(() => {
   observer = new IntersectionObserver(([entry]) => {
@@ -179,6 +195,48 @@ p {
   gap: 6px;
   font-size: 13px;
   color: var(--color-text-secondary);
+}
+
+/* 社交证明 */
+.cta-social-proof {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.cta-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.cta-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid var(--color-bg-primary);
+  margin-left: -8px;
+}
+
+.cta-avatar:first-child {
+  margin-left: 0;
+}
+
+.cta-proof-text {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.cta-proof-text strong {
+  color: white;
+  font-weight: 700;
 }
 
 /* 按钮 */

@@ -46,6 +46,9 @@
         <router-link to="/docs" class="btn-ghost-large spring-hover">探索特性 &#9654;</router-link>
       </div>
 
+      <!-- 社交证明 -->
+      <HeroSocialProof class="stagger-5" />
+
       <!-- 状态信息 -->
       <div class="hero-stats stagger-5">
         <div class="stat-item">
@@ -82,6 +85,7 @@
 
 <script setup lang="ts">
 import ParticleBackground from '../../../components/ParticleBackground.vue'
+import HeroSocialProof from './components/HeroSocialProof.vue'
 </script>
 
 <style scoped>

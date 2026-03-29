@@ -30,7 +30,7 @@
       </button>
 
       <!-- 移动端菜单 -->
-      <Transition name="menu-fade">
+      <Transition name="slide-down">
         <div class="mobile-menu" v-if="isMobileMenuOpen">
           <div class="m-nav-links">
             <a href="#features" @click="isMobileMenuOpen = false; scrollTo('features')">功能</a>
@@ -232,14 +232,19 @@ onBeforeUnmount(() => {
   z-index: 1000;
 }
 
-.menu-fade-enter-active,
-.menu-fade-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+.slide-down-enter-active {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.menu-fade-enter-from,
-.menu-fade-leave-to {
+.slide-down-leave-active {
+  transition: opacity 0.2s ease-in, transform 0.2s ease-in;
+}
+.slide-down-enter-from {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-10px);
+}
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 .m-nav-links {
@@ -256,8 +261,23 @@ onBeforeUnmount(() => {
   padding: 12px;
   border-radius: 12px;
   transition: background 0.2s;
+  opacity: 0;
+  transform: translateX(-20px);
+  animation: navSlideIn 0.3s forwards;
 }
 .m-nav-links a:hover { background: rgba(255,255,255,0.05); }
+.m-nav-links a:nth-child(1) { animation-delay: 0.05s; }
+.m-nav-links a:nth-child(2) { animation-delay: 0.1s; }
+.m-nav-links a:nth-child(3) { animation-delay: 0.15s; }
+.m-nav-links a:nth-child(4) { animation-delay: 0.2s; }
+.m-nav-links a:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes navSlideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
 
 .m-auth-buttons {
   display: flex;

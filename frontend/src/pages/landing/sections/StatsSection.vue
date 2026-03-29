@@ -17,7 +17,7 @@
         >
           <div class="stat-number" :style="{ color: stat.color }">
             <span class="stat-prefix" v-if="stat.prefix">{{ stat.prefix }}</span>
-            <span class="stat-value">{{ isVisible ? stat.value : '0' }}</span>
+            <span class="stat-value">{{ isVisible ? animatedValues[index] : '0' }}</span>
             <span class="stat-suffix">{{ stat.suffix }}</span>
           </div>
           <div class="stat-label">{{ stat.label }}</div>
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const isVisible = ref(false)
 const sectionRef = ref<HTMLElement | null>(null)
@@ -38,8 +38,9 @@ let observer: IntersectionObserver | null = null
 // 平台亮点数据（目标数据/预期数据）
 const stats = [
   {
-    value: '10+',
-    suffix: '',
+    value: '10',
+    numericValue: 10,
+    suffix: '+',
     prefix: '',
     label: '核心功能模块',
     desc: 'AI答疑、校园墙、人才匹配等',
@@ -47,6 +48,7 @@ const stats = [
   },
   {
     value: '24',
+    numericValue: 24,
     suffix: 'h',
     prefix: '',
     label: '全天候 AI 服务',
@@ -55,6 +57,7 @@ const stats = [
   },
   {
     value: '100',
+    numericValue: 100,
     suffix: '%',
     prefix: '',
     label: '覆盖校园场景',
@@ -63,6 +66,7 @@ const stats = [
   },
   {
     value: '0',
+    numericValue: 0,
     suffix: '',
     prefix: '¥',
     label: '学生完全免费',
@@ -70,6 +74,38 @@ const stats = [
     color: '#f97316'
   }
 ]
+
+// 动画数值
+const animatedValues = reactive<string[]>(stats.map(() => '0'))
+
+function animateCountUp(index: number, target: number, duration: number) {
+  const startTime = performance.now()
+  const tick = (now: number) => {
+    const elapsed = now - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    // easeOutExpo
+    const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress)
+    const current = Math.round(eased * target)
+    animatedValues[index] = String(current)
+    if (progress < 1) {
+      requestAnimationFrame(tick)
+    } else {
+      // 确保最终值与原始 value 一致
+      animatedValues[index] = stats[index].value
+    }
+  }
+  requestAnimationFrame(tick)
+}
+
+watch(isVisible, (val) => {
+  if (val) {
+    stats.forEach((stat, i) => {
+      setTimeout(() => {
+        animateCountUp(i, stat.numericValue, 1500)
+      }, i * 200)
+    })
+  }
+})
 
 onMounted(() => {
   observer = new IntersectionObserver(([entry]) => {
