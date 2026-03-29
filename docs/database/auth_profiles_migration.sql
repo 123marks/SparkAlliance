@@ -1,10 +1,23 @@
 -- ======================================================================
 -- 星火联盟 — 用户注册信息扩展迁移
--- 前置条件：先执行 supabase-schema.sql 创建 profiles 表
 -- ======================================================================
 
--- 注意：profiles 表已在 supabase-schema.sql 中创建
--- 这里只添加新字段（IF NOT EXISTS 安全幂等）
+-- 1. 确保基础 profiles 表存在（通常在 supabase-schema.sql 中，但为了本脚本能独立运行而加上）
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  nickname TEXT NOT NULL DEFAULT '',
+  avatar_url TEXT DEFAULT '',
+  bio TEXT DEFAULT '',
+  college TEXT DEFAULT '',
+  major TEXT DEFAULT '',
+  grade TEXT DEFAULT '',
+  user_type TEXT DEFAULT 'student',
+  birthday DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. 添加扩展字段（IF NOT EXISTS 安全幂等）
 
 -- 手机号
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone TEXT;
