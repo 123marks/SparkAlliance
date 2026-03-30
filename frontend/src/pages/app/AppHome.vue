@@ -70,11 +70,14 @@
         </div>
       </div>
 
-      <!-- 每日灵感 -->
+      <!-- 每日灵感 (可随机切换 + 分类标签) -->
       <div class="bento-card quote-card">
-        <div class="quote-mark">💡</div>
-        <blockquote class="quote-text">{{ dailyQuote.text }}</blockquote>
-        <cite class="quote-author">— {{ dailyQuote.author }}</cite>
+        <div class="quote-top">
+          <span class="quote-tag">{{ currentQuote.tag }}</span>
+          <button class="quote-refresh" @click="refreshQuote" title="换一条">🔄</button>
+        </div>
+        <blockquote class="quote-text">{{ currentQuote.text }}</blockquote>
+        <cite class="quote-author">— {{ currentQuote.author }}</cite>
       </div>
 
       <!-- 校园热榜 -->
@@ -103,6 +106,59 @@
               <span class="cd-date">{{ cd.date }}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 每日一问 -->
+      <div class="bento-card trivia-card">
+        <div class="card-head">
+          <h3>🧩 每日一问</h3>
+          <button class="more-link" @click="refreshTrivia" style="cursor:pointer;background:none;border:none">换一个</button>
+        </div>
+        <p class="trivia-question">{{ currentTrivia.q }}</p>
+        <button class="trivia-reveal" @click="triviaRevealed = !triviaRevealed">
+          {{ triviaRevealed ? '收起答案' : '💡 点击看答案' }}
+        </button>
+        <Transition name="fade">
+          <p v-if="triviaRevealed" class="trivia-answer">{{ currentTrivia.a }}</p>
+        </Transition>
+      </div>
+
+      <!-- 快速笔记 -->
+      <div class="bento-card note-card">
+        <div class="card-head">
+          <h3>📝 快速笔记</h3>
+          <span class="note-saved" v-if="noteSaved">✓ 已保存</span>
+        </div>
+        <textarea
+          v-model="quickNote"
+          class="note-textarea"
+          placeholder="在这里记录灵感、想法或待办事项..."
+          rows="4"
+          @input="saveNote"
+        ></textarea>
+        <div class="note-meta">{{ quickNote.length }} 字 · 自动保存至本地</div>
+      </div>
+
+      <!-- 本周学习进度 -->
+      <div class="bento-card progress-card">
+        <div class="card-head">
+          <h3>📊 本周学习</h3>
+          <span class="progress-pct">{{ weeklyProgress }}%</span>
+        </div>
+        <div class="progress-ring-wrap">
+          <svg class="progress-ring" viewBox="0 0 120 120">
+            <circle class="ring-bg" cx="60" cy="60" r="50" />
+            <circle class="ring-fg" cx="60" cy="60" r="50" :stroke-dashoffset="ringOffset" />
+          </svg>
+          <div class="ring-label">
+            <span class="ring-hours">{{ weeklyHours }}</span>
+            <span class="ring-unit">小时</span>
+          </div>
+        </div>
+        <div class="progress-stats">
+          <div class="ps-item"><span class="ps-val">{{ weeklyDays }}/7</span><span class="ps-label">活跃天数</span></div>
+          <div class="ps-item"><span class="ps-val">{{ weeklyGoal }}h</span><span class="ps-label">目标时长</span></div>
         </div>
       </div>
     </section>
@@ -166,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuth } from '../../composables/useAuth'
 
 const { user } = useAuth()
@@ -210,19 +266,98 @@ const miniStats = [
   { value: '28次', label: '本月AI互动', color: '#8b5cf6', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' }
 ]
 
-// ====== 每日灵感 ======
-const dailyQuotes = [
-  { text: '学而不思则罔，思而不学则殆。', author: '孔子' },
-  { text: '千里之行，始于足下。', author: '老子' },
-  { text: '书山有路勤为径，学海无涯苦作舟。', author: '韩愈' },
-  { text: '天行健，君子以自强不息。', author: '《周易》' },
-  { text: '路漫漫其修远兮，吾将上下而求索。', author: '屈原' },
-  { text: '知之者不如好之者，好之者不如乐之者。', author: '孔子' },
-  { text: '业精于勤，荒于嬉；行成于思，毁于随。', author: '韩愈' },
+// ====== 每日灵感 (30+ 名言 + 随机切换) ======
+const allQuotes = [
+  // 🔥 激励
+  { text: '学而不思则罔，思而不学则殆。', author: '孔子', tag: '🔥 激励' },
+  { text: '千里之行，始于足下。', author: '老子', tag: '🔥 激励' },
+  { text: '天行健，君子以自强不息。', author: '《周易》', tag: '🔥 激励' },
+  { text: '路漫漫其修远兮，吾将上下而求索。', author: '屈原', tag: '🔥 激励' },
+  { text: '业精于勤，荒于嬉；行成于思，毁于随。', author: '韩愈', tag: '🔥 激励' },
+  { text: '不积跬步，无以至千里；不积小流，无以成江海。', author: '荀子', tag: '🔥 激励' },
+  { text: '长风破浪会有时，直挂云帆济沧海。', author: '李白', tag: '🔥 激励' },
+  { text: '宝剑锋从磨砺出，梅花香自苦寒来。', author: '《警世贤文》', tag: '🔥 激励' },
+  { text: '海内存知己，天涯若比邻。', author: '王勃', tag: '🔥 激励' },
+  { text: '穷则独善其身，达则兼济天下。', author: '孟子', tag: '🔥 激励' },
+  // 💭 哲理
+  { text: 'Stay hungry, stay foolish.', author: 'Steve Jobs', tag: '💭 哲理' },
+  { text: '知之者不如好之者，好之者不如乐之者。', author: '孔子', tag: '💭 哲理' },
+  { text: '生活不是等待暴风雨过去，而是学会在雨中翩翩起舞。', author: '维维安·格林', tag: '💭 哲理' },
+  { text: 'The only way to do great work is to love what you do.', author: 'Steve Jobs', tag: '💭 哲理' },
+  { text: '我思故我在。', author: '笛卡尔', tag: '💭 哲理' },
+  { text: '吾日三省吾身。', author: '曾子', tag: '💭 哲理' },
+  { text: '人生得意须尽欢，莫使金樽空对月。', author: '李白', tag: '💭 哲理' },
+  { text: '世界上只有一种真正的英雄主义，那就是在认清生活的真相后依然热爱生活。', author: '罗曼·罗兰', tag: '💭 哲理' },
+  { text: '己所不欲，勿施于人。', author: '孔子', tag: '💭 哲理' },
+  { text: 'Yesterday is history, tomorrow is a mystery, today is a gift.', author: '功夫熊猫', tag: '💭 哲理' },
+  // 🎯 专注
+  { text: '书山有路勤为径，学海无涯苦作舟。', author: '韩愈', tag: '🎯 专注' },
+  { text: '读书破万卷，下笔如有神。', author: '杜甫', tag: '🎯 专注' },
+  { text: '黑发不知勤学早，白首方悔读书迟。', author: '颜真卿', tag: '🎯 专注' },
+  { text: '少壮不努力，老大徒伤悲。', author: '《长歌行》', tag: '🎯 专注' },
+  { text: '光阴似箭，日月如梭。', author: '《增广贤文》', tag: '🎯 专注' },
+  { text: '问渠那得清如许，为有源头活水来。', author: '朱熹', tag: '🎯 专注' },
+  { text: '纸上得来终觉浅，绝知此事要躬行。', author: '陆游', tag: '🎯 专注' },
+  { text: '温故而知新，可以为师矣。', author: '孔子', tag: '🎯 专注' },
+  { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds', tag: '🎯 专注' },
+  { text: '聪明出于勤奋，天才在于积累。', author: '华罗庚', tag: '🎯 专注' },
+  // 😄 趣味
+  { text: 'There are only 10 types of people: those who understand binary and those who don\'t.', author: '程序员笑话', tag: '😄 趣味' },
+  { text: '世上无难事，只要肯放弃。', author: '当代小确丧', tag: '😄 趣味' },
+  { text: '今天多学一点东西，明天就少说一句求人的话。', author: '社会学', tag: '😄 趣味' },
 ]
-const dailyQuote = computed(() => {
-  const d = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000)
-  return dailyQuotes[d % dailyQuotes.length]
+
+const quoteIndex = ref(Math.floor(Math.random() * allQuotes.length))
+const currentQuote = computed(() => allQuotes[quoteIndex.value])
+const refreshQuote = () => {
+  quoteIndex.value = (quoteIndex.value + Math.floor(Math.random() * (allQuotes.length - 1)) + 1) % allQuotes.length
+}
+
+// ====== 每日一问 ======
+const triviaPool = [
+  { q: '地球上最深的海沟叫什么？', a: '马里亚纳海沟，深约11,034米，位于太平洋西部。' },
+  { q: '人体最长的骨头是哪一块？', a: '股骨（大腿骨），约占身高的1/4。' },
+  { q: '第一个登上月球的人是谁？', a: '尼尔·阿姆斯特朗，1969年7月20日阿波罗11号。' },
+  { q: '世界上使用人数最多的编程语言是？', a: 'JavaScript，全球约1780万开发者使用。' },
+  { q: 'HTTP状态码404代表什么？', a: 'Not Found — 服务器找不到请求的资源。' },
+  { q: 'DNA 的全称是什么？', a: '脱氧核糖核酸（Deoxyribonucleic Acid）。' },
+  { q: '光速大约是每秒多少公里？', a: '约30万公里/秒（299,792 km/s）。' },
+  { q: '「互联网之父」是谁？', a: '蒂姆·伯纳斯-李（Tim Berners-Lee），发明了万维网。' },
+  { q: '人类有多少对染色体？', a: '23对（46条），其中1对为性染色体。' },
+  { q: '世界上最大的沙漠是哪个？', a: '南极洲——没错，它是世界上最大的「冷沙漠」。' },
+  { q: '1byte 等于几个 bit？', a: '8个 bit。1 KB = 1024 bytes。' },
+  { q: '红色和蓝色混合会变成什么颜色？', a: '紫色（在颜料中）或品红色（在光线中）。' },
+  { q: '《百年孤独》的作者是谁？', a: '加西亚·马尔克斯（Gabriel García Márquez），哥伦比亚作家。' },
+  { q: '太阳系中最大的行星是？', a: '木星（Jupiter），直径约14万公里。' },
+  { q: 'Git 的创建者是谁？', a: 'Linus Torvalds，他同时也创建了 Linux。' },
+]
+const triviaIndex = ref(Math.floor(Math.random() * triviaPool.length))
+const triviaRevealed = ref(false)
+const currentTrivia = computed(() => triviaPool[triviaIndex.value])
+const refreshTrivia = () => {
+  triviaIndex.value = (triviaIndex.value + Math.floor(Math.random() * (triviaPool.length - 1)) + 1) % triviaPool.length
+  triviaRevealed.value = false
+}
+
+// ====== 快速笔记 (localStorage) ======
+const quickNote = ref(localStorage.getItem('spark_quick_note') || '')
+const noteSaved = ref(false)
+let noteTimer: ReturnType<typeof setTimeout> | null = null
+const saveNote = () => {
+  localStorage.setItem('spark_quick_note', quickNote.value)
+  noteSaved.value = true
+  if (noteTimer) clearTimeout(noteTimer)
+  noteTimer = setTimeout(() => { noteSaved.value = false }, 2000)
+}
+
+// ====== 学习进度 ======
+const weeklyHours = ref(16.5)
+const weeklyGoal = ref(25)
+const weeklyDays = ref(5)
+const weeklyProgress = computed(() => Math.min(100, Math.round((weeklyHours.value / weeklyGoal.value) * 100)))
+const ringOffset = computed(() => {
+  const circumference = 2 * Math.PI * 50 // r=50
+  return circumference - (weeklyProgress.value / 100) * circumference
 })
 
 // ====== AI 对话记录 ======
@@ -268,10 +403,9 @@ const coreFeatures = [
   { title: 'AI 助手', desc: '多模型智能对话', to: '/app/chat', active: true, bg: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>' },
   { title: '星火墙', desc: '分享校园日常', to: '/app/wall', active: true, bg: 'linear-gradient(135deg, #8b5cf6, #f43f5e)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' },
   { title: '智能日程', desc: '管理你的时间', to: '/app/schedule', active: true, bg: 'linear-gradient(135deg, #10b981, #06b6d4)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>' },
-  { title: '星火伴侣', desc: '好友与社交', to: '/app/companion', active: false, bg: 'rgba(139,92,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>' },
+  { title: '星火寄语', desc: '跨代际寄语平台', to: '/app/messages', active: true, bg: 'linear-gradient(135deg, #f59e0b, #ef4444)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>' },
   { title: '星火购物', desc: '二手交易平台', to: '/app/shop', active: false, bg: 'rgba(249,115,22,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>' },
   { title: '星火规划', desc: 'AI目标拆分与激励', to: '/app/planner', active: false, bg: 'rgba(234,179,8,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>' },
-  { title: '选择卡罗牌', desc: '解决选择困难', to: '/app/tarot', active: false, bg: 'rgba(244,63,94,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="3"></rect><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>' },
   { title: '星火自习室', desc: '专注互助空间', to: '/app/study-room', active: true, bg: 'linear-gradient(135deg, #10b981, #06b6d4)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>' },
   { title: '学习资源', desc: '优质资料共享', to: '/app/resources', active: true, bg: 'linear-gradient(135deg, #f97316, #ef4444)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>' },
   { title: '星火人才', desc: '双向寻访匹配', to: '/app/talent', active: true, bg: 'linear-gradient(135deg, #f43f5e, #8b5cf6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' },
@@ -281,7 +415,6 @@ const coreFeatures = [
 
 // 即将上线提示
 const showComingSoon = () => {
-  // 后续替换为 toast
   alert('即将上线，敬请期待！')
 }
 </script>
@@ -397,13 +530,16 @@ const showComingSoon = () => {
 .chat-title { font-size: 13px; color: rgba(255,255,255,0.8); }
 .chat-meta { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
 
-/* 灵感卡 */
+/* 灵感卡 - 增强版 */
 .quote-card {
   display: flex; flex-direction: column; justify-content: center;
   background: linear-gradient(135deg, rgba(139,92,246,0.06), rgba(79,142,247,0.04));
   border-color: rgba(139,92,246,0.1);
 }
-.quote-mark { font-size: 24px; margin-bottom: 10px; }
+.quote-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.quote-tag { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(139,92,246,0.12); color: #c4b5fd; font-weight: 600; }
+.quote-refresh { background: none; border: none; cursor: pointer; font-size: 16px; opacity: 0.5; transition: all 0.3s; padding: 4px; border-radius: 50%; }
+.quote-refresh:hover { opacity: 1; transform: rotate(180deg); background: rgba(255,255,255,0.06); }
 .quote-text {
   font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.75);
   line-height: 1.6; margin: 0; padding: 0; border: none;
@@ -433,6 +569,59 @@ const showComingSoon = () => {
 .cd-body { display: flex; flex-direction: column; }
 .cd-label { font-size: 13px; color: rgba(255,255,255,0.7); }
 .cd-date { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
+
+/* 每日一问 */
+.trivia-card { grid-column: span 1; }
+.trivia-question { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85); line-height: 1.5; margin: 0 0 14px; }
+.trivia-reveal {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
+  color: #c4b5fd; cursor: pointer; transition: all 0.2s;
+}
+.trivia-reveal:hover { background: rgba(139,92,246,0.18); }
+.trivia-answer {
+  margin: 14px 0 0; padding: 12px 14px; font-size: 13px;
+  color: rgba(255,255,255,0.65); line-height: 1.6;
+  background: rgba(16,185,129,0.06); border-left: 3px solid #10b981;
+  border-radius: 0 8px 8px 0;
+}
+.fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* 快速笔记 */
+.note-card { grid-column: span 1; }
+.note-saved { font-size: 11px; color: #10b981; font-weight: 600; animation: fadeInOut 2s forwards; }
+@keyframes fadeInOut { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.note-textarea {
+  width: 100%; resize: none; border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02); border-radius: 10px; padding: 12px 14px;
+  font-size: 13px; color: rgba(255,255,255,0.8); font-family: inherit;
+  line-height: 1.6; outline: none; transition: border-color 0.2s;
+}
+.note-textarea::placeholder { color: rgba(255,255,255,0.2); }
+.note-textarea:focus { border-color: rgba(139,92,246,0.3); }
+.note-meta { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 8px; }
+
+/* 学习进度 */
+.progress-card { grid-column: span 1; text-align: center; }
+.progress-pct { font-size: 14px; font-weight: 800; background: var(--gradient-brand); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.progress-ring-wrap { position: relative; width: 120px; height: 120px; margin: 10px auto 16px; }
+.progress-ring { width: 100%; height: 100%; }
+.ring-bg { fill: none; stroke: rgba(255,255,255,0.04); stroke-width: 8; }
+.ring-fg {
+  fill: none; stroke: url(#grad) #8b5cf6; stroke-width: 8;
+  stroke-linecap: round; stroke-dasharray: 314.16; /* 2*PI*50 */
+  transform: rotate(-90deg); transform-origin: center;
+  transition: stroke-dashoffset 1s ease;
+}
+.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-hours { font-size: 24px; font-weight: 800; color: white; }
+.ring-unit { font-size: 11px; color: rgba(255,255,255,0.35); }
+.progress-stats { display: flex; justify-content: center; gap: 32px; }
+.ps-item { display: flex; flex-direction: column; align-items: center; }
+.ps-val { font-size: 14px; font-weight: 700; color: white; }
+.ps-label { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
 
 /* ====== 快捷入口 ====== */
 .shortcuts-section { margin-bottom: 48px; }
