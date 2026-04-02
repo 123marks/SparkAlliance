@@ -32,7 +32,6 @@
         <div class="header-brand">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
           <span class="brand-title">星火助手</span>
-          <span class="brand-badge">GLM5</span>
         </div>
         <div class="header-actions">
           <button v-if="isStreaming" class="stop-btn" @click="stopGenerating" title="停止生成">

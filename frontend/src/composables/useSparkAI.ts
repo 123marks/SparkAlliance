@@ -13,7 +13,8 @@ import { ref } from 'vue'
 
 // ============ API 配置 ============
 const API_KEY = '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'
-const BASE_URL = 'https://integrate.api.nvidia.com/v1'
+// 通过 Vite 代理转发，避免浏览器 CORS 限制
+const BASE_URL = '/api/nvidia'
 const MODEL = 'z-ai/glm5'
 
 // ============ 系统提示词 — 星火助手品牌身份 ============

@@ -6,7 +6,13 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      // 开发阶段：前端直接调用小米 MiMO API（绕过 CORS）
+      // NVIDIA GLM5 API 代理（绕过 CORS）
+      '/api/nvidia': {
+        target: 'https://integrate.api.nvidia.com',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/api\/nvidia/, '/v1'),
+      },
+      // 小米 MiMO API 代理
       '/api/mimo': {
         target: 'https://api.xiaomimimo.com',
         changeOrigin: true,
