@@ -21,7 +21,7 @@
     </div>
 
     <!-- ===== 好友 Tab ===== -->
-    <div v-else-if="activeTab === 'friends'" class="cp-content">
+    <div v-if="activeTab === 'friends'" class="cp-content">
       <FriendList
         :friend-list="friends"
         :requests="friendRequests"
