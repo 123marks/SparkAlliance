@@ -20,16 +20,6 @@
       </button>
     </div>
 
-    <!-- ===== AI 伴侣 Tab ===== -->
-    <div v-if="activeTab === 'chat'" class="cp-content">
-      <CompanionChat
-        :chat-history="chatHistory"
-        :is-typing="isTyping"
-        @send="handleSend"
-        @clear="handleClearChat"
-      />
-    </div>
-
     <!-- ===== 好友 Tab ===== -->
     <div v-else-if="activeTab === 'friends'" class="cp-content">
       <FriendList
@@ -339,31 +329,28 @@
       <div v-if="toastMsg" class="cp-toast">{{ toastMsg }}</div>
     </Transition>
 
-    <div v-if="loading && activeTab !== 'chat'" class="cp-loading"><div class="cp-spinner"></div></div>
+    <div v-if="loading" class="cp-loading"><div class="cp-spinner"></div></div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useCompanion, MOMENT_EXPIRY_OPTIONS } from '../../composables/useCompanion'
-import type { ChatMessage, Friend, Moment, GroupChat, GroupMessage, SparkProfile } from '../../composables/useCompanion'
+import type { Friend, Moment, GroupChat, GroupMessage, SparkProfile } from '../../composables/useCompanion'
 import QRCode from 'qrcode'
-import CompanionChat from '../../components/companion/CompanionChat.vue'
 import FriendList from '../../components/companion/FriendList.vue'
 import MomentCard from '../../components/companion/MomentCard.vue'
 
 const {
-  myProfile, friends, friendRequests, chatHistory, moments, plazaMoments, groups, loading,
+  myProfile, friends, friendRequests, moments, plazaMoments, groups, loading,
   fetchMyProfile, updateProfile, changeSparkId, getMyQRData, addFriendByQR,
   fetchFriends, fetchFriendRequests, acceptRequest, rejectRequest, removeFriend,
-  fetchChatHistory, sendToCompanion, clearChatHistory,
   fetchMoments, fetchPlazaMoments, postMoment, toggleMomentLike, shareMomentToWall,
   createGroup, fetchGroups, fetchGroupMessages, sendGroupMessage,
   formatTimeAgo,
 } = useCompanion()
 
-const activeTab = ref<'chat' | 'friends' | 'moments' | 'plaza'>('chat')
-const isTyping = ref(false)
+const activeTab = ref<'friends' | 'moments' | 'plaza'>('friends')
 
 // 弹窗控制
 const showPostModal = ref(false)
@@ -509,7 +496,6 @@ watch(showQRModal, (val) => {
 })
 
 const tabs = [
-  { key: 'chat' as const, label: 'AI伴侣', icon: '🌟' },
   { key: 'friends' as const, label: '好友', icon: '👥' },
   { key: 'moments' as const, label: '动态', icon: '📸' },
   { key: 'plaza' as const, label: '广场', icon: '🌍' },
@@ -528,25 +514,7 @@ function switchTab(key: typeof activeTab.value) {
   if (key === 'plaza') fetchPlazaMoments(1)
 }
 
-// ===== AI 对话 =====
-async function handleSend(text: string) {
-  chatHistory.value.push({
-    id: '', user_id: '', role: 'user', content: text, metadata: {}, created_at: new Date().toISOString(),
-  })
-  isTyping.value = true
-  const aiMsg: ChatMessage = {
-    id: '', user_id: '', role: 'assistant', content: '', metadata: {}, created_at: new Date().toISOString(),
-  }
-  chatHistory.value.push(aiMsg)
-  await sendToCompanion(text, (chunk) => { aiMsg.content = chunk })
-  isTyping.value = false
-}
 
-async function handleClearChat() {
-  if (!confirm('确定清空所有对话历史？')) return
-  await clearChatHistory()
-  showToast('🗑️ 对话已清空')
-}
 
 // ===== 好友 =====
 async function handleAcceptReq(id: string) { if (await acceptRequest(id)) showToast('✅ 已添加好友') }
@@ -658,7 +626,9 @@ async function handleGroupSend() {
 // ===== 初始化 =====
 onMounted(async () => {
   await fetchMyProfile()
-  await fetchChatHistory()
+  await fetchFriends()
+  await fetchFriendRequests()
+  await fetchGroups()
 })
 </script>
 

@@ -64,6 +64,33 @@ export interface UploadOptions {
   upsert: boolean
 }
 
+export interface CampusPostHeatInput {
+  likes: number
+  comments: number
+}
+
+export interface CampusSortablePost extends CampusPostHeatInput {
+  createdAt: string
+}
+
+export interface CampusHotHighlightSource extends CampusSortablePost {
+  id: string
+  content: string
+  authorId?: string | null
+  authorName?: string | null
+  anonymousSeed?: string | null
+  isAnonymous?: boolean | null
+}
+
+export interface CampusHotHighlight {
+  id: string
+  author: string
+  preview: string
+  heat: string
+  score: number
+  to: string
+}
+
 const getFileExtension = (fileName: string): string => {
   const dotIndex = fileName.lastIndexOf('.')
   if (dotIndex < 0) return ''
@@ -103,6 +130,53 @@ export const buildCampusWallUploadOptions = (file: FileLike): UploadOptions => (
   contentType: resolveUploadContentType(file),
   upsert: false,
 })
+
+export const calculateCampusPostHeat = (post: CampusPostHeatInput): number => {
+  return post.likes * 2 + post.comments * 3
+}
+
+export const sortCampusPostsByHeat = <T extends CampusSortablePost>(posts: T[]): T[] => {
+  return [...posts].sort((left, right) => {
+    const heatDifference = calculateCampusPostHeat(right) - calculateCampusPostHeat(left)
+    if (heatDifference !== 0) return heatDifference
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  })
+}
+
+const createCampusPreview = (content: string, limit = 36): string => {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= limit) return normalized
+  return `${normalized.slice(0, limit)}...`
+}
+
+export const buildCampusHotHighlights = (
+  posts: CampusHotHighlightSource[],
+  limit = 3,
+): CampusHotHighlight[] => {
+  return sortCampusPostsByHeat(posts)
+    .slice(0, limit)
+    .map((post) => {
+      const author = resolveAuthorDisplay({
+        anonymous: inferAnonymousState({
+          author_name: post.authorName,
+          is_anonymous: post.isAnonymous,
+        }),
+        authorId: post.authorId,
+        authorName: post.authorName,
+        anonymousSeed: post.anonymousSeed,
+        fallbackSeed: post.id,
+      })
+
+      return {
+        id: post.id,
+        author: author.name,
+        preview: createCampusPreview(post.content),
+        heat: `${post.likes} 共鸣 · ${post.comments} 评论`,
+        score: calculateCampusPostHeat(post),
+        to: '/app/wall',
+      }
+    })
+}
 
 export const createAnonymousHandle = (seed: string): AnonymousHandle => {
   const normalizedSeed = seed || 'spark-anonymous'

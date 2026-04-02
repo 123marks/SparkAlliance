@@ -1,555 +1,1006 @@
 <template>
-  <div class="profile-layout">
-    <!-- Hero Banner -->
+  <div class="profile-page" v-if="!isLoading">
+    <!-- ====== Banner 区 ====== -->
     <div class="profile-banner">
-      <div class="banner-overlay"></div>
+      <div class="banner-bg" :style="bannerStyle"></div>
+      <div class="banner-fade"></div>
+
+      <!-- 头像 + 基本信息 -->
+      <div class="banner-content">
+        <div class="avatar-area">
+          <div class="avatar-ring">
+            <img v-if="profile.avatar_url" :src="profile.avatar_url" class="avatar-img" alt="头像" />
+            <div v-else class="avatar-fallback">{{ avatarInitial }}</div>
+          </div>
+          <span class="level-pill">{{ profile.level || '萤火虫 Lv.1' }}</span>
+        </div>
+
+        <div class="info-area">
+          <div class="name-row">
+            <h1>{{ profile.nickname || '未设昵称' }}</h1>
+            <span v-if="profile.verified" class="verified-tag">✓ 已认证</span>
+            <span v-if="profile.student_verified" class="verified-tag student">🎓 学生</span>
+          </div>
+          <p class="spark-id">{{ profile.spark_id || '' }} · 加入 {{ daysSinceJoined }} 天</p>
+          <div class="meta-tags" v-if="profile.college || profile.major">
+            <span class="meta-chip" v-if="profile.college">{{ profile.college }}</span>
+            <span class="meta-chip" v-if="profile.major">{{ profile.major }}</span>
+            <span class="meta-chip" v-if="profile.grade">{{ profile.grade }}</span>
+          </div>
+          <p class="bio-text">{{ profile.bio || '这个人很懒，什么都没写...' }}</p>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-area">
+          <template v-if="isMyProfile">
+            <button class="btn-action primary" @click="goToSettings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              编辑资料
+            </button>
+            <button class="btn-action ghost" @click="shareProfile" title="分享主页">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="btn-action"
+              :class="isFollowing ? 'following' : 'primary'"
+              @click="toggleFollow"
+            >
+              {{ isFollowing ? '✓ 已关注' : '+ 关注' }}
+            </button>
+            <button class="btn-action ghost" @click="startChat">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              私信
+            </button>
+          </template>
+        </div>
+      </div>
     </div>
 
-    <div class="profile-container">
-      <!-- 个人信息头部 -->
-      <div class="profile-header glass-pro">
-        <div class="p-avatar-wrapper spring-hover">
-          <div class="p-avatar">{{ avatarInitial }}</div>
+    <!-- ====== 数据统计区 ====== -->
+    <div class="stats-strip">
+      <button class="stat-cell" @click="switchTab('posts')">
+        <strong>{{ stats.posts_count }}</strong>
+        <span>动态</span>
+      </button>
+      <button class="stat-cell" @click="switchTab('products')">
+        <strong>{{ stats.products_count }}</strong>
+        <span>商品</span>
+      </button>
+      <button class="stat-cell" @click="switchTab('followers')">
+        <strong>{{ stats.followers_count }}</strong>
+        <span>粉丝</span>
+      </button>
+      <button class="stat-cell" @click="switchTab('following')">
+        <strong>{{ stats.following_count }}</strong>
+        <span>关注</span>
+      </button>
+      <button class="stat-cell">
+        <strong>{{ stats.likes_received }}</strong>
+        <span>获赞</span>
+      </button>
+    </div>
+
+    <!-- ====== Tab 导航区 ====== -->
+    <nav class="tab-bar">
+      <button
+        v-for="tab in visibleTabs"
+        :key="tab.key"
+        class="tab-item"
+        :class="{ active: currentTab === tab.key }"
+        @click="switchTab(tab.key)"
+      >
+        {{ tab.label }}
+        <span v-if="tab.count" class="tab-count">{{ tab.count }}</span>
+      </button>
+    </nav>
+
+    <!-- ====== 内容展示区 ====== -->
+    <div class="content-area">
+
+      <!-- 动态 Tab -->
+      <div v-if="currentTab === 'posts'" class="tab-content">
+        <div v-if="postsLoading" class="loading-hint">加载中...</div>
+        <div v-else-if="posts.length === 0" class="empty-hint">
+          <span class="empty-emoji">📝</span>
+          <p>{{ isMyProfile ? '你还没有发布过动态' : 'TA还没有发布过动态' }}</p>
+          <router-link v-if="isMyProfile" to="/app/wall" class="empty-cta">去发布 →</router-link>
         </div>
-
-        <div class="p-info">
-          <h1>
-            {{ userName }}
-            <span class="spark-badge spring-hover" title="当前等级：萤火虫">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-              萤火虫 Lv.1
-            </span>
-          </h1>
-          <p class="user-status">{{ userEmail }} &middot; 加入星火 {{ daysSinceJoined }} 天</p>
-
-          <div class="user-meta">
-            <span class="meta-tag spring-hover">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:text-bottom;margin-right:4px;"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><path d="M9 22v-4h6v4"></path><path d="M8 6h.01"></path><path d="M16 6h.01"></path><path d="M12 6h.01"></path><path d="M12 10h.01"></path><path d="M12 14h.01"></path><path d="M16 10h.01"></path><path d="M16 14h.01"></path><path d="M8 10h.01"></path><path d="M8 14h.01"></path></svg>星火大学
-            </span>
-            <span class="meta-tag spring-hover">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:text-bottom;margin-right:4px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>计算机科学与技术
-            </span>
+        <div v-else class="posts-list">
+          <div v-for="post in posts" :key="post.id" class="post-card" @click="viewPost(post.id)">
+            <p class="post-text">{{ post.content }}</p>
+            <div v-if="post.media_urls?.length" class="post-media">
+              <img v-for="(url, i) in post.media_urls.slice(0, 3)" :key="i" :src="url" class="media-thumb" />
+              <span v-if="post.media_urls.length > 3" class="media-more">+{{ post.media_urls.length - 3 }}</span>
+            </div>
+            <div class="post-bottom">
+              <span class="post-stat">❤️ {{ post.likes_count || 0 }}</span>
+              <span class="post-stat">💬 {{ post.comments_count || 0 }}</span>
+              <span class="post-time">{{ formatTime(post.created_at) }}</span>
+            </div>
           </div>
-
-          <div class="bio">"代码改变世界，探索从未停止。"</div>
         </div>
+      </div>
 
-        <div class="header-actions">
-          <button class="btn-primary spring-hover">编辑资料</button>
-          <button class="btn-ghost icon-only spring-hover">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <!-- 商品 Tab -->
+      <div v-if="currentTab === 'products'" class="tab-content">
+        <div v-if="products.length === 0" class="empty-hint">
+          <span class="empty-emoji">🛒</span>
+          <p>{{ isMyProfile ? '你还没有发布商品' : 'TA还没有发布商品' }}</p>
+        </div>
+        <div v-else class="products-grid">
+          <div v-for="prod in products" :key="prod.id" class="product-card" @click="viewProduct(prod.id)">
+            <div class="prod-img-wrap">
+              <img v-if="prod.images?.[0]" :src="prod.images[0]" class="prod-img" />
+              <div v-else class="prod-img-placeholder">📦</div>
+              <span v-if="prod.status === 'sold'" class="sold-tag">已售</span>
+            </div>
+            <div class="prod-info">
+              <h4>{{ prod.title }}</h4>
+              <span class="prod-price">¥{{ prod.price }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 收藏 Tab（仅自己可见） -->
+      <div v-if="currentTab === 'favorites'" class="tab-content">
+        <div class="empty-hint">
+          <span class="empty-emoji">⭐</span>
+          <p>收藏功能即将上线</p>
+        </div>
+      </div>
+
+      <!-- 粉丝 Tab -->
+      <div v-if="currentTab === 'followers'" class="tab-content">
+        <div v-if="followersList.length === 0" class="empty-hint">
+          <span class="empty-emoji">👥</span>
+          <p>{{ isMyProfile ? '还没有粉丝' : 'TA还没有粉丝' }}</p>
+        </div>
+        <div v-else class="user-list">
+          <div v-for="u in followersList" :key="u.id" class="user-card" @click="viewUser(u.id)">
+            <div class="uc-avatar">
+              <img v-if="u.avatar_url" :src="u.avatar_url" />
+              <span v-else>{{ u.nickname?.charAt(0) || '?' }}</span>
+            </div>
+            <div class="uc-info">
+              <strong>{{ u.nickname }}</strong>
+              <span>{{ u.bio || u.college || '暂无简介' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 关注 Tab -->
+      <div v-if="currentTab === 'following'" class="tab-content">
+        <div v-if="followingList.length === 0" class="empty-hint">
+          <span class="empty-emoji">👤</span>
+          <p>{{ isMyProfile ? '还没有关注任何人' : 'TA还没有关注任何人' }}</p>
+        </div>
+        <div v-else class="user-list">
+          <div v-for="u in followingList" :key="u.id" class="user-card" @click="viewUser(u.id)">
+            <div class="uc-avatar">
+              <img v-if="u.avatar_url" :src="u.avatar_url" />
+              <span v-else>{{ u.nickname?.charAt(0) || '?' }}</span>
+            </div>
+            <div class="uc-info">
+              <strong>{{ u.nickname }}</strong>
+              <span>{{ u.bio || u.college || '暂无简介' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 资料 Tab -->
+      <div v-if="currentTab === 'info'" class="tab-content">
+        <div class="info-card">
+          <h3>基本信息</h3>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-key">昵称</span><span class="info-val">{{ profile.nickname || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">SparkID</span><span class="info-val">{{ profile.spark_id || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">学校</span><span class="info-val">{{ profile.college || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">专业</span><span class="info-val">{{ profile.major || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">年级</span><span class="info-val">{{ profile.grade || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">个人简介</span><span class="info-val">{{ profile.bio || '—' }}</span></div>
+            <div class="info-row"><span class="info-key">注册时间</span><span class="info-val">{{ profile.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN') : '—' }}</span></div>
+          </div>
+          <button v-if="isMyProfile" class="btn-action primary" style="margin-top: 20px;" @click="goToSettings">
+            编辑资料
           </button>
         </div>
       </div>
-
-      <!-- 内容网格 -->
-      <div class="content-grid">
-        <!-- 左列 -->
-        <div class="main-col">
-          <!-- 活跃热力图 -->
-          <div class="widget glass-pro spring-hover">
-            <div class="widget-header">
-              <h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #f97316;"><path d="M12 2c2.5 4.5 4 8 4 11s-2.5 8-4 8-4-5-4-8 1.5-6.5 4-11z"></path></svg> 活跃热力图
-              </h3>
-            </div>
-            <div class="widget-body">
-              <div class="heatmap">
-                <div class="h-col" v-for="w in 24" :key="w">
-                  <div class="h-cell" v-for="d in 7" :key="d" :class="getRandomIntensity()"></div>
-                </div>
-              </div>
-              <div class="heatmap-legend">
-                <span>Less</span>
-                <div class="h-cell lv-0"></div><div class="h-cell lv-1"></div><div class="h-cell lv-2"></div><div class="h-cell lv-3"></div><div class="h-cell lv-4"></div>
-                <span>More</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 我的动态 -->
-          <div class="widget glass-pro">
-            <div class="widget-header">
-              <h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #4f8ef7;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                我的动态
-                <span class="count-badge">{{ myPosts.length }}</span>
-              </h3>
-            </div>
-            <div class="widget-body">
-              <!-- 加载态 -->
-              <div v-if="isLoadingPosts" class="posts-loading">
-                <div class="skel skel-line w80" v-for="i in 3" :key="i"></div>
-              </div>
-              <!-- 空态 -->
-              <div v-else-if="myPosts.length === 0" class="posts-empty">
-                <p>还没有发布过动态</p>
-                <router-link to="/app/wall" class="go-post-btn">去发布 →</router-link>
-              </div>
-              <!-- 动态列表 -->
-              <div v-else class="my-posts-list">
-                <div class="my-post-item" v-for="post in myPosts.slice(0, 5)" :key="post.id">
-                  <div class="mp-content">{{ post.content.slice(0, 80) }}{{ post.content.length > 80 ? '...' : '' }}</div>
-                  <div class="mp-meta">
-                    <span class="mp-cat" :class="'cat-' + post.category">{{ getCatLabel(post.category) }}</span>
-                    <span class="mp-time">{{ formatTime(post.created_at) }}</span>
-                    <span class="mp-likes">❤️ {{ post.likesCount }}</span>
-                  </div>
-                  <!-- 媒体缩略图 -->
-                  <div class="mp-thumbs" v-if="post.media_urls?.length">
-                    <img v-for="(url, i) in post.media_urls.slice(0, 3)" :key="i" :src="url" class="mp-thumb" @error="(e: Event) => (e.target as HTMLImageElement).style.display='none'" />
-                  </div>
-                </div>
-                <router-link v-if="myPosts.length > 5" to="/app/wall" class="view-all-link">查看全部 {{ myPosts.length }} 条 →</router-link>
-              </div>
-            </div>
-          </div>
-
-          <!-- 学习目标进度 -->
-          <div class="widget glass-pro spring-hover">
-            <div class="widget-header">
-              <h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #ef4444;"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg> 学习目标进度
-              </h3>
-            </div>
-            <div class="widget-body goal-list">
-              <div class="goal-item">
-                <div class="g-info"><span>完成《编译原理》视频课程</span><span class="pct">75%</span></div>
-                <div class="progress-track"><div class="progress-bar" style="width: 75%; background: var(--color-brand-blue)"></div></div>
-              </div>
-              <div class="goal-item">
-                <div class="g-info"><span>六级英语词汇背诵 (3000/4500)</span><span class="pct">66%</span></div>
-                <div class="progress-track"><div class="progress-bar" style="width: 66%; background: var(--color-brand-purple)"></div></div>
-              </div>
-              <div class="goal-item">
-                <div class="g-info"><span>每周算法刷题 (4/5)</span><span class="pct">80%</span></div>
-                <div class="progress-track"><div class="progress-bar" style="width: 80%; background: var(--color-brand-orange)"></div></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 右列 -->
-        <div class="side-col">
-          <!-- 真实统计数据 -->
-          <div class="widget glass-pro">
-            <div class="widget-body grid-stats">
-               <div class="s-brick spring-hover">
-                 <span class="num">{{ stats.totalLikes }}</span>
-                 <span class="lbl">获赞总数</span>
-               </div>
-               <div class="s-brick spring-hover">
-                 <span class="num">{{ stats.totalPosts }}</span>
-                 <span class="lbl">动态发布</span>
-               </div>
-               <div class="s-brick spring-hover">
-                 <span class="num">{{ daysSinceJoined }}</span>
-                 <span class="lbl">活跃天数</span>
-               </div>
-               <div class="s-brick spring-hover">
-                 <span class="num">{{ stats.totalMedia }}</span>
-                 <span class="lbl">媒体上传</span>
-               </div>
-            </div>
-          </div>
-
-          <!-- 偏好设置 -->
-          <div class="widget glass-pro">
-            <div class="widget-header">
-              <h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg> 偏好设置
-              </h3>
-            </div>
-            <div class="settings-list">
-              <div class="setting-item">
-                 <span class="s-text" style="color: var(--color-text-muted);">设置功能将于后续版本开放</span>
-              </div>
-            </div>
-
-            <div class="widget-footer">
-              <button class="btn-danger spring-hover" @click="handleLogout" :disabled="isLoggingOut">
-                <span class="btn-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                </span>
-                {{ isLoggingOut ? '登出中...' : '退出登录' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
+
+    <!-- Toast -->
+    <Transition name="toast">
+      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+    </Transition>
+  </div>
+
+  <!-- 加载态 -->
+  <div v-else class="profile-loading">
+    <div class="spinner"></div>
+    <span>加载中...</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
 
+// Props — 支持他人主页
+const props = defineProps<{
+  userId?: string
+}>()
+
+const route = useRoute()
 const router = useRouter()
 const { user } = useAuth()
-const isLoggingOut = ref(false)
-const isLoadingPosts = ref(true)
 
-// 用户信息
-const userName = computed(() => {
-  if (user.value?.user_metadata?.nickname) return user.value.user_metadata.nickname
-  if (user.value?.email) return user.value.email.split('@')[0]
-  return '星火探险家'
+// ==================== 状态 ====================
+
+const isLoading = ref(true)
+const profile = ref<Record<string, any>>({})
+const stats = ref({
+  posts_count: 0,
+  products_count: 0,
+  followers_count: 0,
+  following_count: 0,
+  likes_received: 0,
 })
-const userEmail = computed(() => user.value?.email || '未绑定邮箱')
-const avatarInitial = computed(() => userName.value ? userName.value.charAt(0).toUpperCase() : '?')
+const isFollowing = ref(false)
+const currentTab = ref('posts')
+
+// 内容数据
+const posts = ref<any[]>([])
+const postsLoading = ref(false)
+const products = ref<any[]>([])
+const followersList = ref<any[]>([])
+const followingList = ref<any[]>([])
+
+const toastMsg = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+// ==================== 计算属性 ====================
+
+const profileId = computed(() => {
+  // 从 route.params 或 props 获取
+  const routeUserId = route.params.userId as string | undefined
+  return routeUserId || props.userId || user.value?.id || ''
+})
+
+const isMyProfile = computed(() => {
+  if (!user.value) return false
+  return profileId.value === user.value.id
+})
+
+const avatarInitial = computed(() =>
+  profile.value.nickname?.charAt(0)?.toUpperCase() || '?'
+)
+
 const daysSinceJoined = computed(() => {
-  if (!user.value?.created_at) return 1
-  const diff = new Date().getTime() - new Date(user.value.created_at).getTime()
+  if (!profile.value.created_at) return 1
+  const diff = Date.now() - new Date(profile.value.created_at).getTime()
   return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 })
 
-// ====== 真实统计数据 ======
-const stats = reactive({
-  totalPosts: 0,
-  totalLikes: 0,
-  totalMedia: 0
+const bannerStyle = computed(() => {
+  if (profile.value.banner_url) {
+    return { backgroundImage: `url(${profile.value.banner_url})` }
+  }
+  // 默认渐变 — 根据用户 ID 哈希生成不同色调
+  const hue = (profileId.value || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  return { background: `linear-gradient(135deg, hsl(${hue}, 45%, 28%), hsl(${(hue + 60) % 360}, 35%, 18%))` }
 })
 
-// ====== 我的动态 ======
-interface MyPost {
-  id: string
-  content: string
-  category: string
-  created_at: string
-  media_urls: string[]
-  likesCount: number
-}
+const visibleTabs = computed(() => {
+  const tabs = [
+    { key: 'posts', label: '动态', count: stats.value.posts_count },
+    { key: 'products', label: '商品', count: stats.value.products_count },
+  ]
+  // 收藏仅自己可见
+  if (isMyProfile.value) {
+    tabs.push({ key: 'favorites', label: '收藏', count: 0 })
+  }
+  tabs.push(
+    { key: 'followers', label: '粉丝', count: stats.value.followers_count },
+    { key: 'following', label: '关注', count: stats.value.following_count },
+    { key: 'info', label: '资料', count: 0 },
+  )
+  return tabs
+})
 
-const myPosts = ref<MyPost[]>([])
+// ==================== 数据加载 ====================
 
-const fetchMyData = async () => {
-  if (!user.value) return
-  isLoadingPosts.value = true
+async function loadProfile() {
+  if (!profileId.value) return
+  isLoading.value = true
 
   try {
-    // 获取我的帖子 + 点赞数
-    const { data: postsData, error } = await supabase
-      .from('posts')
-      .select('*, likes(count)')
-      .eq('author_id', user.value.id)
-      .order('created_at', { ascending: false })
+    // 获取用户资料
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', profileId.value)
+      .single()
 
-    if (error) throw error
-
-    if (postsData) {
-      myPosts.value = postsData.map(p => ({
-        id: p.id,
-        content: p.content,
-        category: p.category || 'general',
-        created_at: p.created_at,
-        media_urls: p.media_urls || [],
-        likesCount: p.likes?.[0]?.count || 0
-      }))
-
-      // 计算统计数据
-      stats.totalPosts = myPosts.value.length
-      stats.totalLikes = myPosts.value.reduce((sum, p) => sum + p.likesCount, 0)
-      stats.totalMedia = myPosts.value.reduce((sum, p) => sum + (p.media_urls?.length || 0), 0)
+    if (profileData) {
+      profile.value = profileData
     }
-  } catch (error) {
-    console.error('获取个人数据失败:', error)
+
+    // 获取统计数据
+    await loadStats()
+
+    // 获取关注状态（非自己）
+    if (!isMyProfile.value && user.value) {
+      const { data: followData } = await supabase
+        .from('follows')
+        .select('id')
+        .eq('follower_id', user.value.id)
+        .eq('following_id', profileId.value)
+        .maybeSingle()
+      isFollowing.value = !!followData
+    }
+  } catch (e) {
+    console.error('[Profile] loadProfile:', e)
   } finally {
-    isLoadingPosts.value = false
+    isLoading.value = false
+  }
+
+  // 默认加载动态
+  loadTabContent('posts')
+}
+
+async function loadStats() {
+  const uid = profileId.value
+
+  // 动态数
+  const { count: postsCount } = await supabase
+    .from('posts')
+    .select('*', { count: 'exact', head: true })
+    .eq('author_id', uid)
+    .eq('is_anonymous', false)
+
+  // 商品数 — 容错处理
+  let productsCount = 0
+  try {
+    const { count } = await supabase
+      .from('shop_products')
+      .select('*', { count: 'exact', head: true })
+      .eq('seller_id', uid)
+    productsCount = count || 0
+  } catch { /* 表可能不存在 */ }
+
+  // 粉丝数
+  let followersCount = 0
+  try {
+    const { count } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', uid)
+    followersCount = count || 0
+  } catch { /* 表可能不存在 */ }
+
+  // 关注数
+  let followingCount = 0
+  try {
+    const { count } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', uid)
+    followingCount = count || 0
+  } catch { /* 表可能不存在 */ }
+
+  // 获赞数
+  let totalLikes = 0
+  try {
+    const { count } = await supabase
+      .from('likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('author_id', uid)
+    totalLikes = count || 0
+  } catch { /* 表可能不存在 */ }
+
+  stats.value = {
+    posts_count: postsCount || 0,
+    products_count: productsCount,
+    followers_count: followersCount,
+    following_count: followingCount,
+    likes_received: totalLikes,
   }
 }
+
+// ==================== Tab 内容加载 ====================
+
+async function loadTabContent(tab: string) {
+  switch (tab) {
+    case 'posts': return loadPosts()
+    case 'products': return loadProducts()
+    case 'followers': return loadFollowers()
+    case 'following': return loadFollowing()
+  }
+}
+
+async function loadPosts() {
+  postsLoading.value = true
+  try {
+    const { data } = await supabase
+      .from('posts')
+      .select('id, content, media_urls, category, created_at')
+      .eq('author_id', profileId.value)
+      .eq('is_anonymous', false)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    posts.value = (data || []).map(p => ({
+      ...p,
+      likes_count: 0,
+      comments_count: 0,
+    }))
+  } catch (e) {
+    console.error('[Profile] loadPosts:', e)
+  } finally {
+    postsLoading.value = false
+  }
+}
+
+async function loadProducts() {
+  try {
+    const { data } = await supabase
+      .from('shop_products')
+      .select('id, title, price, images, status, created_at')
+      .eq('seller_id', profileId.value)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    products.value = data || []
+  } catch { products.value = [] }
+}
+
+async function loadFollowers() {
+  try {
+    const { data } = await supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', profileId.value)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (data && data.length > 0) {
+      const ids = data.map(d => d.follower_id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, nickname, avatar_url, bio, college')
+        .in('id', ids)
+      followersList.value = profiles || []
+    } else {
+      followersList.value = []
+    }
+  } catch { followersList.value = [] }
+}
+
+async function loadFollowing() {
+  try {
+    const { data } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', profileId.value)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (data && data.length > 0) {
+      const ids = data.map(d => d.following_id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, nickname, avatar_url, bio, college')
+        .in('id', ids)
+      followingList.value = profiles || []
+    } else {
+      followingList.value = []
+    }
+  } catch { followingList.value = [] }
+}
+
+// ==================== 操作 ====================
+
+function switchTab(tab: string) {
+  currentTab.value = tab
+  loadTabContent(tab)
+}
+
+async function toggleFollow() {
+  if (!user.value || !profileId.value) return
+
+  try {
+    if (isFollowing.value) {
+      await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', user.value.id)
+        .eq('following_id', profileId.value)
+      isFollowing.value = false
+      stats.value.followers_count = Math.max(0, stats.value.followers_count - 1)
+      showToast('已取消关注')
+    } else {
+      await supabase
+        .from('follows')
+        .insert({
+          follower_id: user.value.id,
+          following_id: profileId.value,
+        })
+      isFollowing.value = true
+      stats.value.followers_count += 1
+      showToast('关注成功 🎉')
+    }
+  } catch (e) {
+    console.error('[Profile] toggleFollow:', e)
+    showToast('操作失败，请重试')
+  }
+}
+
+function goToSettings() {
+  router.push('/app/settings/profile')
+}
+
+function startChat() {
+  router.push({ path: '/app/messages', query: { to: profileId.value } })
+}
+
+function shareProfile() {
+  const url = `${window.location.origin}/app/profile/${profileId.value}`
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('主页链接已复制 📋')
+  })
+}
+
+function viewUser(userId: string) {
+  router.push(`/app/profile/${userId}`)
+}
+
+function viewPost(postId: string) {
+  router.push({ path: '/app/wall', query: { highlight: postId } })
+}
+
+function viewProduct(productId: string) {
+  router.push({ path: '/app/shop', query: { product: productId } })
+}
+
+function showToast(msg: string) {
+  toastMsg.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastMsg.value = '' }, 2500)
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}小时前`
+  const diffDay = Math.floor(diffHr / 24)
+  if (diffDay < 30) return `${diffDay}天前`
+  return d.toLocaleDateString('zh-CN')
+}
+
+// ==================== 生命周期 ====================
 
 onMounted(() => {
-  if (user.value) {
-    fetchMyData()
-  } else {
-    setTimeout(fetchMyData, 1000)
-  }
+  loadProfile()
 })
 
-// 分类标签映射
-const getCatLabel = (cat: string): string => {
-  const map: Record<string, string> = {
-    general: '动态', confession: '表白', help: '求助', trade: '二手', lost: '失物'
+// 路由参数变化时重新加载
+watch(() => route.params.userId, (newId) => {
+  if (newId !== undefined) {
+    currentTab.value = 'posts'
+    loadProfile()
   }
-  return map[cat] || '动态'
-}
-
-// 时间格式化
-const formatTime = (dateStr: string): string => {
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
-  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-}
-
-// 退出登录
-const handleLogout = async () => {
-  try {
-    isLoggingOut.value = true
-    await supabase.auth.signOut()
-    router.push('/login')
-  } catch (error) {
-    console.error('登出失败:', error)
-  } finally {
-    isLoggingOut.value = false
-  }
-}
-
-// 热力图随机强度（模拟数据）
-const getRandomIntensity = () => {
-  const rand = Math.random()
-  if (rand < 0.6) return 'lv-0'
-  if (rand < 0.8) return 'lv-1'
-  if (rand < 0.9) return 'lv-2'
-  if (rand < 0.95) return 'lv-3'
-  return 'lv-4'
-}
+})
 </script>
 
 <style scoped>
-.profile-layout {
-  min-height: calc(100vh - 72px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: 40px;
-}
-
-.profile-banner {
-  height: 240px;
-  width: 100%;
-  background: url('https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1470&auto=format&fit=crop') center/cover;
-  position: relative;
-}
-.banner-overlay {
-  position: absolute; top:0;left:0;right:0;bottom:0;
-  background: linear-gradient(to bottom, rgba(10,10,15,0) 0%, rgba(10,10,15,1) 100%);
-}
-
-.profile-container {
-  max-width: 1100px;
+/* ====== 页面 ====== */
+.profile-page {
+  max-width: 960px;
   margin: 0 auto;
-  padding: 0 40px;
+  padding-bottom: 60px;
+}
+
+/* ====== Banner ====== */
+.profile-banner {
   position: relative;
-  margin-top: -80px;
+  height: 240px;
+  border-radius: 0 0 24px 24px;
+  overflow: hidden;
+}
+.banner-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+}
+.banner-fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, transparent 30%, var(--color-bg-primary) 100%);
+}
+.banner-content {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: flex-end; gap: 20px;
+  padding: 0 32px 24px;
 }
 
-/* Header */
-.profile-header {
-  display: flex;
-  gap: 32px;
-  align-items: center;
-  margin-bottom: 40px;
-  padding: 40px;
-  border-radius: 24px;
+/* ====== 头像 ====== */
+.avatar-area {
+  position: relative; flex-shrink: 0;
 }
-@media (max-width: 768px) {
-  .profile-header {
-    flex-direction: column;
-    text-align: center;
-    padding: 32px 20px;
-  }
+.avatar-ring {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  border: 3px solid var(--color-bg-primary);
+  overflow: hidden;
+  background: var(--color-bg-card);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
 }
-
-.p-avatar-wrapper { position: relative; flex-shrink: 0; }
-.p-avatar {
-  width: 120px; height: 120px; border-radius: 50%;
-  background: var(--gradient-brand);
-  border: 4px solid var(--color-bg-primary);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+.avatar-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.avatar-fallback {
+  width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 48px; font-weight: 800; color: white;
-}
-
-.p-info { flex: 1; }
-.p-info h1 {
-  font-size: 32px; font-weight: 800;
-  display: flex; align-items: center; gap: 16px;
-  margin-bottom: 8px; flex-wrap: wrap;
-}
-
-.spark-badge {
-  font-size: 14px; font-weight: 600; padding: 4px 12px;
-  background: rgba(249, 115, 22, 0.15);
-  color: var(--color-brand-orange);
-  border: 1px solid rgba(249, 115, 22, 0.3);
-  border-radius: 20px;
-  display: inline-flex; align-items: center; gap: 4px; cursor: default;
-}
-
-.user-status { color: var(--color-text-secondary); margin-bottom: 16px; font-size: 15px; }
-
-.user-meta { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-@media (max-width: 768px) { .user-meta { justify-content: center; } }
-.meta-tag {
-  font-size: 13px; padding: 6px 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px; color: var(--color-text-regular); cursor: default;
-}
-
-.bio { font-size: 15px; font-style: italic; color: var(--color-text-muted); }
-
-.header-actions { display: flex; gap: 12px; flex-shrink: 0; }
-.btn-primary {
-  background: var(--color-brand-blue); border: none;
-  padding: 0 24px; min-height: 44px; border-radius: 12px;
-  color: white; font-weight: 600; cursor: pointer;
-}
-.btn-primary:hover { filter: brightness(1.1); }
-.btn-ghost {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  min-height: 44px; border-radius: 12px; color: white; cursor: pointer;
-}
-.btn-ghost:hover { background: rgba(255,255,255,0.1); }
-.icon-only { width: 44px; display: flex; align-items: center; justify-content: center; }
-
-/* Grid */
-.content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
-@media (max-width: 900px) { .content-grid { grid-template-columns: 1fr; } }
-.main-col { display: flex; flex-direction: column; gap: 24px; }
-.side-col { display: flex; flex-direction: column; gap: 24px; }
-.widget { border-radius: 20px; padding: 24px; }
-.widget-header { margin-bottom: 24px; }
-.widget-header h3 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-
-/* 数量徽章 */
-.count-badge {
-  font-size: 12px; padding: 2px 8px;
-  background: rgba(79, 142, 247, 0.15);
-  color: #4f8ef7; border-radius: 10px;
-  font-weight: 600;
-}
-
-/* Heatmap */
-.heatmap { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 12px; }
-.h-col { display: flex; flex-direction: column; gap: 4px; }
-.h-cell { width: 14px; height: 14px; border-radius: 3px; background: rgba(255,255,255,0.05); }
-.lv-0 { background: rgba(255,255,255,0.03); }
-.lv-1 { background: rgba(16, 185, 129, 0.2); }
-.lv-2 { background: rgba(16, 185, 129, 0.5); }
-.lv-3 { background: rgba(16, 185, 129, 0.8); }
-.lv-4 { background: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); }
-.heatmap-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); justify-content: flex-end; }
-
-/* 我的动态 */
-.posts-loading { display: flex; flex-direction: column; gap: 12px; }
-.skel {
-  border-radius: 6px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  height: 14px;
-}
-.skel-line { height: 14px; }
-.w80 { width: 80%; }
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-.posts-empty {
-  text-align: center; padding: 24px 0;
-  color: var(--color-text-muted); font-size: 14px;
-}
-.go-post-btn {
-  display: inline-block;
-  margin-top: 12px; padding: 8px 20px;
-  background: var(--gradient-brand);
-  color: white; border-radius: 8px;
-  font-weight: 600; font-size: 13px;
-  transition: transform 0.2s;
-}
-.go-post-btn:hover { transform: translateY(-2px); }
-
-.my-posts-list { display: flex; flex-direction: column; gap: 16px; }
-.my-post-item {
-  padding: 16px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 12px;
-  transition: all 0.2s;
-}
-.my-post-item:hover { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
-
-.mp-content {
-  font-size: 14px; line-height: 1.5;
+  font-size: 36px; font-weight: 700;
   color: var(--color-text-primary);
-  margin-bottom: 8px;
+  background: var(--color-bg-card-hover);
 }
-.mp-meta {
-  display: flex; align-items: center; gap: 10px;
+.level-pill {
+  position: absolute; bottom: -4px; left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 10px; font-weight: 700;
+  background: var(--gradient-brand);
+  color: white;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* ====== 信息区 ====== */
+.info-area { flex: 1; min-width: 0; }
+.name-row {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.name-row h1 {
+  font-size: 22px; font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+.verified-tag {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(16,185,129,0.12); color: #10b981;
+}
+.verified-tag.student {
+  background: rgba(79,142,247,0.12); color: #4f8ef7;
+}
+.spark-id {
   font-size: 12px; color: var(--color-text-muted);
+  margin: 4px 0 8px;
 }
-.mp-cat {
-  padding: 2px 8px; border-radius: 4px;
-  font-size: 10px; font-weight: 600;
+.meta-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.meta-chip {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 10px; border-radius: 6px;
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-secondary);
 }
-.mp-cat.cat-general { background: rgba(79,142,247,0.1); color: #4f8ef7; }
-.mp-cat.cat-confession { background: rgba(244,63,94,0.1); color: #f43f5e; }
-.mp-cat.cat-help { background: rgba(249,115,22,0.1); color: #f97316; }
-.mp-cat.cat-trade { background: rgba(16,185,129,0.1); color: #10b981; }
-.mp-cat.cat-lost { background: rgba(139,92,246,0.1); color: #8b5cf6; }
-.mp-likes { color: var(--color-text-muted); }
-
-.mp-thumbs { display: flex; gap: 6px; margin-top: 10px; }
-.mp-thumb {
-  width: 48px; height: 48px; border-radius: 8px;
-  object-fit: cover; border: 1px solid rgba(255,255,255,0.06);
+.bio-text {
+  font-size: 13px; color: var(--color-text-secondary);
+  margin: 0; line-height: 1.5;
+  max-width: 480px;
 }
 
-.view-all-link {
-  display: block; text-align: center;
-  color: var(--color-brand-blue);
-  font-size: 13px; font-weight: 500;
-  padding-top: 8px;
+/* ====== 操作按钮 ====== */
+.action-area {
+  display: flex; gap: 8px;
+  flex-shrink: 0;
+  align-self: flex-end;
 }
-.view-all-link:hover { text-decoration: underline; }
-
-/* Goals */
-.goal-list { display: flex; flex-direction: column; gap: 24px; }
-.g-info { display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 10px; font-weight: 500; }
-.progress-track { width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
-.progress-bar { height: 100%; border-radius: 4px; box-shadow: 0 0 10px currentColor; }
-
-/* Side Stats */
-.grid-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.s-brick {
-  background: rgba(255,255,255,0.03);
-  border-radius: 16px; padding: 20px 16px;
-  display: flex; flex-direction: column;
-  align-items: center; text-align: center;
-  border: 1px solid rgba(255,255,255,0.05); cursor: default;
+.btn-action {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
 }
-.s-brick:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); }
-.s-brick .num { font-size: 28px; font-weight: 800; color: white; margin-bottom: 6px; }
-.s-brick .lbl { font-size: 13px; color: var(--color-text-secondary); }
-
-/* Settings */
-.settings-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
-.setting-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 16px; background: rgba(255,255,255,0.03);
-  border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); cursor: pointer;
+.btn-action.primary {
+  background: var(--gradient-brand); color: white;
 }
-.setting-item:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); }
-.s-text { font-size: 15px; font-weight: 500; color: var(--color-text-regular); }
+.btn-action.ghost {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.btn-action.following {
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
 
-/* Footer */
-.widget-footer { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 24px; }
-.btn-danger {
-  width: 100%; min-height: 44px;
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444; border-radius: 12px;
-  font-size: 15px; font-weight: 600;
+/* ====== 统计条 ====== */
+.stats-strip {
+  display: flex; justify-content: center;
+  gap: 0;
+  margin: 16px 32px 0;
+  padding: 14px 0;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+.stat-cell {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px;
+  background: none; border: none; cursor: pointer;
+  transition: opacity 0.15s;
+  padding: 4px 0;
+}
+.stat-cell:hover { opacity: 0.7; }
+.stat-cell strong {
+  font-size: 18px; font-weight: 700;
+  color: var(--color-text-primary);
+}
+.stat-cell span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* ====== Tab 导航 ====== */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin: 16px 32px 0;
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+.tab-item {
+  position: relative;
+  padding: 12px 20px;
+  background: none; border: none;
+  font-size: 14px; font-weight: 500;
+  color: var(--color-text-muted);
   cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: color 0.15s;
+  white-space: nowrap;
 }
-.btn-danger:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.tab-item:hover { color: var(--color-text-primary); }
+.tab-item.active {
+  color: var(--color-text-primary); font-weight: 600;
+}
+.tab-item.active::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 16px; right: 16px;
+  height: 2px;
+  background: var(--theme-color, #4f8ef7);
+  border-radius: 1px;
+}
+.tab-count {
+  margin-left: 4px;
+  font-size: 11px; font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+/* ====== 内容区 ====== */
+.content-area {
+  padding: 20px 32px;
+}
+
+/* 加载 / 空状态 */
+.loading-hint, .empty-hint {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 48px 20px;
+  text-align: center;
+}
+.empty-emoji { font-size: 40px; opacity: 0.3; }
+.empty-hint p { font-size: 14px; color: var(--color-text-muted); margin: 0; }
+.empty-cta {
+  font-size: 13px; font-weight: 600;
+  color: var(--theme-color, #4f8ef7);
+  text-decoration: none;
+}
+
+/* ====== 动态列表 ====== */
+.posts-list { display: flex; flex-direction: column; gap: 12px; }
+.post-card {
+  padding: 18px 20px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.post-card:hover { border-color: var(--color-border-hover); }
+.post-text {
+  font-size: 14px; line-height: 1.6;
+  color: var(--color-text-primary);
+  margin: 0 0 10px;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.post-media {
+  display: flex; gap: 8px; margin-bottom: 10px;
+}
+.media-thumb {
+  width: 80px; height: 80px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.media-more {
+  display: flex; align-items: center; justify-content: center;
+  width: 80px; height: 80px;
+  border-radius: 10px;
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-muted);
+  font-size: 14px; font-weight: 600;
+}
+.post-bottom {
+  display: flex; align-items: center; gap: 16px;
+}
+.post-stat { font-size: 12px; color: var(--color-text-muted); }
+.post-time { margin-left: auto; font-size: 12px; color: var(--color-text-muted); }
+
+/* ====== 商品网格 ====== */
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.product-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.product-card:hover { border-color: var(--color-border-hover); transform: translateY(-2px); }
+.prod-img-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--color-bg-card-hover);
+}
+.prod-img { width: 100%; height: 100%; object-fit: cover; }
+.prod-img-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; font-size: 32px;
+}
+.sold-tag {
+  position: absolute; top: 8px; right: 8px;
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(0,0,0,0.6); color: white;
+  font-size: 11px; font-weight: 600;
+}
+.prod-info {
+  padding: 10px 12px;
+}
+.prod-info h4 {
+  font-size: 13px; font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 4px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.prod-price {
+  font-size: 15px; font-weight: 700;
+  color: #f43f5e;
+}
+
+/* ====== 用户列表 ====== */
+.user-list { display: flex; flex-direction: column; gap: 8px; }
+.user-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.user-card:hover { border-color: var(--color-border-hover); }
+.uc-avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--color-bg-card-hover);
+}
+.uc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.uc-avatar span {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  font-size: 18px; font-weight: 700;
+  color: var(--color-text-secondary);
+}
+.uc-info { min-width: 0; }
+.uc-info strong {
+  display: block;
+  font-size: 14px; color: var(--color-text-primary);
+}
+.uc-info span {
+  font-size: 12px; color: var(--color-text-muted);
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ====== 资料卡片 ====== */
+.info-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 24px;
+}
+.info-card h3 {
+  font-size: 16px; color: var(--color-text-primary);
+  margin: 0 0 16px;
+}
+.info-grid { display: flex; flex-direction: column; gap: 12px; }
+.info-row {
+  display: flex; align-items: baseline; gap: 16px;
+}
+.info-key {
+  min-width: 80px;
+  font-size: 13px; color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.info-val {
+  font-size: 13px; color: var(--color-text-primary);
+}
+
+/* ====== Toast ====== */
+.toast {
+  position: fixed; left: 50%; bottom: 32px;
+  transform: translateX(-50%);
+  padding: 10px 22px; border-radius: 99px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-elevated);
+  font-size: 14px; z-index: 100;
+}
+.toast-enter-active, .toast-leave-active { transition: all 0.2s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+/* ====== 加载页 ====== */
+.profile-loading {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 120px 20px; text-align: center;
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--theme-color, #4f8ef7);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ====== 响应式 ====== */
+@media (max-width: 768px) {
+  .profile-banner { height: 200px; }
+  .banner-content { padding: 0 16px 20px; flex-wrap: wrap; }
+  .avatar-ring { width: 72px; height: 72px; }
+  .avatar-fallback { font-size: 28px; }
+  .name-row h1 { font-size: 18px; }
+  .action-area { width: 100%; justify-content: stretch; }
+  .stats-strip { margin: 12px 16px 0; }
+  .tab-bar { margin: 12px 16px 0; }
+  .content-area { padding: 16px; }
+  .products-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .banner-content { gap: 12px; }
+  .info-area { width: 100%; }
+}
 </style>

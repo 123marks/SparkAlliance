@@ -15,7 +15,7 @@ import About from '../pages/landing/About.vue'
 // 应用区
 import AppLayout from '../pages/app/AppLayout.vue'
 import AppHome from '../pages/app/AppHome.vue'
-import Chat from '../pages/app/Chat.vue'
+
 import CampusWall from '../pages/app/CampusWall.vue'
 import Profile from '../pages/app/Profile.vue'
 
@@ -79,29 +79,48 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true }, // 添加路由元信息用于拦截
     redirect: '/app/home',
     children: [
-      // 核心功能
+      // ===== 核心功能 =====
       { path: 'home', name: 'AppHome', component: AppHome },
-      { path: 'chat', name: 'AppChat', component: Chat },
+      { path: 'chat', name: 'AppChat', component: () => import('../pages/app/Chat.vue') },
       { path: 'companion', name: 'AppCompanion', component: () => import('../pages/app/Companion.vue') },
-      // 生活服务
-      { path: 'schedule', name: 'AppSchedule', component: () => import('../pages/app/Schedule.vue') },
-      { path: 'planner', name: 'AppPlanner', component: () => import('../pages/app/Planner.vue') },
+      { path: 'schedule', name: 'AppSchedule', component: () => import('../pages/app/SmartSchedule.vue') },
+      // ===== 校园生活 =====
+      { path: 'wall', name: 'AppWall', component: CampusWall },
       { path: 'shop', name: 'AppShop', component: () => import('../pages/app/Shop.vue') },
       { path: 'health', name: 'AppHealth', component: () => import('../pages/app/Health.vue') },
-      // 社区互动
-      { path: 'wall', name: 'AppWall', component: CampusWall },
-      { path: 'tarot', name: 'AppTarot', component: () => import('../pages/app/Tarot.vue') },
-      { path: 'study-room', name: 'AppStudyRoom', component: () => import('../pages/app/StudyRoom.vue') },
-      // 学习成长
-      { path: 'mentors', name: 'AppMentors', component: () => import('../pages/app/Mentors.vue') },
-      { path: 'resources', name: 'AppResources', component: () => import('../pages/app/Resources.vue') },
+      // ===== 学习成长 =====
+      { path: 'learn', name: 'AppLearn', component: () => import('../pages/app/LearnHub.vue') },
+      { path: 'legacy', name: 'AppLegacy', component: () => import('../pages/app/SparkLegacy.vue') },
       { path: 'talent', name: 'AppTalent', component: () => import('../pages/app/Talent.vue') },
       { path: 'news', name: 'AppNews', component: () => import('../pages/app/News.vue') },
       { path: 'cocreate', name: 'AppCoCreate', component: () => import('../pages/app/CoCreate.vue') },
-      { path: 'messages', name: 'AppMessages', component: () => import('../pages/app/SparkMessages.vue') },
-      // 个人
+      // ===== 旧路由兼容重定向 =====
+      { path: 'planner', redirect: '/app/schedule' },
+      { path: 'tarot', redirect: '/app/schedule' },
+      { path: 'study-room', redirect: '/app/learn' },
+      { path: 'resources', redirect: '/app/learn' },
+      { path: 'mentors', redirect: '/app/legacy' },
+      { path: 'messages', redirect: '/app/legacy' },
+      // 设置中心（完整路由树）
+      {
+        path: 'settings',
+        component: () => import('../pages/app/settings/Settings.vue'),
+        redirect: '/app/settings/profile',
+        children: [
+          { path: 'profile', name: 'SettingsProfile', component: () => import('../pages/app/settings/ProfileSettings.vue') },
+          { path: 'security', name: 'SettingsSecurity', component: () => import('../pages/app/settings/SecuritySettings.vue') },
+          { path: 'privacy', name: 'SettingsPrivacy', component: () => import('../pages/app/settings/PrivacySettings.vue') },
+          { path: 'notifications', name: 'SettingsNotifications', component: () => import('../pages/app/settings/NotificationSettings.vue') },
+          { path: 'appearance', name: 'SettingsAppearance', component: () => import('../pages/app/settings/AppearanceSettings.vue') },
+          { path: 'features', name: 'SettingsFeatures', component: () => import('../pages/app/settings/FeatureSettings.vue') },
+          { path: 'data', name: 'SettingsData', component: () => import('../pages/app/settings/DataSettings.vue') },
+          { path: 'about', name: 'SettingsAbout', component: () => import('../pages/app/settings/AboutSettings.vue') },
+        ]
+      },
+      // 个人主页
       { path: 'profile', name: 'AppProfile', component: Profile },
-      { path: 'feedback', name: 'AppFeedback', component: () => import('../pages/app/Placeholder.vue') }
+      { path: 'profile/:userId', name: 'AppUserProfile', component: Profile, props: true },
+      { path: 'feedback', name: 'AppFeedback', component: () => import('../pages/app/FeedbackCenter.vue') }
     ]
   },
   // 404

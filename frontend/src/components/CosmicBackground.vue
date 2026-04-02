@@ -7,8 +7,13 @@
  * CosmicBackground — 宇宙深空陨石背景
  * 流星划过 + 陨石缓慢漂移 + 星尘闪烁
  * 低透明度，不干扰前景内容
+ * 支持 enabled prop 控制粒子是否渲染
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+
+const props = withDefaults(defineProps<{
+  enabled?: boolean
+}>(), { enabled: true })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let animationId: number
@@ -376,9 +381,32 @@ onMounted(() => {
   if (!ctx) return
   w = canvasRef.value.width = window.innerWidth
   h = canvasRef.value.height = window.innerHeight
-  init()
-  animate(ctx)
+
+  // 仅在启用时启动动画
+  if (props.enabled) {
+    init()
+    animate(ctx)
+  }
+
   window.addEventListener('resize', handleResize)
+
+  // 监听 enabled 变化，动态启停粒子
+  watch(() => props.enabled, (enabled) => {
+    if (enabled) {
+      if (!canvasRef.value) return
+      const c = canvasRef.value.getContext('2d')
+      if (!c) return
+      init()
+      animate(c)
+    } else {
+      cancelAnimationFrame(animationId)
+      // 清空画布
+      if (canvasRef.value) {
+        const c = canvasRef.value.getContext('2d')
+        if (c) c.clearRect(0, 0, w, h)
+      }
+    }
+  })
 })
 
 onBeforeUnmount(() => {

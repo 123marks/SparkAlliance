@@ -861,7 +861,7 @@ export function useShop() {
   async function getAIPriceSuggestion(
     categoryId: number,
     condition: string,
-    title: string,
+    _title: string,
   ): Promise<{ avgPrice: number; minPrice: number; maxPrice: number; suggestion: string } | null> {
     try {
       // 查询同分类同成色的活跃商品

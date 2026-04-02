@@ -1,13 +1,59 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>frontend</title>
+</head>
+
+<body>
+  <!-- 防闪烁脚本：在 Vue 挂载前读取 localStorage 外观设置，避免主题/字体跳变 -->
+  <script>
+    ; (function () {
+      try {
+        var raw = localStorage.getItem('spark-appearance')
+        if (!raw) return
+        var s = JSON.parse(raw)
+        var r = document.documentElement
+        // 主题色
+        if (s.primaryColor) {
+          r.style.setProperty('--color-brand-blue', s.primaryColor)
+          r.style.setProperty('--theme-color', s.primaryColor)
+          r.style.setProperty('--gradient-brand', 'linear-gradient(135deg,' + s.primaryColor + ',#8b5cf6)')
+          r.style.setProperty('--shadow-glow-blue', '0 0 20px ' + s.primaryColor + '33')
+        }
+        // 字体
+        if (s.fontSize) r.style.fontSize = s.fontSize + 'px'
+        if (s.fontFamily) document.body.style.fontFamily = s.fontFamily
+        // 主题模式 — 与 applyAppearanceToDOM 完全同步
+        var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches
+        var isLight = s.theme === 'light' || (s.theme === 'auto' && prefersLight)
+        r.dataset.theme = isLight ? 'light' : 'dark'
+        if (isLight) {
+          r.style.setProperty('--color-bg-primary', '#f5f5f8')
+          r.style.setProperty('--color-bg-secondary', '#eaeaef')
+          r.style.setProperty('--color-bg-card', 'rgba(255, 255, 255, 0.8)')
+          r.style.setProperty('--color-bg-card-hover', 'rgba(0, 0, 0, 0.04)')
+          r.style.setProperty('--color-border', 'rgba(0, 0, 0, 0.08)')
+          r.style.setProperty('--color-border-hover', 'rgba(0, 0, 0, 0.18)')
+          r.style.setProperty('--color-text-primary', '#1a1a2e')
+          r.style.setProperty('--color-text-secondary', 'rgba(26, 26, 46, 0.65)')
+          r.style.setProperty('--color-text-muted', 'rgba(26, 26, 46, 0.4)')
+          r.style.setProperty('--shadow-card', '0 2px 12px rgba(0, 0, 0, 0.08)')
+          r.style.setProperty('--shadow-elevated', '0 4px 24px rgba(0, 0, 0, 0.12)')
+        }
+        // 动画/粒子
+        if (s.animationEnabled === false) r.classList.add('reduce-motion')
+        if (s.particleEffect === false) r.classList.add('particle-effect-disabled')
+        if (s.compactMode === true) r.classList.add('compact-mode')
+        if (s.cardStyle) r.dataset.cardStyle = s.cardStyle
+      } catch (e) { }
+    })()
+  </script>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

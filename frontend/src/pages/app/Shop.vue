@@ -520,7 +520,7 @@ const {
   categories, products, myProducts, myFavorites, myBuyOrders, mySellOrders, loading, totalCount,
   fetchCategories, searchProducts, getProductDetail, getSellerCredit,
   publishProduct, updateProduct, toggleFavorite, fetchMyFavorites,
-  getOrCreateConversation, sendMessage, getSellerShop,
+  getOrCreateConversation, sendMessage,
   acceptTransaction, setMeeting, confirmReceive, cancelTransaction,
   fetchMyBuyOrders, fetchMySellOrders, fetchMyProducts,
   submitReview, reportItem,

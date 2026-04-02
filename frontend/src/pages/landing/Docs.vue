@@ -357,11 +357,6 @@ const faqs = reactive([
   { q: '如何联系客服？', a: '你可以在社区发帖、发送邮件至 support@sparkalliance.cn，或关注微信公众号「星火联盟 SparkAlliance」获得在线客服。', open: false },
 ])
 
-// 复制链接
-const copyLink = () => {
-  navigator.clipboard.writeText(window.location.href)
-  alert('✅ 链接已复制到剪贴板')
-}
 </script>
 
 <style scoped>

@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest'
 import {
   ANONYMOUS_PLACEHOLDER_NAME,
   buildCampusWallUploadOptions,
+  buildCampusHotHighlights,
+  calculateCampusPostHeat,
   createAnonymousSeed,
   createAnonymousHandle,
   extractStoragePathFromPublicUrl,
   inferAnonymousState,
   isSupportedVideoFile,
   resolveAuthorDisplay,
+  sortCampusPostsByHeat,
 } from './campusWall'
 
 describe('createAnonymousHandle', () => {
@@ -110,5 +113,61 @@ describe('extractStoragePathFromPublicUrl', () => {
     expect(extractStoragePathFromPublicUrl(
       'https://example.supabase.co/storage/v1/object/public/campus-wall/posts/user-1/video%201.mp4?download=1',
     )).toBe('posts/user-1/video 1.mp4')
+  })
+})
+
+describe('calculateCampusPostHeat', () => {
+  it('weights comments higher than likes for community heat', () => {
+    expect(calculateCampusPostHeat({ likes: 8, comments: 3 })).toBe(25)
+  })
+})
+
+describe('sortCampusPostsByHeat', () => {
+  it('sorts by heat first and falls back to newer posts when heat ties', () => {
+    const sorted = sortCampusPostsByHeat([
+      { id: 'older-hot', likes: 4, comments: 2, createdAt: '2026-03-28T10:00:00.000Z' },
+      { id: 'newer-hot', likes: 5, comments: 2, createdAt: '2026-03-29T10:00:00.000Z' },
+      { id: 'cold', likes: 1, comments: 0, createdAt: '2026-03-30T10:00:00.000Z' },
+    ])
+
+    expect(sorted.map(post => post.id)).toEqual(['newer-hot', 'older-hot', 'cold'])
+  })
+})
+
+describe('buildCampusHotHighlights', () => {
+  it('builds concise hot post highlights for the dashboard', () => {
+    const highlights = buildCampusHotHighlights([
+      {
+        id: 'post-1',
+        content: '考研自习室今晚还有空位，想一起冲刺的同学可以来留言，我整理一下时间表。',
+        likes: 12,
+        comments: 4,
+        createdAt: '2026-03-30T08:00:00.000Z',
+        authorId: 'user-1',
+        authorName: '小满',
+        anonymousSeed: null,
+        isAnonymous: false,
+      },
+      {
+        id: 'post-2',
+        content: '匿名说一句，图书馆三楼靠窗的位置今天的夕阳真的很好看。',
+        likes: 7,
+        comments: 5,
+        createdAt: '2026-03-30T09:00:00.000Z',
+        authorId: 'user-2',
+        authorName: ANONYMOUS_PLACEHOLDER_NAME,
+        anonymousSeed: 'anon-2',
+        isAnonymous: true,
+      },
+    ])
+
+    expect(highlights).toHaveLength(2)
+    expect(highlights[0]).toMatchObject({
+      id: 'post-1',
+      to: '/app/wall',
+      heat: '12 共鸣 · 4 评论',
+    })
+    expect(highlights[0].preview).toContain('考研自习室今晚还有空位')
+    expect(highlights[1].author).not.toBe(ANONYMOUS_PLACEHOLDER_NAME)
   })
 })

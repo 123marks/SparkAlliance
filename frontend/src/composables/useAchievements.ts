@@ -147,7 +147,7 @@ export function useAchievements() {
   }
 
   // 检查并解锁成就
-  async function checkAndUnlockAchievements(eventType: 'task_complete' | 'goal_complete' | 'habit_check') {
+  async function checkAndUnlockAchievements(_eventType: 'task_complete' | 'goal_complete' | 'habit_check') {
     if (!user.value) return
 
     // 先刷新统计数据
@@ -337,7 +337,6 @@ export function useAchievements() {
     if (!user.value) return false
     
     const now = new Date()
-    const hour = now.getHours()
     const day = now.getDay()
 
     switch (achievementKey) {

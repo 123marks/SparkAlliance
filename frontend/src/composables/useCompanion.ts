@@ -738,9 +738,13 @@ export function useCompanion() {
       })
       // 添加成员
       for (const mid of memberIds) {
-        await supabase.from('group_members').insert({
-          group_id: group.id, user_id: mid, role: 'member',
-        }).catch(() => {})
+        try {
+          await supabase.from('group_members').insert({
+            group_id: group.id, user_id: mid, role: 'member',
+          })
+        } catch {
+          // 忽略单个成员插入失败，避免影响整个群创建流程
+        }
       }
       return group.id
     } catch (e) { console.error(e); return null }

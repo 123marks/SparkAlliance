@@ -1,239 +1,305 @@
 <template>
   <div class="app-home">
-    <!-- 顶部欢迎区 -->
-    <section class="hero-section">
-      <div class="hero-content">
-        <h1 class="hero-title">{{ greeting }}，{{ userName }}</h1>
-        <p class="hero-sub">{{ currentDate }} · {{ motivationalText }}</p>
+    <section class="hero">
+      <div>
+        <span class="hero-kicker">SparkAlliance 主控台</span>
+        <h1>{{ greeting }}，{{ userName }}</h1>
+        <p>{{ currentDate }} · {{ heroSubtitle }}</p>
       </div>
       <div class="hero-actions">
-        <router-link to="/app/chat" class="action-btn primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>
-          AI 问一问
-        </router-link>
-        <router-link to="/app/wall" class="action-btn ghost">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>
-          去发帖
-        </router-link>
+        <button class="btn ghost" type="button" @click="loadDashboard">刷新主控台</button>
+        <router-link to="/app/planner" class="btn primary">去完成规划</router-link>
       </div>
     </section>
 
-    <!-- 统计概览 -->
     <section class="stats-strip">
-      <div class="stat-chip" v-for="stat in miniStats" :key="stat.label">
-        <div class="stat-icon" :style="{ color: stat.color }">
-          <span v-html="stat.svg"></span>
-        </div>
-        <div class="stat-body">
-          <span class="stat-value">{{ stat.value }}</span>
-          <span class="stat-label">{{ stat.label }}</span>
+      <div v-for="stat in miniStats" :key="stat.label" class="stat-chip">
+        <div class="stat-icon" :style="{ color: stat.color }" v-html="stat.svg"></div>
+        <div>
+          <strong>{{ stat.value }}</strong>
+          <span>{{ stat.label }}</span>
         </div>
       </div>
     </section>
 
-    <!-- Bento Grid 主区域 -->
-    <section class="bento-grid">
-      <!-- 今日日程 -->
-      <div class="bento-card schedule-card">
+    <section class="grid">
+      <div class="card command-card">
         <div class="card-head">
-          <h3>📅 今日日程</h3>
+          <h3>闭环行动</h3>
+          <span>把主控台变成下一步行动入口</span>
+        </div>
+        <router-link
+          v-for="action in dashboardActions"
+          :key="action.id"
+          :to="action.to"
+          class="action-card"
+          :class="`tone-${action.emphasis}`"
+        >
+          <span class="action-icon">{{ action.icon }}</span>
+          <div class="action-copy">
+            <strong>{{ action.title }}</strong>
+            <span>{{ action.description }}</span>
+          </div>
+          <span class="action-cta">{{ action.cta }}</span>
+        </router-link>
+      </div>
+
+      <div class="card span-5">
+        <div class="card-head">
+          <h3>今日日程</h3>
           <router-link to="/app/schedule" class="more-link">管理 →</router-link>
         </div>
-        <div class="timeline-list">
-          <div class="tl-item" v-for="(event, i) in upcomingEvents" :key="i">
-            <div class="tl-dot" :class="event.type"></div>
-            <div class="tl-body">
-              <span class="tl-title">{{ event.title }}</span>
-              <span class="tl-time">{{ event.time }}</span>
+        <div class="list">
+          <div v-for="event in todaySchedule" :key="event.id" class="list-item">
+            <span class="dot" :class="event.kind"></span>
+            <div>
+              <strong>{{ event.title }}</strong>
+              <span>{{ event.time }}</span>
             </div>
           </div>
-          <div class="tl-empty" v-if="upcomingEvents.length === 0">
-            <span>今天暂无安排，享受自由时光 ☀️</span>
-          </div>
+          <p v-if="todaySchedule.length === 0" class="empty">今天还没有安排，去日程页规划一下吧。</p>
         </div>
       </div>
 
-      <!-- 最近 AI 对话 -->
-      <div class="bento-card ai-card">
+      <div class="card span-5">
         <div class="card-head">
-          <h3>🤖 AI 助手</h3>
-          <router-link to="/app/chat" class="more-link">全部 →</router-link>
+          <h3>规划推进</h3>
+          <router-link to="/app/planner" class="more-link">查看全部 →</router-link>
         </div>
-        <div class="chat-list">
-          <div class="chat-item" v-for="(chat, i) in recentChats" :key="i">
-            <div class="chat-dot" :style="{ background: chat.color }"></div>
-            <div class="chat-body">
-              <span class="chat-title">{{ chat.title }}</span>
-              <span class="chat-meta">{{ chat.time }} · {{ chat.desc }}</span>
+        <div class="list">
+          <div v-for="task in todayPlannerTasks" :key="task.id" class="list-item">
+            <span class="dot" :class="{ urgent: task.isOverdue }"></span>
+            <div>
+              <strong>{{ task.title }}</strong>
+              <span>{{ task.meta }}</span>
             </div>
           </div>
+          <p v-if="todayPlannerTasks.length === 0" class="empty">今天没有待处理任务，适合开始一个新的目标。</p>
         </div>
       </div>
 
-      <!-- 每日灵感 (可随机切换 + 分类标签) -->
-      <div class="bento-card quote-card">
-        <div class="quote-top">
-          <span class="quote-tag">{{ currentQuote.tag }}</span>
-          <button class="quote-refresh" @click="refreshQuote" title="换一条">🔄</button>
-        </div>
-        <blockquote class="quote-text">{{ currentQuote.text }}</blockquote>
-        <cite class="quote-author">— {{ currentQuote.author }}</cite>
-      </div>
-
-      <!-- 校园热榜 -->
-      <div class="bento-card hot-card">
+      <div class="card span-4">
         <div class="card-head">
-          <h3>🔥 热门动态</h3>
-          <router-link to="/app/wall" class="more-link">更多 →</router-link>
+          <h3>购物动态</h3>
+          <router-link to="/app/shop" class="more-link">去处理 →</router-link>
         </div>
-        <div class="hot-list">
-          <div class="hot-item" v-for="(item, i) in hotPosts" :key="i">
-            <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
-            <span class="hot-title">{{ item.title }}</span>
-            <span class="hot-heat">{{ item.heat }}</span>
+        <div class="shop-stats">
+          <div>
+            <strong>{{ dashboardSnapshot.activeListings }}</strong>
+            <span>在售商品</span>
+          </div>
+          <div>
+            <strong>{{ dashboardSnapshot.pendingTransactions }}</strong>
+            <span>待处理交易</span>
+          </div>
+          <div>
+            <strong>{{ dashboardSnapshot.unreadShopMessages }}</strong>
+            <span>未读消息</span>
           </div>
         </div>
-      </div>
-
-      <!-- 倒计时 -->
-      <div class="bento-card countdown-card">
-        <div class="card-head"><h3>⏰ 倒计时</h3></div>
-        <div class="cd-list">
-          <div class="cd-item" v-for="cd in countdowns" :key="cd.label">
-            <div class="cd-days" :style="{ color: cd.color }">{{ cd.days }}</div>
-            <div class="cd-body">
-              <span class="cd-label">{{ cd.label }}</span>
-              <span class="cd-date">{{ cd.date }}</span>
-            </div>
-          </div>
+        <div class="signal-list">
+          <div v-for="signal in shopSignals" :key="signal" class="signal">{{ signal }}</div>
         </div>
       </div>
 
-      <!-- 每日一问 -->
-      <div class="bento-card trivia-card">
+      <div class="card note-card span-8">
         <div class="card-head">
-          <h3>🧩 每日一问</h3>
-          <button class="more-link" @click="refreshTrivia" style="cursor:pointer;background:none;border:none">换一个</button>
-        </div>
-        <p class="trivia-question">{{ currentTrivia.q }}</p>
-        <button class="trivia-reveal" @click="triviaRevealed = !triviaRevealed">
-          {{ triviaRevealed ? '收起答案' : '💡 点击看答案' }}
-        </button>
-        <Transition name="fade">
-          <p v-if="triviaRevealed" class="trivia-answer">{{ currentTrivia.a }}</p>
-        </Transition>
-      </div>
-
-      <!-- 快速笔记 -->
-      <div class="bento-card note-card">
-        <div class="card-head">
-          <h3>📝 快速笔记</h3>
-          <span class="note-saved" v-if="noteSaved">✓ 已保存</span>
+          <h3>快速笔记</h3>
+          <span v-if="noteSaved" class="saved">已保存</span>
         </div>
         <textarea
           v-model="quickNote"
           class="note-textarea"
-          placeholder="在这里记录灵感、想法或待办事项..."
-          rows="4"
+          rows="5"
+          placeholder="把想法先记下来，再决定是否转成今日任务。"
           @input="saveNote"
         ></textarea>
-        <div class="note-meta">{{ quickNote.length }} 字 · 自动保存至本地</div>
+        <div class="note-actions">
+          <span>{{ quickNote.length }} 字 · 自动保存到本地</span>
+          <div class="note-buttons">
+            <button class="btn ghost" type="button" @click="clearNote" :disabled="!quickNote.trim()">清空</button>
+            <button class="btn primary" type="button" @click="convertNoteToTask" :disabled="!quickNote.trim() || convertingNote">
+              {{ convertingNote ? '转换中...' : '转为今日任务' }}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- 本周学习进度 -->
-      <div class="bento-card progress-card">
+      <div class="card progress-card span-4">
         <div class="card-head">
-          <h3>📊 本周学习</h3>
-          <span class="progress-pct">{{ weeklyProgress }}%</span>
+          <h3>本周执行率</h3>
+          <strong class="progress-pct">{{ weeklyProgress.percent }}%</strong>
         </div>
-        <div class="progress-ring-wrap">
-          <svg class="progress-ring" viewBox="0 0 120 120">
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" class="ring">
             <circle class="ring-bg" cx="60" cy="60" r="50" />
             <circle class="ring-fg" cx="60" cy="60" r="50" :stroke-dashoffset="ringOffset" />
           </svg>
           <div class="ring-label">
-            <span class="ring-hours">{{ weeklyHours }}</span>
-            <span class="ring-unit">小时</span>
+            <strong>{{ dashboardSnapshot.streakDays }}</strong>
+            <span>连续天数</span>
           </div>
         </div>
-        <div class="progress-stats">
-          <div class="ps-item"><span class="ps-val">{{ weeklyDays }}/7</span><span class="ps-label">活跃天数</span></div>
-          <div class="ps-item"><span class="ps-val">{{ weeklyGoal }}h</span><span class="ps-label">目标时长</span></div>
+        <p class="progress-summary">{{ weeklyProgress.summary }}</p>
+      </div>
+
+      <div class="card quote-card span-4">
+        <div class="card-head">
+          <h3>每日灵感</h3>
+          <button class="more-link plain-btn" type="button" @click="refreshQuote">换一条</button>
         </div>
+        <span class="quote-tag">{{ currentQuote.tag }}</span>
+        <blockquote>{{ currentQuote.text }}</blockquote>
+        <cite>— {{ currentQuote.author }}</cite>
+      </div>
+
+      <div class="card campus-card span-8">
+        <div class="card-head">
+          <h3>校园热榜</h3>
+          <router-link to="/app/wall" class="more-link">去围观 →</router-link>
+        </div>
+        <div v-if="campusHighlights.length > 0" class="campus-list">
+          <router-link v-for="post in campusHighlights" :key="post.id" :to="post.to" class="campus-item">
+            <div class="campus-meta">
+              <strong>{{ post.author }}</strong>
+              <span>{{ post.heat }}</span>
+            </div>
+            <p>{{ post.preview }}</p>
+          </router-link>
+        </div>
+        <p v-else class="empty">校园墙还没有形成热榜，去发布第一条动态，把社区气氛点起来。</p>
       </div>
     </section>
 
-    <!-- 快捷入口 -->
-    <section class="shortcuts-section">
-      <h2 class="section-title">探索更多</h2>
+    <section class="shortcuts">
+      <h2>探索更多</h2>
       <div class="shortcut-grid">
-        <router-link
-          v-for="f in coreFeatures"
-          :key="f.title"
-          :to="f.to"
-          class="shortcut-card"
-          :class="{ coming: !f.active }"
-          @click.prevent="!f.active && showComingSoon()"
-        >
-          <div class="sc-icon" :style="{ background: f.bg }">
-            <span v-html="f.svg"></span>
+        <router-link v-for="feature in coreFeatures" :key="feature.title" :to="feature.to" class="shortcut-card">
+          <div class="shortcut-icon" :style="{ background: feature.bg }" v-html="feature.svg"></div>
+          <div>
+            <strong>{{ feature.title }}</strong>
+            <span>{{ feature.desc }}</span>
           </div>
-          <div class="sc-info">
-            <span class="sc-title">{{ f.title }}</span>
-            <span class="sc-desc">{{ f.desc }}</span>
-          </div>
-          <span v-if="!f.active" class="sc-badge">即将上线</span>
         </router-link>
       </div>
     </section>
 
-    <!-- 页脚 -->
-    <footer class="app-footer">
-      <div class="footer-grid">
-        <div class="footer-col brand-col">
-          <div class="footer-logo"><img src="/spark-logo.png" alt="Spark" class="footer-logo-img" /><span>SparkAlliance</span></div>
-          <p class="footer-slogan">点燃灵感，链接未来</p>
-          <p class="footer-copyright">© 2026 Spark. All rights reserved.</p>
-        </div>
-        <div class="footer-col">
-          <h4>产品</h4>
-          <router-link to="/app/chat">AI 助手</router-link>
-          <router-link to="/app/schedule">智能日程</router-link>
-          <router-link to="/app/wall">星火墙</router-link>
-          <router-link to="/app/planner">星火规划</router-link>
-        </div>
-        <div class="footer-col">
-          <h4>服务</h4>
-          <router-link to="/app/shop">星火购物</router-link>
-          <router-link to="/app/talent">星火人才</router-link>
-          <router-link to="/app/news">星火资讯</router-link>
-          <router-link to="/app/resources">学习资源</router-link>
-        </div>
-        <div class="footer-col">
-          <h4>联系我们</h4>
-          <a href="mailto:spark@example.com">spark@example.com</a>
-          <a href="#">GitHub</a>
-          <router-link to="/app/feedback">意见反馈</router-link>
-          <router-link to="/docs">帮助文档</router-link>
-        </div>
+    <!-- 底部栏 — 版权/帮助/链接 -->
+    <footer class="home-footer">
+      <div class="footer-links">
+        <router-link to="/app/settings/about">关于我们</router-link>
+        <span>·</span>
+        <router-link to="/app/feedback">帮助与反馈</router-link>
+        <span>·</span>
+        <router-link to="/terms">服务条款</router-link>
+        <span>·</span>
+        <router-link to="/privacy-policy">隐私政策</router-link>
       </div>
+      <p class="footer-copy">© 2026 Spark Alliance 星火联盟 · 让每一个火花都能汇聚成照亮前路的星辰</p>
     </footer>
+
+    <Transition name="fade">
+      <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuth } from '../../composables/useAuth'
+import { usePlanner } from '../../composables/usePlanner'
+import { supabase } from '../../supabase'
+import {
+  buildDashboardActions,
+  buildDashboardStats,
+  createCoreFeatures,
+  summarizeWeeklyProgress,
+  type DashboardSnapshot,
+} from '../../utils/appHomeDashboard'
+import { buildCampusHotHighlights, type CampusHotHighlight } from '../../utils/campusWall'
+
+interface PlannerPreview {
+  id: string
+  title: string
+  meta: string
+  isOverdue: boolean
+}
+
+interface PlannerTaskRow {
+  id: string
+  title: string
+  due_date: string | null
+  goals?: { title?: string | null } | Array<{ title?: string | null }> | null
+}
+
+interface SchedulePreview {
+  id: string
+  title: string
+  time: string
+  kind: 'normal' | 'urgent'
+}
+
+interface ScheduleEventRow {
+  id: string
+  title: string
+  start_time: string
+  end_time?: string | null
+  priority?: number | null
+}
+
+interface ShopConversationRow {
+  buyer_id: string
+  seller_id: string
+  buyer_unread: number | null
+  seller_unread: number | null
+}
+
+interface CampusPostRow {
+  id: string
+  content: string
+  author_id: string | null
+  author_name: string | null
+  anonymous_seed: string | null
+  is_anonymous: boolean | null
+  created_at: string
+  likes?: Array<{ count: number }>
+  comments?: Array<{ count: number }>
+}
 
 const { user } = useAuth()
+const { createQuickTask } = usePlanner()
 
-// ====== 问候语 ======
+const emptySnapshot: DashboardSnapshot = {
+  overdueTasks: 0,
+  todayTasks: 0,
+  activeGoals: 0,
+  todayEvents: 0,
+  streakDays: 0,
+  weeklyCompletedTasks: 0,
+  weeklyTotalTasks: 0,
+  activeListings: 0,
+  pendingTransactions: 0,
+  unreadShopMessages: 0,
+  quickNoteLength: 0,
+}
+
+const dashboardSnapshot = ref<DashboardSnapshot>({ ...emptySnapshot })
+const todayPlannerTasks = ref<PlannerPreview[]>([])
+const todaySchedule = ref<SchedulePreview[]>([])
+const campusHighlights = ref<CampusHotHighlight[]>([])
+const shopSignals = ref<string[]>(['主控台会自动同步你的交易、规划和日程状态。'])
+const quickNote = ref(localStorage.getItem('spark_quick_note') || '')
+const noteSaved = ref(false)
+const convertingNote = ref(false)
+const toastMessage = ref('')
+const coreFeatures = createCoreFeatures()
+
 const greeting = computed(() => {
-  const h = new Date().getHours()
-  if (h < 6) return '夜深了'
-  if (h < 12) return '早上好'
-  if (h < 14) return '中午好'
-  if (h < 18) return '下午好'
+  const hour = new Date().getHours()
+  if (hour < 6) return '夜深了'
+  if (hour < 12) return '早上好'
+  if (hour < 14) return '中午好'
+  if (hour < 18) return '下午好'
   return '晚上好'
 })
 
@@ -245,475 +311,887 @@ const userName = computed(() => {
 
 const currentDate = computed(() => {
   const now = new Date()
-  const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
-  return `${now.getMonth() + 1}月${now.getDate()}日 ${days[now.getDay()]}`
+  const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+  return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdays[now.getDay()]}`
 })
 
-const motivationalText = computed(() => {
-  const h = new Date().getHours()
-  if (h < 6) return '早点休息，明天继续加油 🌙'
-  if (h < 12) return '新的一天，元气满满 ☀️'
-  if (h < 14) return '午餐后适当休息一下 🍱'
-  if (h < 18) return '下午也要保持专注哦 💪'
-  return '今天辛苦了，整理一下收获 ✨'
+const dashboardActions = computed(() =>
+  buildDashboardActions({ ...dashboardSnapshot.value, quickNoteLength: quickNote.value.trim().length }),
+)
+const miniStats = computed(() => buildDashboardStats(dashboardSnapshot.value))
+const weeklyProgress = computed(() =>
+  summarizeWeeklyProgress(dashboardSnapshot.value.weeklyCompletedTasks, dashboardSnapshot.value.weeklyTotalTasks),
+)
+const ringOffset = computed(() => {
+  const circumference = 2 * Math.PI * 50
+  return circumference - (weeklyProgress.value.percent / 100) * circumference
+})
+const heroSubtitle = computed(() => {
+  return dashboardActions.value[0]?.description || '主控台已经接入真实的规划、交易、日程和社区摘要。'
 })
 
-// ====== 统计数据 ======
-const miniStats = [
-  { value: '4h 20m', label: '今日专注', color: '#4f8ef7', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>' },
-  { value: '12天', label: '连续打卡', color: '#f97316', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c2.5 4.5 4 8 4 11s-2.5 8-4 8-4-5-4-8 1.5-6.5 4-11z"></path></svg>' },
-  { value: '5项', label: '本周待办', color: '#10b981', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>' },
-  { value: '28次', label: '本月AI互动', color: '#8b5cf6', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' }
+const quotes = [
+  { text: '学而不思则罔，思而不学则殆。', author: '孔子', tag: '专注' },
+  { text: '路漫漫其修远兮，吾将上下而求索。', author: '屈原', tag: '行动' },
+  { text: 'Stay hungry, stay foolish.', author: 'Steve Jobs', tag: '创造' },
+  { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds', tag: '执行' },
+  { text: '纸上得来终觉浅，绝知此事要躬行。', author: '陆游', tag: '实践' },
 ]
+const quoteIndex = ref(Math.floor(Math.random() * quotes.length))
+const currentQuote = computed(() => quotes[quoteIndex.value])
 
-// ====== 每日灵感 (30+ 名言 + 随机切换) ======
-const allQuotes = [
-  // 🔥 激励
-  { text: '学而不思则罔，思而不学则殆。', author: '孔子', tag: '🔥 激励' },
-  { text: '千里之行，始于足下。', author: '老子', tag: '🔥 激励' },
-  { text: '天行健，君子以自强不息。', author: '《周易》', tag: '🔥 激励' },
-  { text: '路漫漫其修远兮，吾将上下而求索。', author: '屈原', tag: '🔥 激励' },
-  { text: '业精于勤，荒于嬉；行成于思，毁于随。', author: '韩愈', tag: '🔥 激励' },
-  { text: '不积跬步，无以至千里；不积小流，无以成江海。', author: '荀子', tag: '🔥 激励' },
-  { text: '长风破浪会有时，直挂云帆济沧海。', author: '李白', tag: '🔥 激励' },
-  { text: '宝剑锋从磨砺出，梅花香自苦寒来。', author: '《警世贤文》', tag: '🔥 激励' },
-  { text: '海内存知己，天涯若比邻。', author: '王勃', tag: '🔥 激励' },
-  { text: '穷则独善其身，达则兼济天下。', author: '孟子', tag: '🔥 激励' },
-  // 💭 哲理
-  { text: 'Stay hungry, stay foolish.', author: 'Steve Jobs', tag: '💭 哲理' },
-  { text: '知之者不如好之者，好之者不如乐之者。', author: '孔子', tag: '💭 哲理' },
-  { text: '生活不是等待暴风雨过去，而是学会在雨中翩翩起舞。', author: '维维安·格林', tag: '💭 哲理' },
-  { text: 'The only way to do great work is to love what you do.', author: 'Steve Jobs', tag: '💭 哲理' },
-  { text: '我思故我在。', author: '笛卡尔', tag: '💭 哲理' },
-  { text: '吾日三省吾身。', author: '曾子', tag: '💭 哲理' },
-  { text: '人生得意须尽欢，莫使金樽空对月。', author: '李白', tag: '💭 哲理' },
-  { text: '世界上只有一种真正的英雄主义，那就是在认清生活的真相后依然热爱生活。', author: '罗曼·罗兰', tag: '💭 哲理' },
-  { text: '己所不欲，勿施于人。', author: '孔子', tag: '💭 哲理' },
-  { text: 'Yesterday is history, tomorrow is a mystery, today is a gift.', author: '功夫熊猫', tag: '💭 哲理' },
-  // 🎯 专注
-  { text: '书山有路勤为径，学海无涯苦作舟。', author: '韩愈', tag: '🎯 专注' },
-  { text: '读书破万卷，下笔如有神。', author: '杜甫', tag: '🎯 专注' },
-  { text: '黑发不知勤学早，白首方悔读书迟。', author: '颜真卿', tag: '🎯 专注' },
-  { text: '少壮不努力，老大徒伤悲。', author: '《长歌行》', tag: '🎯 专注' },
-  { text: '光阴似箭，日月如梭。', author: '《增广贤文》', tag: '🎯 专注' },
-  { text: '问渠那得清如许，为有源头活水来。', author: '朱熹', tag: '🎯 专注' },
-  { text: '纸上得来终觉浅，绝知此事要躬行。', author: '陆游', tag: '🎯 专注' },
-  { text: '温故而知新，可以为师矣。', author: '孔子', tag: '🎯 专注' },
-  { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds', tag: '🎯 专注' },
-  { text: '聪明出于勤奋，天才在于积累。', author: '华罗庚', tag: '🎯 专注' },
-  // 😄 趣味
-  { text: 'There are only 10 types of people: those who understand binary and those who don\'t.', author: '程序员笑话', tag: '😄 趣味' },
-  { text: '世上无难事，只要肯放弃。', author: '当代小确丧', tag: '😄 趣味' },
-  { text: '今天多学一点东西，明天就少说一句求人的话。', author: '社会学', tag: '😄 趣味' },
-]
-
-const quoteIndex = ref(Math.floor(Math.random() * allQuotes.length))
-const currentQuote = computed(() => allQuotes[quoteIndex.value])
-const refreshQuote = () => {
-  quoteIndex.value = (quoteIndex.value + Math.floor(Math.random() * (allQuotes.length - 1)) + 1) % allQuotes.length
-}
-
-// ====== 每日一问 ======
-const triviaPool = [
-  { q: '地球上最深的海沟叫什么？', a: '马里亚纳海沟，深约11,034米，位于太平洋西部。' },
-  { q: '人体最长的骨头是哪一块？', a: '股骨（大腿骨），约占身高的1/4。' },
-  { q: '第一个登上月球的人是谁？', a: '尼尔·阿姆斯特朗，1969年7月20日阿波罗11号。' },
-  { q: '世界上使用人数最多的编程语言是？', a: 'JavaScript，全球约1780万开发者使用。' },
-  { q: 'HTTP状态码404代表什么？', a: 'Not Found — 服务器找不到请求的资源。' },
-  { q: 'DNA 的全称是什么？', a: '脱氧核糖核酸（Deoxyribonucleic Acid）。' },
-  { q: '光速大约是每秒多少公里？', a: '约30万公里/秒（299,792 km/s）。' },
-  { q: '「互联网之父」是谁？', a: '蒂姆·伯纳斯-李（Tim Berners-Lee），发明了万维网。' },
-  { q: '人类有多少对染色体？', a: '23对（46条），其中1对为性染色体。' },
-  { q: '世界上最大的沙漠是哪个？', a: '南极洲——没错，它是世界上最大的「冷沙漠」。' },
-  { q: '1byte 等于几个 bit？', a: '8个 bit。1 KB = 1024 bytes。' },
-  { q: '红色和蓝色混合会变成什么颜色？', a: '紫色（在颜料中）或品红色（在光线中）。' },
-  { q: '《百年孤独》的作者是谁？', a: '加西亚·马尔克斯（Gabriel García Márquez），哥伦比亚作家。' },
-  { q: '太阳系中最大的行星是？', a: '木星（Jupiter），直径约14万公里。' },
-  { q: 'Git 的创建者是谁？', a: 'Linus Torvalds，他同时也创建了 Linux。' },
-]
-const triviaIndex = ref(Math.floor(Math.random() * triviaPool.length))
-const triviaRevealed = ref(false)
-const currentTrivia = computed(() => triviaPool[triviaIndex.value])
-const refreshTrivia = () => {
-  triviaIndex.value = (triviaIndex.value + Math.floor(Math.random() * (triviaPool.length - 1)) + 1) % triviaPool.length
-  triviaRevealed.value = false
-}
-
-// ====== 快速笔记 (localStorage) ======
-const quickNote = ref(localStorage.getItem('spark_quick_note') || '')
-const noteSaved = ref(false)
 let noteTimer: ReturnType<typeof setTimeout> | null = null
-const saveNote = () => {
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+function refreshQuote() {
+  quoteIndex.value = (quoteIndex.value + Math.floor(Math.random() * (quotes.length - 1)) + 1) % quotes.length
+}
+
+function saveNote() {
   localStorage.setItem('spark_quick_note', quickNote.value)
   noteSaved.value = true
   if (noteTimer) clearTimeout(noteTimer)
-  noteTimer = setTimeout(() => { noteSaved.value = false }, 2000)
+  noteTimer = setTimeout(() => {
+    noteSaved.value = false
+  }, 1800)
 }
 
-// ====== 学习进度 ======
-const weeklyHours = ref(16.5)
-const weeklyGoal = ref(25)
-const weeklyDays = ref(5)
-const weeklyProgress = computed(() => Math.min(100, Math.round((weeklyHours.value / weeklyGoal.value) * 100)))
-const ringOffset = computed(() => {
-  const circumference = 2 * Math.PI * 50 // r=50
-  return circumference - (weeklyProgress.value / 100) * circumference
-})
+function clearNote() {
+  quickNote.value = ''
+  localStorage.removeItem('spark_quick_note')
+  noteSaved.value = false
+}
 
-// ====== AI 对话记录 ======
-const recentChats = [
-  { title: '深入理解操作系统内存管理', time: '10:30', desc: '分页与分段...', color: '#4f8ef7' },
-  { title: '帮忙润色学术论文摘要', time: '昨天', desc: '英文语法修正', color: '#8b5cf6' },
-  { title: 'TCP 三次握手详解', time: '周一', desc: '为什么不是两次？', color: '#10b981' },
-]
+function showToast(message: string) {
+  toastMessage.value = message
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastMessage.value = ''
+  }, 2400)
+}
 
-// ====== 校园热榜 ======
-const hotPosts = [
-  { title: '图书馆占座神器推荐', heat: '🔥 2.1k' },
-  { title: '期中考复习资料分享群', heat: '🔥 1.8k' },
-  { title: '食堂三楼新菜到底好不好吃', heat: '🔥 1.5k' },
-  { title: '计科专业课挂科率统计', heat: '💬 1.2k' },
-  { title: '篮球赛决赛观战召集', heat: '💬 980' },
-]
+async function convertNoteToTask() {
+  const content = quickNote.value.trim()
+  if (!content || convertingNote.value) return
 
-// ====== 今日日程 ======
-const upcomingEvents = [
-  { time: '14:00 - 15:30', title: '微机原理实验课', type: 'urgent' },
-  { time: '18:00 - 19:00', title: '算法组会讨论', type: 'normal' },
-  { time: '22:00', title: '《软件工程》作业截止', type: 'warning' },
-]
+  convertingNote.value = true
+  const task = await createQuickTask(content.slice(0, 100))
+  convertingNote.value = false
 
-// ====== 倒计时 ======
-const countdowns = computed(() => {
-  const now = new Date()
-  const getRemain = (m: number, d: number) => {
-    const t = new Date(now.getFullYear(), m - 1, d)
-    if (t < now) t.setFullYear(t.getFullYear() + 1)
-    return Math.ceil((t.getTime() - now.getTime()) / 86400000)
+  if (!task) {
+    showToast('笔记转任务失败，请稍后重试。')
+    return
   }
-  return [
-    { label: '四六级考试', date: '6月14日', days: getRemain(6, 14) + '天', color: '#4f8ef7' },
-    { label: '期末考试周', date: '7月1日', days: getRemain(7, 1) + '天', color: '#f43f5e' },
-    { label: '暑假开始', date: '7月15日', days: getRemain(7, 15) + '天', color: '#10b981' },
-  ]
-})
 
-// ====== 快捷入口 ======
-const coreFeatures = [
-  { title: 'AI 助手', desc: '多模型智能对话', to: '/app/chat', active: true, bg: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>' },
-  { title: '星火墙', desc: '分享校园日常', to: '/app/wall', active: true, bg: 'linear-gradient(135deg, #8b5cf6, #f43f5e)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' },
-  { title: '智能日程', desc: '管理你的时间', to: '/app/schedule', active: true, bg: 'linear-gradient(135deg, #10b981, #06b6d4)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>' },
-  { title: '星火寄语', desc: '跨代际寄语平台', to: '/app/messages', active: true, bg: 'linear-gradient(135deg, #f59e0b, #ef4444)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>' },
-  { title: '星火购物', desc: '二手交易平台', to: '/app/shop', active: false, bg: 'rgba(249,115,22,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>' },
-  { title: '星火规划', desc: 'AI目标拆分与激励', to: '/app/planner', active: false, bg: 'rgba(234,179,8,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>' },
-  { title: '星火自习室', desc: '专注互助空间', to: '/app/study-room', active: true, bg: 'linear-gradient(135deg, #10b981, #06b6d4)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>' },
-  { title: '学习资源', desc: '优质资料共享', to: '/app/resources', active: true, bg: 'linear-gradient(135deg, #f97316, #ef4444)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>' },
-  { title: '星火人才', desc: '双向寻访匹配', to: '/app/talent', active: true, bg: 'linear-gradient(135deg, #f43f5e, #8b5cf6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' },
-  { title: '星火资讯', desc: '全网热点聚合', to: '/app/news', active: true, bg: 'linear-gradient(135deg, #06b6d4, #3b82f6)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path><path d="M21 12h-6a2 2 0 0 0-2 2v6"></path><path d="M21 12l-6 6"></path><path d="M21 12v6"></path></svg>' },
-  { title: '星火共创', desc: '项目展示与协作', to: '/app/cocreate', active: true, bg: 'linear-gradient(135deg, #8b5cf6, #f97316)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>' },
-]
-
-// 即将上线提示
-const showComingSoon = () => {
-  alert('即将上线，敬请期待！')
+  clearNote()
+  showToast('已把快速笔记加入今日任务。')
+  await loadDashboard()
 }
+
+function getLocalDate() {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function getWeekStart() {
+  const date = new Date()
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(date)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+}
+
+function getTodayRange() {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+function extractGoalTitle(goal: PlannerTaskRow['goals']) {
+  if (Array.isArray(goal)) return goal[0]?.title || ''
+  return goal?.title || ''
+}
+
+function formatScheduleTime(startTime: string, endTime?: string | null) {
+  const start = new Date(startTime)
+  const startLabel = start.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (!endTime) return `${startLabel} 开始`
+  const end = new Date(endTime)
+  const endLabel = end.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${startLabel} - ${endLabel}`
+}
+
+function buildShopSignals(activeListings: number, pendingTransactions: number, unreadMessages: number) {
+  const signals: string[] = []
+  if (pendingTransactions > 0) signals.push(`你有 ${pendingTransactions} 笔交易需要确认节奏。`)
+  if (unreadMessages > 0) signals.push(`购物模块里还有 ${unreadMessages} 条未读消息。`)
+  if (activeListings === 0) signals.push('还没有在售商品，发布第一件闲置会显著提升购物模块活跃度。')
+  if (signals.length === 0) signals.push('购物模块状态稳定，可以补一件新商品扩大曝光。')
+  return signals
+}
+
+async function loadDashboard() {
+  if (!user.value) {
+    dashboardSnapshot.value = { ...emptySnapshot, quickNoteLength: quickNote.value.trim().length }
+    todayPlannerTasks.value = []
+    todaySchedule.value = []
+    campusHighlights.value = []
+    shopSignals.value = ['登录后即可同步你的规划、交易和校园动态。']
+    return
+  }
+
+  const userId = user.value.id
+  const today = getLocalDate()
+  const weekStart = getWeekStart()
+  const todayRange = getTodayRange()
+
+  try {
+    // 独立容错：每个查询失败不影响其他查询
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function safeQuery<T>(queryFn: () => PromiseLike<{ data: any; error: any; count?: number | null }>, fallback: T) {
+      try {
+        const result = await queryFn()
+        if (result.error) {
+          console.warn('[Dashboard] 查询降级:', result.error.message)
+          return { data: fallback as T, count: 0 }
+        }
+        return { data: (result.data ?? fallback) as T, count: result.count ?? 0 }
+      } catch (e) {
+        console.warn('[Dashboard] 查询跳过:', e)
+        return { data: fallback as T, count: 0 }
+      }
+    }
+
+    const [
+      plannerTasksResult,
+      goalsCountResult,
+      weekTasksResult,
+      streakResult,
+      scheduleResult,
+      activeProductsResult,
+      transactionResult,
+      conversationsResult,
+      hotPostsResult,
+    ] = await Promise.all([
+      safeQuery(() => supabase
+        .from('planner_tasks')
+        .select('id, title, due_date, goals(title)')
+        .eq('user_id', userId)
+        .in('status', ['pending', 'in_progress'])
+        .lte('due_date', today)
+        .order('due_date', { ascending: true })
+        .limit(6), [] as PlannerTaskRow[]),
+      safeQuery(() => supabase.from('goals').select('id', { count: 'exact', head: true }).eq('user_id', userId).in('status', ['active', 'paused']), null),
+      safeQuery(() => supabase
+        .from('planner_tasks')
+        .select('is_completed')
+        .eq('user_id', userId)
+        .gte('due_date', weekStart)
+        .lte('due_date', today)
+        .in('status', ['pending', 'in_progress', 'completed']), [] as Array<{ is_completed?: boolean | null }>),
+      safeQuery(() => supabase.from('user_stats').select('current_daily_streak').eq('user_id', userId).maybeSingle(), null),
+      safeQuery(() => supabase
+        .from('schedule_events')
+        .select('id, title, start_time, end_time, priority')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gte('start_time', todayRange.start)
+        .lt('start_time', todayRange.end)
+        .order('start_time', { ascending: true })
+        .limit(6), [] as ScheduleEventRow[]),
+      safeQuery(() => supabase.from('shop_products').select('id', { count: 'exact', head: true }).eq('seller_id', userId).eq('status', 'active'), null),
+      safeQuery(() => supabase
+        .from('shop_transactions')
+        .select('id, status')
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+        .in('status', ['pending', 'accepted', 'meeting']), []),
+      safeQuery(() => supabase
+        .from('shop_conversations')
+        .select('buyer_id, seller_id, buyer_unread, seller_unread')
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`), [] as ShopConversationRow[]),
+      safeQuery(() => supabase
+        .from('posts')
+        .select('id, content, author_id, author_name, anonymous_seed, is_anonymous, created_at, likes(count), comments(count)')
+        .order('created_at', { ascending: false })
+        .limit(24), [] as CampusPostRow[]),
+    ])
+
+    const plannerTasks = (plannerTasksResult.data || []) as PlannerTaskRow[]
+    const overdueTasks = plannerTasks.filter(task => task.due_date && task.due_date < today).length
+    const weeklyTasks = (weekTasksResult.data || []) as Array<{ is_completed?: boolean | null }>
+    const pendingTransactions = (transactionResult.data || []).length
+    const unreadMessages = ((conversationsResult.data || []) as ShopConversationRow[]).reduce((sum, conversation) => {
+      if (conversation.buyer_id === userId) return sum + (conversation.buyer_unread || 0)
+      if (conversation.seller_id === userId) return sum + (conversation.seller_unread || 0)
+      return sum
+    }, 0)
+    const activeListings = activeProductsResult.count || 0
+
+    dashboardSnapshot.value = {
+      overdueTasks,
+      todayTasks: plannerTasks.length,
+      activeGoals: goalsCountResult.count || 0,
+      todayEvents: (scheduleResult.data || []).length,
+      streakDays: (streakResult.data as any)?.current_daily_streak || 0,
+      weeklyCompletedTasks: weeklyTasks.filter(task => task.is_completed).length,
+      weeklyTotalTasks: weeklyTasks.length,
+      activeListings,
+      pendingTransactions,
+      unreadShopMessages: unreadMessages,
+      quickNoteLength: quickNote.value.trim().length,
+    }
+
+    todayPlannerTasks.value = plannerTasks.map((task) => {
+      const dueLabel = task.due_date ? (task.due_date < today ? '已逾期' : '今天到期') : '待安排'
+      const goalTitle = extractGoalTitle(task.goals)
+      return {
+        id: task.id,
+        title: task.title,
+        meta: goalTitle ? `${goalTitle} · ${dueLabel}` : dueLabel,
+        isOverdue: Boolean(task.due_date && task.due_date < today),
+      }
+    })
+
+    todaySchedule.value = ((scheduleResult.data || []) as ScheduleEventRow[]).map((event) => ({
+      id: event.id,
+      title: event.title,
+      time: formatScheduleTime(event.start_time, event.end_time),
+      kind: (event.priority || 0) > 0 ? 'urgent' : 'normal',
+    }))
+
+    campusHighlights.value = buildCampusHotHighlights(
+      ((hotPostsResult.data || []) as CampusPostRow[])
+        .filter(post => Boolean(post.content?.trim()))
+        .map(post => ({
+          id: post.id,
+          content: post.content,
+          authorId: post.author_id,
+          authorName: post.author_name,
+          anonymousSeed: post.anonymous_seed,
+          isAnonymous: post.is_anonymous,
+          createdAt: post.created_at,
+          likes: post.likes?.[0]?.count || 0,
+          comments: post.comments?.[0]?.count || 0,
+        })),
+    )
+
+    shopSignals.value = buildShopSignals(activeListings, pendingTransactions, unreadMessages)
+  } catch (error) {
+    console.error('loadDashboard failed:', error)
+    showToast('主控台刷新失败，请稍后重试。')
+  }
+}
+
+watch(
+  () => user.value?.id,
+  () => {
+    loadDashboard()
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
-/* ====== 页面容器 ====== */
 .app-home {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 40px 0;
-  width: 100%;
+  padding: 32px 40px 48px;
 }
 
-/* ====== 顶部欢迎区 ====== */
-.hero-section {
+.hero,
+.card,
+.stat-chip,
+.shortcut-card,
+.action-card,
+.signal,
+.campus-item {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+}
+
+.hero {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   padding: 28px 32px;
-  background: linear-gradient(135deg, rgba(79,142,247,0.06), rgba(139,92,246,0.04));
-  border: 1px solid rgba(79,142,247,0.1);
-  border-radius: 20px;
   margin-bottom: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.12), transparent 28%),
+    linear-gradient(135deg, rgba(79, 142, 247, 0.08), rgba(139, 92, 246, 0.04));
 }
-.hero-title {
-  font-size: 26px; font-weight: 700; color: white;
-  margin: 0 0 6px;
-}
-.hero-sub {
-  font-size: 14px; color: rgba(255,255,255,0.45); margin: 0;
-}
-.hero-actions { display: flex; gap: 10px; flex-shrink: 0; }
-.action-btn {
-  height: 38px; border-radius: 10px; padding: 0 18px;
-  font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px;
-  transition: all 0.2s; color: white; white-space: nowrap; border: none; cursor: pointer;
-}
-.action-btn.primary { background: var(--color-brand-blue); }
-.action-btn.primary:hover { filter: brightness(1.15); }
-.action-btn.ghost {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-}
-.action-btn.ghost:hover { background: rgba(255,255,255,0.08); }
 
-/* ====== 统计条 ====== */
+.hero-kicker {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0 0 6px;
+  color: var(--color-text-primary);
+  font-size: 28px;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  max-width: 620px;
+}
+
+.hero-actions,
+.note-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #4f8ef7, #8b5cf6);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .stats-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 24px;
 }
-.stat-chip {
-  display: flex; align-items: center; gap: 12px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 14px; padding: 14px 18px;
-  transition: border-color 0.2s;
-}
-.stat-chip:hover { border-color: rgba(255,255,255,0.1); }
-.stat-icon { display: flex; align-items: center; }
-.stat-value { font-size: 18px; font-weight: 700; color: white; display: block; }
-.stat-label { font-size: 11px; color: rgba(255,255,255,0.35); display: block; margin-top: 2px; }
 
-/* ====== Bento Grid ====== */
-.bento-grid {
+.stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.stat-chip strong,
+.shop-stats strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 20px;
+}
+
+.stat-chip span,
+.shop-stats span {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   gap: 16px;
   margin-bottom: 40px;
 }
-.bento-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 16px; padding: 20px 22px;
-  transition: border-color 0.25s;
+
+.card {
+  grid-column: span 4;
+  padding: 20px 22px;
 }
-.bento-card:hover { border-color: rgba(255,255,255,0.1); }
+
+.command-card {
+  grid-column: span 7;
+}
+
+.span-4 {
+  grid-column: span 4;
+}
+
+.span-5 {
+  grid-column: span 5;
+}
+
+.span-8 {
+  grid-column: span 8;
+}
 
 .card-head {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
 }
-.card-head h3 { font-size: 15px; font-weight: 600; margin: 0; color: white; }
+
+.card-head h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+}
+
+.card-head span,
 .more-link {
-  font-size: 12px; color: rgba(255,255,255,0.35);
-  transition: color 0.2s;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
-.more-link:hover { color: var(--color-brand-blue); }
 
-/* 日程卡 */
-.schedule-card { grid-column: span 1; }
-.timeline-list { display: flex; flex-direction: column; gap: 12px; }
-.tl-item { display: flex; align-items: flex-start; gap: 12px; }
-.tl-dot {
-  width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0;
-  background: rgba(255,255,255,0.2);
+.more-link {
+  text-decoration: none;
 }
-.tl-dot.urgent { background: #f43f5e; box-shadow: 0 0 8px rgba(244,63,94,0.4); }
-.tl-dot.warning { background: #f97316; }
-.tl-dot.normal { background: #4f8ef7; }
-.tl-body { display: flex; flex-direction: column; }
-.tl-title { font-size: 13px; color: rgba(255,255,255,0.8); }
-.tl-time { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
-.tl-empty { font-size: 13px; color: rgba(255,255,255,0.25); text-align: center; padding: 16px 0; }
 
-/* AI 卡 */
-.ai-card { grid-column: span 1; }
-.chat-list { display: flex; flex-direction: column; gap: 12px; }
-.chat-item { display: flex; align-items: flex-start; gap: 10px; }
-.chat-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
-.chat-body { display: flex; flex-direction: column; }
-.chat-title { font-size: 13px; color: rgba(255,255,255,0.8); }
-.chat-meta { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
+.plain-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
 
-/* 灵感卡 - 增强版 */
+.action-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  text-decoration: none;
+  transition: 0.2s ease;
+}
+
+.action-card:last-child {
+  margin-bottom: 0;
+}
+
+.action-card.tone-high {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(139, 92, 246, 0.05));
+  border-color: rgba(239, 68, 68, 0.14);
+}
+
+.action-card.tone-medium {
+  background: linear-gradient(135deg, rgba(79, 142, 247, 0.08), rgba(139, 92, 246, 0.04));
+  border-color: rgba(79, 142, 247, 0.12);
+}
+
+.action-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-card-hover);
+  font-size: 18px;
+}
+
+.action-copy strong,
+.list-item strong,
+.shortcut-card strong,
+.campus-meta strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.action-copy span,
+.list-item span,
+.signal,
+.progress-summary,
+.empty,
+.note-actions > span,
+.shortcut-card span,
+.quote-card cite,
+.campus-meta span,
+.campus-item p {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.action-cta {
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.dot.normal {
+  background: #60a5fa;
+}
+
+.dot.urgent {
+  background: #f87171;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.4);
+}
+
+.shop-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.shop-stats > div {
+  padding: 14px 12px;
+  border-radius: 14px;
+  text-align: center;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+}
+
+.signal-list,
+.campus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signal {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(249, 115, 22, 0.07);
+  border-color: rgba(249, 115, 22, 0.1);
+}
+
+.note-card {
+  background: linear-gradient(135deg, rgba(79, 142, 247, 0.06), rgba(16, 185, 129, 0.04));
+}
+
+.saved {
+  color: #34d399 !important;
+  font-weight: 600;
+}
+
+.note-textarea {
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.note-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.note-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.progress-card {
+  text-align: center;
+}
+
+.progress-pct {
+  color: #c4b5fd;
+}
+
+.ring-wrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 10px auto 16px;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+}
+
+.ring-bg {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 8;
+}
+
+.ring-fg {
+  fill: none;
+  stroke: #8b5cf6;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 314.16;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dashoffset 0.8s ease;
+}
+
+.ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring-label strong {
+  font-size: 26px;
+  color: var(--color-text-primary);
+}
+
+.ring-label span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .quote-card {
-  display: flex; flex-direction: column; justify-content: center;
-  background: linear-gradient(135deg, rgba(139,92,246,0.06), rgba(79,142,247,0.04));
-  border-color: rgba(139,92,246,0.1);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(79, 142, 247, 0.04));
+  border-color: rgba(139, 92, 246, 0.1);
 }
-.quote-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.quote-tag { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(139,92,246,0.12); color: #c4b5fd; font-weight: 600; }
-.quote-refresh { background: none; border: none; cursor: pointer; font-size: 16px; opacity: 0.5; transition: all 0.3s; padding: 4px; border-radius: 50%; }
-.quote-refresh:hover { opacity: 1; transform: rotate(180deg); background: rgba(255,255,255,0.06); }
-.quote-text {
-  font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.75);
-  line-height: 1.6; margin: 0; padding: 0; border: none;
+
+.quote-tag {
+  display: inline-flex;
+  margin-bottom: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.14);
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.quote-card blockquote {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.7;
+  font-size: 15px;
   font-style: italic;
 }
-.quote-author { font-size: 12px; color: rgba(255,255,255,0.3); margin-top: 12px; font-style: normal; }
 
-/* 热榜卡 */
-.hot-card { grid-column: span 1; }
-.hot-list { display: flex; flex-direction: column; gap: 10px; }
-.hot-item { display: flex; align-items: center; gap: 10px; }
-.hot-rank {
-  width: 22px; height: 22px; border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700;
-  background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.35);
+.quote-card cite {
+  display: block;
+  margin-top: 14px;
 }
-.hot-rank.top { background: rgba(244,63,94,0.12); color: #f43f5e; }
-.hot-title { flex: 1; font-size: 13px; color: rgba(255,255,255,0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hot-heat { font-size: 11px; color: rgba(255,255,255,0.3); flex-shrink: 0; }
 
-/* 倒计时卡 */
-.countdown-card { grid-column: span 1; }
-.cd-list { display: flex; flex-direction: column; gap: 14px; }
-.cd-item { display: flex; align-items: center; gap: 14px; }
-.cd-days { font-size: 24px; font-weight: 800; min-width: 56px; }
-.cd-body { display: flex; flex-direction: column; }
-.cd-label { font-size: 13px; color: rgba(255,255,255,0.7); }
-.cd-date { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
-
-/* 每日一问 */
-.trivia-card { grid-column: span 1; }
-.trivia-question { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85); line-height: 1.5; margin: 0 0 14px; }
-.trivia-reveal {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
-  background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
-  color: #c4b5fd; cursor: pointer; transition: all 0.2s;
+.campus-card {
+  background:
+    radial-gradient(circle at top right, rgba(244, 63, 94, 0.08), transparent 26%),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(244, 63, 94, 0.04));
 }
-.trivia-reveal:hover { background: rgba(139,92,246,0.18); }
-.trivia-answer {
-  margin: 14px 0 0; padding: 12px 14px; font-size: 13px;
-  color: rgba(255,255,255,0.65); line-height: 1.6;
-  background: rgba(16,185,129,0.06); border-left: 3px solid #10b981;
-  border-radius: 0 8px 8px 0;
-}
-.fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* 快速笔记 */
-.note-card { grid-column: span 1; }
-.note-saved { font-size: 11px; color: #10b981; font-weight: 600; animation: fadeInOut 2s forwards; }
-@keyframes fadeInOut { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
-.note-textarea {
-  width: 100%; resize: none; border: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.02); border-radius: 10px; padding: 12px 14px;
-  font-size: 13px; color: rgba(255,255,255,0.8); font-family: inherit;
-  line-height: 1.6; outline: none; transition: border-color 0.2s;
+.campus-item {
+  display: block;
+  padding: 14px 16px;
+  text-decoration: none;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
-.note-textarea::placeholder { color: rgba(255,255,255,0.2); }
-.note-textarea:focus { border-color: rgba(139,92,246,0.3); }
-.note-meta { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 8px; }
 
-/* 学习进度 */
-.progress-card { grid-column: span 1; text-align: center; }
-.progress-pct { font-size: 14px; font-weight: 800; background: var(--gradient-brand); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.progress-ring-wrap { position: relative; width: 120px; height: 120px; margin: 10px auto 16px; }
-.progress-ring { width: 100%; height: 100%; }
-.ring-bg { fill: none; stroke: rgba(255,255,255,0.04); stroke-width: 8; }
-.ring-fg {
-  fill: none; stroke: url(#grad) #8b5cf6; stroke-width: 8;
-  stroke-linecap: round; stroke-dasharray: 314.16; /* 2*PI*50 */
-  transform: rotate(-90deg); transform-origin: center;
-  transition: stroke-dashoffset 1s ease;
+.campus-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.18);
+  background: rgba(255, 255, 255, 0.035);
 }
-.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring-hours { font-size: 24px; font-weight: 800; color: white; }
-.ring-unit { font-size: 11px; color: rgba(255,255,255,0.35); }
-.progress-stats { display: flex; justify-content: center; gap: 32px; }
-.ps-item { display: flex; flex-direction: column; align-items: center; }
-.ps-val { font-size: 14px; font-weight: 700; color: white; }
-.ps-label { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
 
-/* ====== 快捷入口 ====== */
-.shortcuts-section { margin-bottom: 48px; }
-.section-title {
-  font-size: 18px; font-weight: 700; color: white;
+.campus-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.campus-item p {
+  margin: 0;
+}
+
+.shortcuts h2 {
   margin: 0 0 20px;
+  color: var(--color-text-primary);
+  font-size: 18px;
 }
+
 .shortcut-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
+
 .shortcut-card {
-  position: relative;
-  display: flex; align-items: center; gap: 14px;
-  padding: 16px 18px; border-radius: 14px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.05);
-  transition: all 0.2s; cursor: pointer;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
   text-decoration: none;
+  transition: 0.2s ease;
 }
+
 .shortcut-card:hover {
-  border-color: rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
   transform: translateY(-2px);
+  background: var(--color-bg-card-hover);
 }
-.shortcut-card.coming { opacity: 0.55; }
-.shortcut-card.coming:hover { opacity: 0.7; transform: none; }
-.sc-icon {
-  width: 40px; height: 40px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
+
+.shortcut-icon,
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcut-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   flex-shrink: 0;
 }
-.sc-info { display: flex; flex-direction: column; min-width: 0; }
-.sc-title { font-size: 13px; font-weight: 600; color: white; }
-.sc-desc { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
-.sc-badge {
-  position: absolute; top: 8px; right: 10px;
-  font-size: 10px; background: rgba(139,92,246,0.15);
-  color: #a78bfa; padding: 2px 8px; border-radius: 20px;
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-elevated);
+  z-index: 20;
 }
 
-/* ====== 页脚 ====== */
-.app-footer {
-  border-top: 1px solid rgba(255,255,255,0.04);
-  padding: 48px 0 32px;
-  margin-top: 16px;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.footer-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 32px;
-}
-.footer-logo {
-  font-size: 18px; font-weight: 800;
-  margin-bottom: 8px;
-}
-.footer-logo-img {
-  width: 22px; height: 22px;
-  object-fit: contain;
-  vertical-align: -4px;
-  margin-right: 6px;
-  border-radius: 3px;
-}
-.footer-logo span {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.footer-slogan { font-size: 13px; color: rgba(255,255,255,0.3); margin: 0 0 8px; }
-.footer-copyright { font-size: 11px; color: rgba(255,255,255,0.15); margin: 0; }
-.footer-col h4 {
-  font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.5);
-  margin: 0 0 12px; text-transform: uppercase; letter-spacing: 1px;
-}
-.footer-col a {
-  display: block; font-size: 13px; color: rgba(255,255,255,0.3);
-  margin-bottom: 8px; transition: color 0.15s; text-decoration: none;
-}
-.footer-col a:hover { color: white; }
 
-/* ====== 响应式 ====== */
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+}
+
 @media (max-width: 1024px) {
-  .bento-grid { grid-template-columns: repeat(2, 1fr); }
-  .shortcut-grid { grid-template-columns: repeat(3, 1fr); }
-  .footer-grid { grid-template-columns: repeat(2, 1fr); }
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .command-card,
+  .span-4,
+  .span-5,
+  .span-8,
+  .card {
+    grid-column: span 1;
+  }
+
+  .shortcut-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
+
 @media (max-width: 640px) {
-  .app-home { padding: 20px 16px 0; }
-  .hero-section { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .stats-strip { grid-template-columns: repeat(2, 1fr); }
-  .bento-grid { grid-template-columns: 1fr; }
-  .shortcut-grid { grid-template-columns: repeat(2, 1fr); }
-  .footer-grid { grid-template-columns: 1fr; }
+  .app-home {
+    padding: 20px 16px 40px;
+  }
+
+  .hero,
+  .hero-actions,
+  .note-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-strip,
+  .shortcut-grid,
+  .shop-stats,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .action-cta {
+    grid-column: 2;
+  }
+
+  .campus-meta {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+/* ====== 底部栏 ====== */
+.home-footer {
+  margin-top: 48px;
+  padding: 28px 0 16px;
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+}
+.footer-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.footer-links a {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.footer-links a:hover { color: var(--theme-color, #4f8ef7); }
+.footer-links span { color: var(--color-text-muted); font-size: 11px; }
+.footer-copy {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 0;
+  opacity: 0.6;
 }
 </style>

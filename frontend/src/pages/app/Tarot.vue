@@ -312,7 +312,6 @@ let spinRaf = 0
 
 // 手势模式
 const videoEl = ref<HTMLVideoElement | null>(null)
-const canvasEl = ref<HTMLCanvasElement | null>(null)
 const handDetected = ref(false)
 const gestureHL = ref(-1)
 const gesturePicked = ref(-1)

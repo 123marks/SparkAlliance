@@ -2,7 +2,7 @@
  * useMentor — 学长分享模块核心逻辑
  * 认证体系 / 经验文章 / 一对一咨询 / AI匹配 / 模块打通
  */
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { supabase } from '../supabase'
 
 // ====== 类型定义 ======
@@ -122,8 +122,6 @@ export const HOT_TAGS = [
 // ====== Composable ======
 
 export function useMentor() {
-  const user = computed(() => supabase.auth.getUser().then(r => r.data.user))
-
   const articles = ref<MentorArticle[]>([])
   const currentArticle = ref<MentorArticle | null>(null)
   const comments = ref<MentorComment[]>([])

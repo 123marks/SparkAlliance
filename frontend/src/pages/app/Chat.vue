@@ -27,20 +27,12 @@
     <main class="chat-main">
       <header class="chat-header">
         <button class="mobile-menu-btn" @click="sidebarOpen = !sidebarOpen">☰</button>
-        <div class="model-selector">
-          <span class="m-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-          </span>
-          <select class="m-select" v-model="selectedModel">
-            <option value="spark">Spark Local (DeepSeek R1)</option>
-            <option value="cloud">Cloud Mode (Doubao)</option>
-          </select>
-          <span class="m-caret">▼</span>
+        <div class="header-brand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+          <span class="brand-title">星火助手</span>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" @click="showSettings = true" title="本地授权与设置">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          </button>
+          <!-- 预留：未来接入RAG配置 -->
         </div>
       </header>
 
@@ -50,8 +42,8 @@
            <div class="ai-avatar-large">
              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"></path><path d="M19 8a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"></path><path d="M6 14a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"></path><path d="M17 16a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"></path><path d="M8 6a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"></path><path d="M9 10h6"></path><path d="M11 12v3"></path></svg>
            </div>
-           <h2>我是 Spark 智能助手</h2>
-           <p>有什么学业或生活上的问题，尽管问我吧。</p>
+           <h2>我是星火助手</h2>
+           <p>你的 AI 学习伙伴，有什么学业或生活上的问题，尽管问我吧。</p>
          </div>
 
         <div v-for="(msg, index) in messages" :key="index" class="message-row" :class="msg.role">
@@ -78,27 +70,11 @@
           ></textarea>
           <button class="send-btn" @click="sendMessage" :disabled="isGenerating">发送 ⬆</button>
         </div>
-        <div class="footer-tip">由本地大模型提供支持，生成内容仅供参考。你的数据将被严格保存在本地。</div>
+        <div class="footer-tip">由星火 AI 引擎提供支持，生成内容仅供参考。</div>
       </div>
     </main>
 
-    <!-- Settings Modal (Local Auth Mock) -->
-    <div class="modal-overlay" v-if="showSettings" @click.self="showSettings = false">
-      <div class="modal-content">
-        <h3>模型本地授权设置</h3>
-        <p class="modal-desc">为了保护您的隐私，AI 数据将在本地处理。请输入您的本地引擎 API 密钥或接入配置。</p>
-        
-        <div class="form-group" style="margin-top: 20px;">
-          <input type="password" v-model="localApiKey" class="floating-input" placeholder=" " />
-          <label class="floating-label">Local API Key (Bearer Token)</label>
-        </div>
-        
-        <div class="modal-actions">
-          <button class="cancel-btn" @click="showSettings = false">取消</button>
-          <button class="save-btn" @click="saveSettings">保存授权</button>
-        </div>
-      </div>
-    </div>
+
   </div>
 </template>
 
@@ -106,9 +82,6 @@
 import { ref, nextTick } from 'vue'
 
 const sidebarOpen = ref(false)
-const showSettings = ref(false)
-const localApiKey = ref(localStorage.getItem('spark_local_api_key') || '')
-const selectedModel = ref('spark')
 
 const inputText = ref('')
 const isGenerating = ref(false)
@@ -137,11 +110,7 @@ const messages = ref<Message[]>([
 
 import DOMPurify from 'dompurify'
 
-const saveSettings = () => {
-  localStorage.setItem('spark_local_api_key', localApiKey.value)
-  showSettings.value = false
-  alert('已保存本地授权设置！')
-}
+
 
 const formatMessage = (text: string) => {
   const html = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -183,7 +152,7 @@ const sendMessage = async () => {
   messages.value.push(aiMsg)
   scrollToBottom()
   
-  const mockReply = `这是一个模拟的大模型回复！\n你刚才说：${userMsg}\n如果接入了真实的 DeepSeek 或 Doubao 模型，这里将展示实时的流式响应数据。模型切换当前为 ${selectedModel.value === 'spark' ? 'Spark Local' : 'Cloud Mode'}。`
+  const mockReply = `这是星火助手的模拟回复！\n你刚才说：${userMsg}\n接入 RAG 向量化引擎后，这里将展示基于项目知识库的智能回答。`
   
   let currentLength = 0
   const interval = setInterval(() => {
@@ -269,9 +238,8 @@ const sendMessage = async () => {
   background: transparent; border: none; font-size: 24px; color: white;
 }
 
-.model-selector { position: relative; display: flex; align-items: center; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 6px 12px; border: 1px solid var(--color-border); }
-.m-select { appearance: none; background: transparent; border: none; color: white; outline: none; padding-right: 16px; margin-left: 8px; font-weight: 500; cursor: pointer; }
-.m-caret { position: absolute; right: 8px; font-size: 10px; color: var(--color-text-muted); pointer-events: none;}
+.header-brand { display: flex; align-items: center; gap: 8px; color: white; font-weight: 600; font-size: 15px; }
+.brand-title { background: linear-gradient(135deg, #8b5cf6, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
 .chat-scrollarea {
   flex: 1;
@@ -347,29 +315,5 @@ textarea {
 
 .footer-tip { text-align: center; color: var(--color-text-muted); font-size: 12px; margin-top: 12px; }
 
-/* Modal Settings */
-.modal-overlay {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
-  display: flex; align-items: center; justify-content: center; z-index: 100;
-}
-.modal-content {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  padding: 32px; border-radius: 20px; width: 90%; max-width: 480px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-}
-.modal-content h3 { font-size: 24px; margin-bottom: 12px; }
-.modal-desc { color: var(--color-text-secondary); font-size: 14px; line-height: 1.6; }
 
-.form-group { position: relative; margin-bottom: 24px; }
-.floating-input { width: 100%; padding: 16px; padding-top: 24px; padding-bottom: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--color-border); border-radius: 12px; color: white; font-size: 16px; transition: all 0.3s; outline: none; }
-.floating-input:focus { border-color: var(--color-brand-purple); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); background: rgba(139, 92, 246, 0.05); }
-.floating-label { position: absolute; top: 16px; left: 16px; color: var(--color-text-secondary); pointer-events: none; transition: all 0.2s ease-out; font-size: 16px; }
-.floating-input:focus ~ .floating-label, .floating-input:not(:placeholder-shown) ~ .floating-label { opacity: 0.8; transform: translateY(-8px) scale(0.75); transform-origin: left top; color: var(--color-brand-purple); }
-
-.modal-actions { display: flex; justify-content: flex-end; gap: 16px; margin-top: 32px; }
-.cancel-btn { background: transparent; border: 1px solid var(--color-border); color: white; padding: 10px 20px; border-radius: 8px; transition: background 0.2s; }
-.cancel-btn:hover { background: rgba(255,255,255,0.05); }
-.save-btn { background: var(--gradient-brand); border: none; color: white; padding: 10px 24px; border-radius: 8px; font-weight: 600; }
 </style>
