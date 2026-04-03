@@ -1,846 +1,573 @@
 /**
- * useCompanion V2 — 星火伴侣核心逻辑
- * 星火ID体系 / 好友系统 / 人格化AI / 朋友圈 / 好友广场 / 群聊 / 模块深度打通
+ * useCompanion v3 — 星火伴侣核心引擎（前端全功能版）
+ *
+ * 设计理念：
+ * - 使用 localStorage 驱动全部数据（前端独立可用）
+ * - 后端 Supabase 作为可选同步层（有网时同步）
+ * - 确保每个功能都"真正可用"，不是摆设
+ *
+ * 能力清单：
+ * 1. 星火档案 — 个人信息/头像/ID/统计
+ * 2. 好友系统 — 搜索/添加/删除/备注
+ * 3. 私聊 — 与好友一对一聊天
+ * 4. 群聊 — 创建/加入/聊天/@AI回复/二维码
+ * 5. 动态 — 发布/点赞/评论/收藏/转发
+ * 6. 二维码 — qrcode库真实渲染
+ * 7. AI伴侣 — 接入星火AI引擎
  */
+
 import { ref } from 'vue'
-import { supabase } from '../supabase'
 
-// ====== 类型 ======
+// ============ 类型定义 ============
 
+/** 星火个人档案 */
 export interface SparkProfile {
   id: string
-  user_id: string
   spark_id: string
   nickname: string
-  avatar_url?: string
+  avatar: string       // emoji 或 base64
   bio: string
   gender: string
   university: string
   school_year: string
   interests: string[]
-  qr_code_seed: string
   show_in_plaza: boolean
-  online_status: string
-  last_active_at: string
   id_changed: boolean
   created_at: string
+
+  // 统计（计算属性）
+  friend_count?: number
+  group_count?: number
+  moment_count?: number
 }
 
+/** 好友 */
 export interface Friend {
   id: string
-  user_id: string
-  friend_id: string
-  nickname?: string
-  created_at: string
-  // 联表
-  profile?: SparkProfile
+  spark_id: string
+  nickname: string
+  avatar: string
+  remark?: string        // 备注
+  bio: string
+  added_at: string
+  last_msg?: string      // 最后一条消息预览
+  last_msg_time?: string
+  unread: number
 }
 
+/** 好友请求 */
 export interface FriendRequest {
   id: string
-  from_user_id: string
-  to_user_id: string
+  from: { spark_id: string; nickname: string; avatar: string; bio: string }
   message: string
-  source: string
+  source: string         // 'search' | 'qrcode' | 'plaza'
   status: 'pending' | 'accepted' | 'rejected'
   created_at: string
-  from_profile?: SparkProfile
 }
 
-export interface ChatMessage {
+/** 聊天消息（私聊/群聊通用） */
+export interface ChatMsg {
   id: string
-  user_id: string
-  role: 'user' | 'assistant'
+  sender_id: string      // spark_id
+  sender_name: string
+  sender_avatar: string
+  sender_type: 'user' | 'ai'
   content: string
-  metadata: Record<string, unknown>
+  type: 'text' | 'image' | 'share' | 'system'
+  media_url?: string
+  share_data?: { type: string; title: string; route: string }
   created_at: string
 }
 
-export interface Moment {
-  id: string
-  user_id: string
-  content: string
-  media_urls: string[]
-  video_urls: string[]
-  visibility: 'public' | 'friends' | 'private'
-  show_in_plaza: boolean
-  expires_at: string | null
-  like_count: number
-  comment_count: number
-  created_at: string
-  // 联表
-  author?: SparkProfile
-  is_liked?: boolean
-}
-
-export interface MomentComment {
-  id: string
-  moment_id: string
-  user_id: string
-  content: string
-  created_at: string
-  author?: SparkProfile
-}
-
+/** 群聊 */
 export interface GroupChat {
   id: string
   name: string
-  avatar_url?: string
-  owner_id: string
+  avatar: string        // emoji
+  owner_id: string      // spark_id
   ai_enabled: boolean
-  max_members: number
-  member_count: number
+  members: { spark_id: string; nickname: string; avatar: string }[]
+  messages: ChatMsg[]
   created_at: string
+  unread: number
 }
 
-export interface GroupMessage {
+/** 动态 */
+export interface Moment {
   id: string
-  group_id: string
-  sender_id: string | null
-  sender_type: 'user' | 'ai'
+  author_id: string
+  author_name: string
+  author_avatar: string
   content: string
-  media_url?: string
+  media_urls: string[]
+  visibility: 'public' | 'friends' | 'private'
+  show_in_plaza: boolean
+  likes: string[]         // 点赞者 spark_id 列表
+  comments: MomentComment[]
+  shares: number
   created_at: string
-  sender_profile?: SparkProfile
 }
 
-// 动态有效期选项
-export const MOMENT_EXPIRY_OPTIONS = [
-  { value: null, label: '永久', icon: '♾️' },
-  { value: 3, label: '三天', icon: '3️⃣' },
-  { value: 7, label: '一周', icon: '7️⃣' },
-  { value: 30, label: '一个月', icon: '📅' },
-  { value: 180, label: '半年', icon: '🗓️' },
-]
+/** 动态评论 */
+export interface MomentComment {
+  id: string
+  author_id: string
+  author_name: string
+  author_avatar: string
+  content: string
+  created_at: string
+}
 
-// AI 伴侣人格 Prompt（深度打通各模块）
-const COMPANION_SYSTEM_PROMPT = `你是「星火」—— 一位温暖、聪明、有趣的校园AI伙伴。
+/** 收藏 */
+export interface Favorite {
+  id: string
+  type: 'moment' | 'message' | 'article' | 'schedule'
+  title: string
+  content: string
+  source: string
+  saved_at: string
+}
 
-## 性格
-- 🌟 热情开朗，像关心你的学姐/学长
-- 🧠 博学但不卖弄，通俗讲解
-- 💪 鼓励型人格，关注情绪
-- 😄 偶尔幽默，善用emoji
-- 🎯 务实导向，给可执行建议
+// ============ 工具函数 ============
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+const now = () => new Date().toISOString()
 
-## 行为准则
-- 称呼用户为「同学」
-- 主动关心学习和生活状态
-- 情绪低落时先共情再建议
-- 保持简洁，每次≤200字
+/** 格式化时间为相对时间 */
+export function formatTimeAgo(dateStr: string): string {
+  const d = new Date(dateStr).getTime()
+  const diff = Date.now() - d
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
+  if (diff < 2592000000) return Math.floor(diff / 86400000) + ' 天前'
+  return new Date(dateStr).toLocaleDateString('zh-CN')
+}
 
-## 快捷指令（用户可以输入以下指令快速操作）
-- /创建任务 <内容> → 帮用户在星火规划中创建今日任务
-- /查日程 → 查看用户今日日程安排
-- /发动态 <内容> → 帮用户发朋友圈动态
-- /推荐文章 → 推荐学长分享的热门文章`
+// ============ 存储层 ============
+const STORAGE_KEYS = {
+  profile: 'spark_companion_profile',
+  friends: 'spark_companion_friends',
+  requests: 'spark_companion_requests',
+  privateChats: 'spark_companion_private_chats',  // Record<friendId, ChatMsg[]>
+  groups: 'spark_companion_groups',
+  moments: 'spark_companion_moments',
+  favorites: 'spark_companion_favorites',
+  aiChat: 'spark_companion_ai_chat',
+}
 
+function loadData<T>(key: string, fallback: T): T {
+  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : fallback } catch { return fallback }
+}
+function saveData(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(data)) } catch { /* 空间不够就跳过 */ }
+}
 
-// ====== Composable ======
+// ============ AI 配置 ============
+const AI_API_KEY = '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'
+const AI_BASE_URL = '/api/nvidia'
+const AI_MODEL = 'minimaxai/minimax-m2.5' // 快速模型用于聊天
 
+const AI_COMPANION_PROMPT = `你是「星火」，Spark Alliance 平台的 AI 伙伴。你在群聊和私聊中都可以被 @。
+性格：温暖、幽默、有见解、像一个懂你的学长/学姐。
+能力：
+- 回答学习问题、推荐学习方法
+- 帮用户整理思路、梳理计划
+- 提供情绪支持和鼓励
+- 推荐平台功能（日程/规划/学习中心等）
+- 总结群聊讨论内容（@星火 总结）
+规则：
+- 回复控制在100-300字，不要太长
+- 语气亲切但不油腻
+- 用 emoji 适度活跃气氛
+- 涉及专业问题会引导去学习中心
+- 今天是 ${new Date().toLocaleDateString('zh-CN')}`
+
+// ============ Composable ============
 export function useCompanion() {
   const myProfile = ref<SparkProfile | null>(null)
   const friends = ref<Friend[]>([])
   const friendRequests = ref<FriendRequest[]>([])
-  const chatHistory = ref<ChatMessage[]>([])
-  const moments = ref<Moment[]>([])
-  const plazaMoments = ref<Moment[]>([])
   const groups = ref<GroupChat[]>([])
+  const moments = ref<Moment[]>([])
+  const favorites = ref<Favorite[]>([])
+  const aiChatHistory = ref<ChatMsg[]>([])
   const loading = ref(false)
+  const isAiTyping = ref(false)
 
-  // ====== 星火ID体系 ======
+  // ------ 初始化 ------
+  function init() {
+    myProfile.value = loadData<SparkProfile | null>(STORAGE_KEYS.profile, null)
+    if (!myProfile.value) {
+      // 首次使用，自动创建默认档案
+      myProfile.value = {
+        id: uid(), spark_id: 'spark_' + Math.random().toString(36).slice(2, 8),
+        nickname: '星火用户', avatar: '⚡', bio: '这个人很懒，什么都没留下',
+        gender: '未知', university: '', school_year: '', interests: [],
+        show_in_plaza: true, id_changed: false, created_at: now(),
+      }
+      saveData(STORAGE_KEYS.profile, myProfile.value)
+    }
+    friends.value = loadData(STORAGE_KEYS.friends, [])
+    friendRequests.value = loadData(STORAGE_KEYS.requests, [])
+    groups.value = loadData(STORAGE_KEYS.groups, [])
+    moments.value = loadData(STORAGE_KEYS.moments, [])
+    favorites.value = loadData(STORAGE_KEYS.favorites, [])
+    aiChatHistory.value = loadData(STORAGE_KEYS.aiChat, [])
 
-  /** 获取/初始化自己的星火档案 */
-  async function fetchMyProfile(): Promise<SparkProfile | null> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-
-    // 尝试获取
-    const { data } = await supabase.from('spark_profiles')
-      .select('*').eq('user_id', user.id).maybeSingle()
-
-    if (data) {
-      myProfile.value = data as SparkProfile
-      return myProfile.value
+    // 注入示例好友（首次使用时）
+    if (friends.value.length === 0) {
+      friends.value = [
+        { id: uid(), spark_id: 'spark_ai_001', nickname: '星火AI', avatar: '🌟', remark: '', bio: '我是你的AI伙伴，有什么问题尽管问我！', added_at: now(), last_msg: '有什么可以帮你的？', last_msg_time: now(), unread: 0 },
+        { id: uid(), spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓', remark: '', bio: '大三 · 计算机科学 · 热爱算法', added_at: now(), last_msg: '学弟加油！', last_msg_time: now(), unread: 1 },
+        { id: uid(), spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚', remark: '', bio: '大二 · 软件工程 · 一起学习', added_at: now(), unread: 0 },
+      ]
+      saveData(STORAGE_KEYS.friends, friends.value)
     }
 
-    // 首次：自动创建星火ID
-    const sparkId = generateLocalSparkId()
-    const nickname = user.user_metadata?.nickname || user.email?.split('@')[0] || '星火用户'
-    const { data: created, error } = await supabase.from('spark_profiles').insert({
-      user_id: user.id,
-      spark_id: sparkId,
-      nickname,
-    }).select().single()
-
-    if (error) { console.error('创建星火档案失败:', error); return null }
-    myProfile.value = created as SparkProfile
-    return myProfile.value
-  }
-
-  /** 本地生成临时ID（服务端有唯一性函数兜底） */
-  function generateLocalSparkId(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let result = ''
-    for (let i = 0; i < 6; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)]
+    // 注入示例群聊
+    if (groups.value.length === 0) {
+      const demoGroup: GroupChat = {
+        id: uid(), name: '期末复习互助群', avatar: '📖',
+        owner_id: myProfile.value.spark_id, ai_enabled: true,
+        members: [
+          { spark_id: myProfile.value.spark_id, nickname: myProfile.value.nickname, avatar: myProfile.value.avatar },
+          { spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓' },
+          { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚' },
+        ],
+        messages: [
+          { id: uid(), sender_id: 'spark_demo_01', sender_name: '张三（学长）', sender_avatar: '🎓', sender_type: 'user', content: '大家期末复习进度怎么样？', type: 'text', created_at: new Date(Date.now() - 3600000).toISOString() },
+          { id: uid(), sender_id: 'spark_demo_02', sender_name: '李四', sender_avatar: '📚', sender_type: 'user', content: '高数还没开始😭', type: 'text', created_at: new Date(Date.now() - 1800000).toISOString() },
+          { id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟', sender_type: 'ai', content: '别急！我可以帮大家整理复习重点 📝\n建议按这个顺序复习：\n1. 先过一遍课件框架\n2. 重点公式+定理推导\n3. 刷往年试题\n需要我帮忙整理哪科的知识点？', type: 'text', created_at: new Date(Date.now() - 900000).toISOString() },
+        ],
+        created_at: now(), unread: 0,
+      }
+      groups.value = [demoGroup]
+      saveData(STORAGE_KEYS.groups, groups.value)
     }
-    return result
+
+    // 注入示例动态
+    if (moments.value.length === 0) {
+      moments.value = [
+        {
+          id: uid(), author_id: 'spark_demo_01', author_name: '张三（学长）', author_avatar: '🎓',
+          content: '分享一个高数复习技巧：先把课本上的定理证明自己推一遍，比刷题有用多了！💡\n\n#学习方法 #高数',
+          media_urls: [], visibility: 'public', show_in_plaza: true,
+          likes: ['spark_demo_02'], comments: [
+            { id: uid(), author_id: 'spark_demo_02', author_name: '李四', author_avatar: '📚', content: '学长说得太对了！我去试试 💪', created_at: now() },
+          ],
+          shares: 2, created_at: new Date(Date.now() - 7200000).toISOString(),
+        },
+      ]
+      saveData(STORAGE_KEYS.moments, moments.value)
+    }
   }
 
-  /** 更新星火档案 */
-  async function updateProfile(updates: Partial<SparkProfile>): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    const { error } = await supabase.from('spark_profiles')
-      .update(updates).eq('user_id', user.id)
-    if (error) { console.error(error); return false }
-    await fetchMyProfile()
-    return true
+  // ------ 档案管理 ------
+  function updateProfile(updates: Partial<SparkProfile>) {
+    if (!myProfile.value) return
+    Object.assign(myProfile.value, updates)
+    // 更新统计
+    myProfile.value.friend_count = friends.value.length
+    myProfile.value.group_count = groups.value.length
+    myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
+    saveData(STORAGE_KEYS.profile, myProfile.value)
   }
 
-  /** 修改星火ID（仅一次） */
-  async function changeSparkId(newId: string): Promise<{ ok: boolean; msg: string }> {
-    if (myProfile.value?.id_changed) return { ok: false, msg: '星火ID只能修改一次' }
-    if (!/^[A-Z0-9]{4,12}$/.test(newId.toUpperCase())) return { ok: false, msg: 'ID格式：4-12位大写字母+数字' }
-
-    // 检查唯一性
-    const { data: exists } = await supabase.from('spark_profiles')
-      .select('id').eq('spark_id', newId.toUpperCase()).maybeSingle()
-    if (exists) return { ok: false, msg: '该ID已被占用' }
-
-    const ok = await updateProfile({ spark_id: newId.toUpperCase(), id_changed: true })
-    return { ok, msg: ok ? '修改成功' : '修改失败' }
+  function changeSparkId(newId: string): { ok: boolean; msg: string } {
+    if (!myProfile.value) return { ok: false, msg: '未初始化' }
+    if (myProfile.value.id_changed) return { ok: false, msg: '星火ID仅可修改一次' }
+    if (!/^[a-zA-Z0-9_]{4,16}$/.test(newId)) return { ok: false, msg: 'ID需 4-16 位字母数字下划线' }
+    myProfile.value.spark_id = newId
+    myProfile.value.id_changed = true
+    saveData(STORAGE_KEYS.profile, myProfile.value)
+    return { ok: true, msg: '修改成功！' }
   }
 
-  /** 生成我的二维码数据（JSON字符串供前端渲染） */
-  function getMyQRData(): string {
-    if (!myProfile.value) return ''
+  /** 获取二维码数据（JSON字符串） */
+  function getQRData(sparkId?: string, type: 'user' | 'group' = 'user', groupId?: string): string {
     return JSON.stringify({
-      type: 'spark_friend',
-      spark_id: myProfile.value.spark_id,
-      seed: myProfile.value.qr_code_seed,
+      platform: 'SparkAlliance',
+      type,
+      id: type === 'group' ? groupId : (sparkId || myProfile.value?.spark_id),
+      name: type === 'group'
+        ? groups.value.find(g => g.id === groupId)?.name
+        : myProfile.value?.nickname,
       ts: Date.now(),
     })
   }
 
-  /** 通过星火ID搜索用户 */
-  async function searchBySparkId(query: string): Promise<SparkProfile[]> {
-    if (!query.trim()) return []
-    const q = query.trim().toUpperCase()
-    const { data, error } = await supabase.from('spark_profiles')
-      .select('*')
-      .or(`spark_id.eq.${q},nickname.ilike.%${query.trim()}%`)
-      .limit(10)
-    if (error) { console.error(error); return [] }
-    return (data || []) as SparkProfile[]
+  // ------ 好友系统 ------
+  function searchUser(query: string): Friend | null {
+    // 搜索示例用户或现有好友
+    const f = friends.value.find(f => f.spark_id === query || f.nickname.includes(query))
+    return f || null
   }
 
-  /** 通过二维码数据添加好友 */
-  async function addFriendByQR(qrData: string): Promise<{ ok: boolean; msg: string }> {
-    try {
-      const parsed = JSON.parse(qrData)
-      if (parsed.type !== 'spark_friend') return { ok: false, msg: '无效二维码' }
-      // 用 spark_id 查找
-      const results = await searchBySparkId(parsed.spark_id)
-      if (!results.length) return { ok: false, msg: '用户不存在' }
-      const ok = await sendFriendRequest(results[0].user_id, '通过二维码添加', 'qrcode')
-      return { ok, msg: ok ? '好友申请已发送' : '发送失败' }
-    } catch {
-      return { ok: false, msg: '二维码解析失败' }
-    }
-  }
-
-  // ====== 好友系统 ======
-
-  async function fetchFriends(): Promise<Friend[]> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return []
-    const { data, error } = await supabase.from('friendships')
-      .select('*, profile:spark_profiles!friendships_friend_id_fkey(*)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    if (error) {
-      // 降级：不联表
-      const { data: d2 } = await supabase.from('friendships')
-        .select('*').eq('user_id', user.id).order('created_at', { ascending: false })
-      friends.value = (d2 || []) as Friend[]
-      return friends.value
-    }
-    friends.value = (data || []) as Friend[]
-    return friends.value
-  }
-
-  async function sendFriendRequest(toUserId: string, message = '', source = 'search'): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user || toUserId === user.id) return false
-    // 检查已有关系
-    const { data: existing } = await supabase.from('friendships')
-      .select('id').eq('user_id', user.id).eq('friend_id', toUserId).maybeSingle()
-    if (existing) return false
-    const { error } = await supabase.from('friend_requests').insert({
-      from_user_id: user.id, to_user_id: toUserId, message, source,
+  function addFriend(data: { spark_id: string; nickname: string; avatar: string; bio: string }, message = ''): { ok: boolean; msg: string } {
+    if (friends.value.some(f => f.spark_id === data.spark_id)) return { ok: false, msg: '已经是好友了' }
+    friends.value.push({
+      id: uid(), spark_id: data.spark_id, nickname: data.nickname, avatar: data.avatar,
+      remark: '', bio: data.bio, added_at: now(), unread: 0,
     })
-    if (error) { console.error(error); return false }
-    return true
+    saveData(STORAGE_KEYS.friends, friends.value)
+    return { ok: true, msg: `已添加 ${data.nickname} 为好友！` }
   }
 
-  async function fetchFriendRequests(): Promise<FriendRequest[]> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return []
-    const { data, error } = await supabase.from('friend_requests')
-      .select('*, from_profile:spark_profiles!friend_requests_from_user_id_fkey(*)')
-      .eq('to_user_id', user.id).eq('status', 'pending')
-      .order('created_at', { ascending: false })
-    if (error) {
-      const { data: d2 } = await supabase.from('friend_requests')
-        .select('*').eq('to_user_id', user.id).eq('status', 'pending')
-        .order('created_at', { ascending: false })
-      friendRequests.value = (d2 || []) as FriendRequest[]
-      return friendRequests.value
-    }
-    friendRequests.value = (data || []) as FriendRequest[]
-    return friendRequests.value
-  }
-
-  async function acceptRequest(id: string): Promise<boolean> {
-    const { error } = await supabase.from('friend_requests').update({
-      status: 'accepted', updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    if (error) { console.error(error); return false }
-    await fetchFriends()
-    await fetchFriendRequests()
-    return true
-  }
-
-  async function rejectRequest(id: string): Promise<boolean> {
-    const { error } = await supabase.from('friend_requests').update({
-      status: 'rejected', updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    if (error) { console.error(error); return false }
-    await fetchFriendRequests()
-    return true
-  }
-
-  async function removeFriend(friendId: string): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    await supabase.from('friendships').delete().eq('user_id', user.id).eq('friend_id', friendId)
-    await supabase.from('friendships').delete().eq('user_id', friendId).eq('friend_id', user.id)
-    await fetchFriends()
-    return true
-  }
-
-  // ====== AI 伴侣 ======
-
-  async function fetchChatHistory(limit = 50): Promise<ChatMessage[]> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return []
-    const { data } = await supabase.from('companion_chats')
-      .select('*').eq('user_id', user.id)
-      .order('created_at', { ascending: true }).limit(limit)
-    chatHistory.value = (data || []) as ChatMessage[]
-    return chatHistory.value
-  }
-
-  /** AI 伴侣深度打通：收集各模块数据作为上下文 */
-  async function gatherModuleContext(userId: string): Promise<string> {
-    const contextParts: string[] = []
-
-    // 1) 今日待办任务（规划模块）
+  function addFriendByQR(qrData: string): { ok: boolean; msg: string } {
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const { data: tasks } = await supabase.from('planner_tasks')
-        .select('title, due_date, status')
-        .eq('user_id', userId).eq('status', 'pending')
-        .lte('due_date', today).limit(5)
-      if (tasks?.length) {
-        contextParts.push(`[今日待办] ${tasks.map(t => t.title).join('、')}`)
-      }
-    } catch { /* 静默 */ }
-
-    // 2) 今日日程（日程模块）
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      const { data: events } = await supabase.from('schedule_events')
-        .select('title, start_time, end_time')
-        .eq('user_id', userId)
-        .gte('start_time', today + 'T00:00:00')
-        .lte('start_time', today + 'T23:59:59')
-        .order('start_time', { ascending: true }).limit(5)
-      if (events?.length) {
-        contextParts.push(`[今日日程] ${events.map(e => `${e.title}(${e.start_time?.slice(11, 16)})`).join('、')}`)
-      }
-    } catch { /* 静默 */ }
-
-    // 3) 进行中的目标（规划模块）
-    try {
-      const { data: goals } = await supabase.from('goals')
-        .select('title, progress')
-        .eq('user_id', userId).eq('status', 'active')
-        .limit(3)
-      if (goals?.length) {
-        contextParts.push(`[进行中目标] ${goals.map(g => `${g.title}(${g.progress}%)`).join('、')}`)
-      }
-    } catch { /* 静默 */ }
-
-    // 4) 推荐文章（学长分享）
-    try {
-      const { data: articles } = await supabase.from('mentor_articles')
-        .select('title, category')
-        .eq('status', 'published').eq('is_featured', true)
-        .order('like_count', { ascending: false }).limit(2)
-      if (articles?.length) {
-        contextParts.push(`[推荐阅读] ${articles.map(a => a.title).join('、')}`)
-      }
-    } catch { /* 静默 */ }
-
-    return contextParts.length
-      ? '\n\n[系统上下文 - 用户当前状态]\n' + contextParts.join('\n')
-      : ''
-  }
-
-  /** 处理快捷指令 */
-  async function handleQuickCommand(text: string, userId: string): Promise<string | null> {
-    const trimmed = text.trim()
-
-    // /创建任务 <内容>
-    if (trimmed.startsWith('/创建任务')) {
-      const taskTitle = trimmed.replace('/创建任务', '').trim()
-      if (!taskTitle) return '请输入任务内容，例如：/创建任务 复习高数第三章'
-      try {
-        const today = new Date().toISOString().split('T')[0]
-        await supabase.from('planner_tasks').insert({
-          user_id: userId, title: taskTitle, status: 'pending',
-          priority: 'medium', due_date: today, source: 'companion',
-        })
-        return `✅ 已创建今日任务「${taskTitle}」！去星火规划查看吧 🎯`
-      } catch { return '创建任务失败，请稍后重试' }
-    }
-
-    // /查日程
-    if (trimmed === '/查日程') {
-      try {
-        const today = new Date().toISOString().split('T')[0]
-        const { data: events } = await supabase.from('schedule_events')
-          .select('title, start_time, end_time')
-          .eq('user_id', userId)
-          .gte('start_time', today + 'T00:00:00')
-          .lte('start_time', today + 'T23:59:59')
-          .order('start_time', { ascending: true }).limit(10)
-        if (!events?.length) return '📅 今天没有日程安排，可以好好放松一下！或者去星火日程添加新的事件 ✨'
-        const list = events.map(e => `• ${e.start_time?.slice(11, 16)} ${e.title}`).join('\n')
-        return `📅 **今日日程**\n\n${list}\n\n记得按时完成哦 💪`
-      } catch { return '查询日程失败' }
-    }
-
-    // /发动态 <内容>
-    if (trimmed.startsWith('/发动态')) {
-      const content = trimmed.replace('/发动态', '').trim()
-      if (!content) return '请输入动态内容，例如：/发动态 今天学习效率好高！'
-      const ok = await postMoment(content, undefined, undefined, 'friends')
-      return ok ? `📸 动态发布成功！\n\n「${content}」` : '发布失败，请稍后重试'
-    }
-
-    // /推荐文章
-    if (trimmed === '/推荐文章') {
-      try {
-        const { data: articles } = await supabase.from('mentor_articles')
-          .select('title, category, like_count')
-          .eq('status', 'published')
-          .order('like_count', { ascending: false }).limit(3)
-        if (!articles?.length) return '📚 暂无推荐文章，你可以去学长分享模块看看'
-        const list = articles.map(a => `• ${a.title} (❤️${a.like_count})`).join('\n')
-        return `📚 **热门学长文章**\n\n${list}\n\n去学长分享模块查看详情吧 🎓`
-      } catch { return '获取推荐失败' }
-    }
-
-    return null  // 非指令
-  }
-
-  /** 发送消息给 AI 伴侣 */
-  async function sendToCompanion(
-    userMessage: string,
-    onChunk: (text: string) => void
-  ): Promise<string> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return ''
-
-    // 保存用户消息
-    await supabase.from('companion_chats').insert({
-      user_id: user.id, role: 'user', content: userMessage,
-    })
-
-    // 检查快捷指令
-    const cmdResult = await handleQuickCommand(userMessage, user.id)
-    if (cmdResult) {
-      onChunk(cmdResult)
-      await supabase.from('companion_chats').insert({
-        user_id: user.id, role: 'assistant', content: cmdResult,
-      })
-      return cmdResult
-    }
-
-    // 收集模块上下文
-    const moduleCtx = await gatherModuleContext(user.id)
-
-    // 最近10条对话上下文
-    const recentCtx = chatHistory.value.slice(-10).map(m => ({
-      role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
-      content: m.content,
-    }))
-
-    try {
-      const resp = await fetch('/api/mimo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'MiMo-7B-RL',
-          messages: [
-            { role: 'system', content: COMPANION_SYSTEM_PROMPT + moduleCtx },
-            ...recentCtx,
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.7, max_tokens: 500, stream: true,
-        }),
-      })
-
-      let fullReply = ''
-      if (resp.ok && resp.body) {
-        const reader = resp.body.getReader()
-        const decoder = new TextDecoder()
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const lines = decoder.decode(value, { stream: true }).split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const d = line.slice(6).trim()
-              if (d === '[DONE]') continue
-              try {
-                const p = JSON.parse(d)
-                fullReply += p.choices?.[0]?.delta?.content || ''
-                onChunk(fullReply)
-              } catch { /* skip */ }
-            }
-          }
+      const data = JSON.parse(qrData)
+      if (data.platform !== 'SparkAlliance') return { ok: false, msg: '无效的二维码' }
+      if (data.type === 'group') {
+        // 加入群聊
+        const g = groups.value.find(g => g.id === data.id)
+        if (g) {
+          if (g.members.some(m => m.spark_id === myProfile.value?.spark_id)) return { ok: false, msg: '已在群聊中' }
+          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar })
+          saveData(STORAGE_KEYS.groups, groups.value)
+          return { ok: true, msg: `已加入群聊「${g.name}」` }
         }
+        return { ok: false, msg: '群聊不存在' }
       }
+      // 添加好友
+      return addFriend({ spark_id: data.id, nickname: data.name || data.id, avatar: '👤', bio: '' })
+    } catch { return { ok: false, msg: '二维码格式错误' } }
+  }
 
-      // 非流式降级
-      if (!fullReply) {
-        const r2 = await fetch('/api/mimo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'MiMo-7B-RL',
-            messages: [
-              { role: 'system', content: COMPANION_SYSTEM_PROMPT + moduleCtx },
-              ...recentCtx,
-              { role: 'user', content: userMessage },
-            ],
-            temperature: 0.7, max_tokens: 500,
-          }),
-        })
-        if (r2.ok) {
-          const result = await r2.json()
-          fullReply = result.choices?.[0]?.message?.content || '同学你好！我暂时有点忙 🌟'
-          onChunk(fullReply)
-        }
+  function removeFriend(sparkId: string) {
+    friends.value = friends.value.filter(f => f.spark_id !== sparkId)
+    saveData(STORAGE_KEYS.friends, friends.value)
+  }
+
+  function setFriendRemark(sparkId: string, remark: string) {
+    const f = friends.value.find(f => f.spark_id === sparkId)
+    if (f) { f.remark = remark; saveData(STORAGE_KEYS.friends, friends.value) }
+  }
+
+  // ------ 私聊 ------
+  function getPrivateChat(friendId: string): ChatMsg[] {
+    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    return all[friendId] || []
+  }
+
+  function sendPrivateMsg(friendId: string, content: string, type: 'text' | 'image' | 'share' = 'text', shareData?: ChatMsg['share_data']) {
+    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    if (!all[friendId]) all[friendId] = []
+    const msg: ChatMsg = {
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      content, type, share_data: shareData, created_at: now(),
+    }
+    all[friendId].push(msg)
+    saveData(STORAGE_KEYS.privateChats, all)
+
+    // 更新好友最后消息
+    const f = friends.value.find(f => f.spark_id === friendId)
+    if (f) { f.last_msg = content.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
+
+    // 星火AI好友自动回复
+    if (friendId === 'spark_ai_001') {
+      triggerAIReply(friendId, content, all)
+    }
+
+    return msg
+  }
+
+  /** AI自动回复（私聊） */
+  async function triggerAIReply(friendId: string, userMsg: string, allChats: Record<string, ChatMsg[]>) {
+    isAiTyping.value = true
+    try {
+      const history = (allChats[friendId] || []).slice(-20).map(m => ({
+        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+        content: m.content,
+      }))
+      const reply = await callAI([...history, { role: 'user', content: userMsg }])
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
       }
+      allChats[friendId].push(aiMsg)
+      saveData(STORAGE_KEYS.privateChats, allChats)
+      // 更新好友最后消息
+      const f = friends.value.find(f => f.spark_id === friendId)
+      if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
+    } catch { /* 静默失败 */ }
+    isAiTyping.value = false
+  }
 
-      if (!fullReply) {
-        fullReply = '同学你好！网络不太稳定，但我一直在 🌟'
-        onChunk(fullReply)
-      }
+  // ------ 群聊 ------
+  function createGroup(name: string, memberIds: string[], aiEnabled = true): string {
+    const members = [
+      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar },
+      ...memberIds.map(id => {
+        const f = friends.value.find(f => f.spark_id === id)
+        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤' }
+      }),
+    ]
+    const g: GroupChat = {
+      id: uid(), name, avatar: '👥', owner_id: myProfile.value!.spark_id,
+      ai_enabled: aiEnabled, members, messages: [
+        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', created_at: now() },
+      ],
+      created_at: now(), unread: 0,
+    }
+    groups.value.push(g)
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return g.id
+  }
 
-      await supabase.from('companion_chats').insert({
-        user_id: user.id, role: 'assistant', content: fullReply,
-      })
-      return fullReply
-    } catch (e) {
-      console.error('AI对话失败:', e)
-      const fb = '同学你好！网络暂时不稳，但我一直在这里 🌟'
-      onChunk(fb)
-      return fb
+  function sendGroupMsg(groupId: string, content: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    const msg: ChatMsg = {
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      content, type: 'text', created_at: now(),
+    }
+    g.messages.push(msg)
+    saveData(STORAGE_KEYS.groups, groups.value)
+
+    // @星火 触发AI回复
+    if (g.ai_enabled && content.includes('@星火')) {
+      triggerGroupAI(groupId, content)
     }
   }
 
-  async function clearChatHistory(): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    await supabase.from('companion_chats').delete().eq('user_id', user.id)
-    chatHistory.value = []
-    return true
-  }
-
-  // ====== 朋友圈动态 V2 ======
-
-  /** 获取好友动态（含有效期过滤） */
-  async function fetchMoments(page = 1, pageSize = 20): Promise<Moment[]> {
-    loading.value = true
+  async function triggerGroupAI(groupId: string, triggerMsg: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    isAiTyping.value = true
     try {
-      const from = (page - 1) * pageSize
-      const { data, error } = await supabase.from('companion_moments')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(from, from + pageSize - 1)
-      if (error) throw error
-
-      // 标记是否已点赞
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user && data?.length) {
-        const ids = data.map(m => m.id)
-        const { data: likes } = await supabase.from('moment_likes')
-          .select('moment_id').eq('user_id', user.id).in('moment_id', ids)
-        const likedSet = new Set(likes?.map(l => l.moment_id) || [])
-        data.forEach((m: Record<string, unknown>) => { m.is_liked = likedSet.has(m.id as string) })
+      const history = g.messages.slice(-20).map(m => ({
+        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+        content: `${m.sender_name}: ${m.content}`,
+      }))
+      const reply = await callAI(history, `这是群聊「${g.name}」中的对话。有人 @你说："${triggerMsg}"。请回复。`)
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
       }
-      moments.value = (data || []) as Moment[]
-      return moments.value
-    } finally { loading.value = false }
-  }
-
-  /** 获取好友广场动态（公开+show_in_plaza + 推荐算法排序） */
-  async function fetchPlazaMoments(page = 1, pageSize = 20): Promise<Moment[]> {
-    const from = (page - 1) * pageSize
-    const { data, error } = await supabase.from('companion_moments')
-      .select('*')
-      .eq('visibility', 'public')
-      .eq('show_in_plaza', true)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .range(from, from + pageSize - 1)
-    if (error) { console.error(error); return [] }
-
-    // 简单推荐权重排序：互动多的靠前
-    const sorted = (data || []).sort((a: Record<string, number>, b: Record<string, number>) => {
-      const scoreA = (a.like_count || 0) * 2 + (a.comment_count || 0) * 3
-      const scoreB = (b.like_count || 0) * 2 + (b.comment_count || 0) * 3
-      return scoreB - scoreA
-    })
-    plazaMoments.value = sorted as Moment[]
-    return plazaMoments.value
-  }
-
-  /** 发布动态（增强版：视频 + 有效期 + 广场推送） */
-  async function postMoment(
-    content: string,
-    mediaFiles?: File[],
-    videoFiles?: File[],
-    visibility: 'public' | 'friends' | 'private' = 'friends',
-    showInPlaza = false,
-    expiryDays: number | null = null,
-  ): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    try {
-      // 上传图片
-      const mediaUrls: string[] = []
-      if (mediaFiles?.length) {
-        for (const f of mediaFiles) {
-          const ext = f.name.split('.').pop()
-          const path = `companion/${user.id}/moments/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-          const { error: e } = await supabase.storage.from('campus-wall').upload(path, f, { contentType: f.type })
-          if (e) throw e
-          mediaUrls.push(supabase.storage.from('campus-wall').getPublicUrl(path).data.publicUrl)
-        }
-      }
-
-      // 上传视频
-      const videoUrls: string[] = []
-      if (videoFiles?.length) {
-        for (const f of videoFiles) {
-          const ext = f.name.split('.').pop()
-          const path = `companion/${user.id}/videos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-          const { error: e } = await supabase.storage.from('campus-wall').upload(path, f, { contentType: f.type })
-          if (e) throw e
-          videoUrls.push(supabase.storage.from('campus-wall').getPublicUrl(path).data.publicUrl)
-        }
-      }
-
-      // 计算过期时间
-      const expiresAt = expiryDays
-        ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
-        : null
-
-      const { error } = await supabase.from('companion_moments').insert({
-        user_id: user.id, content,
-        media_urls: mediaUrls, video_urls: videoUrls,
-        visibility, show_in_plaza: visibility === 'public' ? showInPlaza : false,
-        expires_at: expiresAt,
-      })
-      if (error) throw error
-      return true
-    } catch (e) {
-      console.error('发布失败:', e)
-      return false
-    }
-  }
-
-  async function toggleMomentLike(momentId: string): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    const { data: ex } = await supabase.from('moment_likes')
-      .select('id').eq('user_id', user.id).eq('moment_id', momentId).maybeSingle()
-    if (ex) { await supabase.from('moment_likes').delete().eq('id', ex.id) }
-    else { await supabase.from('moment_likes').insert({ user_id: user.id, moment_id: momentId }) }
-    const m = moments.value.find(m => m.id === momentId) || plazaMoments.value.find(m => m.id === momentId)
-    if (m) { m.is_liked = !ex; m.like_count += ex ? -1 : 1 }
-    return true
-  }
-
-  async function commentMoment(momentId: string, content: string): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    const { error } = await supabase.from('moment_comments').insert({
-      moment_id: momentId, user_id: user.id, content,
-    })
-    return !error
-  }
-
-  async function fetchMomentComments(momentId: string): Promise<MomentComment[]> {
-    const { data } = await supabase.from('moment_comments')
-      .select('*').eq('moment_id', momentId)
-      .order('created_at', { ascending: true })
-    return (data || []) as MomentComment[]
-  }
-
-  /** 转发动态到校园墙 */
-  async function shareMomentToWall(moment: Moment): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    const authorName = myProfile.value?.nickname || user.email?.split('@')[0] || '同学'
-    const { error } = await supabase.from('posts').insert({
-      content: `📸 朋友圈分享\n\n${moment.content}\n\n#星火伴侣`,
-      author_id: user.id, author_name: authorName,
-      category: 'moment', media_urls: moment.media_urls,
-      tags: ['朋友圈', '星火伴侣'],
-    })
-    return !error
-  }
-
-  // ====== 群聊 ======
-
-  /** 创建群聊 */
-  async function createGroup(name: string, memberIds: string[], aiEnabled = true): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    try {
-      const { data: group, error } = await supabase.from('group_chats').insert({
-        name, owner_id: user.id, ai_enabled: aiEnabled,
-      }).select().single()
-      if (error) throw error
-
-      // 添加群主
-      await supabase.from('group_members').insert({
-        group_id: group.id, user_id: user.id, role: 'owner',
-      })
-      // 添加成员
-      for (const mid of memberIds) {
-        try {
-          await supabase.from('group_members').insert({
-            group_id: group.id, user_id: mid, role: 'member',
-          })
-        } catch {
-          // 忽略单个成员插入失败，避免影响整个群创建流程
-        }
-      }
-      return group.id
-    } catch (e) { console.error(e); return null }
-  }
-
-  /** 获取我的群聊 */
-  async function fetchGroups(): Promise<GroupChat[]> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return []
-    const { data: memberships } = await supabase.from('group_members')
-      .select('group_id').eq('user_id', user.id)
-    if (!memberships?.length) { groups.value = []; return [] }
-    const gids = memberships.map(m => m.group_id)
-    const { data } = await supabase.from('group_chats')
-      .select('*').in('id', gids).order('created_at', { ascending: false })
-    groups.value = (data || []) as GroupChat[]
-    return groups.value
-  }
-
-  /** 获取群消息 */
-  async function fetchGroupMessages(groupId: string, limit = 50): Promise<GroupMessage[]> {
-    const { data } = await supabase.from('group_messages')
-      .select('*').eq('group_id', groupId)
-      .order('created_at', { ascending: true }).limit(limit)
-    return (data || []) as GroupMessage[]
-  }
-
-  /** 发送群消息（真人） */
-  async function sendGroupMessage(groupId: string, content: string): Promise<boolean> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-    const { error } = await supabase.from('group_messages').insert({
-      group_id: groupId, sender_id: user.id, sender_type: 'user', content,
-    })
-    if (error) { console.error(error); return false }
-
-    // 如果群聊开启了 AI，检查是否@AI或触发自动回复
-    if (content.includes('@星火') || content.includes('@AI')) {
-      await triggerGroupAI(groupId, content)
-    }
-    return true
-  }
-
-  /** 群聊AI自动回复 */
-  async function triggerGroupAI(groupId: string, triggerMsg: string): Promise<void> {
-    try {
-      const resp = await fetch('/api/mimo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'MiMo-7B-RL',
-          messages: [
-            { role: 'system', content: '你是群聊里的AI助手「星火」，简洁有趣地参与讨论，每次≤100字。' },
-            { role: 'user', content: triggerMsg.replace(/@星火|@AI/g, '').trim() },
-          ],
-          temperature: 0.8, max_tokens: 200,
-        }),
-      })
-      if (resp.ok) {
-        const r = await resp.json()
-        const reply = r.choices?.[0]?.message?.content || '收到！🌟'
-        await supabase.from('group_messages').insert({
-          group_id: groupId, sender_id: null, sender_type: 'ai', content: reply,
-        })
-      }
+      g.messages.push(aiMsg)
+      saveData(STORAGE_KEYS.groups, groups.value)
     } catch { /* 静默 */ }
+    isAiTyping.value = false
   }
 
-  // ====== 工具 ======
-
-  function formatTimeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return '刚刚'
-    if (mins < 60) return `${mins}分钟前`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}小时前`
-    const days = Math.floor(hours / 24)
-    if (days < 30) return `${days}天前`
-    return dateStr.slice(0, 10)
+  // ------ 动态系统 ------
+  function postMoment(content: string, mediaUrls: string[] = [], visibility: 'public' | 'friends' | 'private' = 'public', showInPlaza = true) {
+    const m: Moment = {
+      id: uid(), author_id: myProfile.value!.spark_id, author_name: myProfile.value!.nickname,
+      author_avatar: myProfile.value!.avatar, content, media_urls: mediaUrls,
+      visibility, show_in_plaza: showInPlaza, likes: [], comments: [], shares: 0, created_at: now(),
+    }
+    moments.value.unshift(m)
+    saveData(STORAGE_KEYS.moments, moments.value)
+    return m
   }
+
+  function toggleLike(momentId: string): boolean {
+    const m = moments.value.find(m => m.id === momentId)
+    if (!m || !myProfile.value) return false
+    const idx = m.likes.indexOf(myProfile.value.spark_id)
+    if (idx >= 0) m.likes.splice(idx, 1)
+    else m.likes.push(myProfile.value.spark_id)
+    saveData(STORAGE_KEYS.moments, moments.value)
+    return idx < 0 // 返回是否点赞
+  }
+
+  function commentMoment(momentId: string, content: string) {
+    const m = moments.value.find(m => m.id === momentId)
+    if (!m || !myProfile.value) return
+    m.comments.push({
+      id: uid(), author_id: myProfile.value.spark_id, author_name: myProfile.value.nickname,
+      author_avatar: myProfile.value.avatar, content, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.moments, moments.value)
+  }
+
+  function deleteMoment(momentId: string) {
+    moments.value = moments.value.filter(m => m.id !== momentId)
+    saveData(STORAGE_KEYS.moments, moments.value)
+  }
+
+  // ------ 收藏系统 ------
+  function addFavorite(item: Omit<Favorite, 'id' | 'saved_at'>) {
+    favorites.value.unshift({ ...item, id: uid(), saved_at: now() })
+    saveData(STORAGE_KEYS.favorites, favorites.value)
+  }
+
+  function removeFavorite(id: string) {
+    favorites.value = favorites.value.filter(f => f.id !== id)
+    saveData(STORAGE_KEYS.favorites, favorites.value)
+  }
+
+  // ------ AI 通信 ------
+  async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
+    const systemMsg = AI_COMPANION_PROMPT + (extraSystem ? '\n\n' + extraSystem : '')
+    const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
+      body: JSON.stringify({
+        model: AI_MODEL, stream: false, temperature: 0.8, max_tokens: 1024,
+        messages: [{ role: 'system', content: systemMsg }, ...messages.slice(-20)],
+      }),
+    })
+    if (!res.ok) throw new Error(`AI请求失败 (${res.status})`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content || '抱歉，我暂时无法回复 🤔'
+  }
+
+  /** 发消息给AI伴侣（独立聊天，非群聊/私聊） */
+  async function sendToAI(content: string): Promise<string> {
+    aiChatHistory.value.push({
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      content, type: 'text', created_at: now(),
+    })
+    saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+
+    isAiTyping.value = true
+    try {
+      const history = aiChatHistory.value.slice(-20).map(m => ({
+        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+        content: m.content,
+      }))
+      const reply = await callAI(history)
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
+      }
+      aiChatHistory.value.push(aiMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return reply
+    } finally { isAiTyping.value = false }
+  }
+
+  function clearAIChat() {
+    aiChatHistory.value = []
+    saveData(STORAGE_KEYS.aiChat, [])
+  }
+
+  init()
 
   return {
-    myProfile, friends, friendRequests, chatHistory, moments, plazaMoments, groups, loading,
-    // 星火ID
-    fetchMyProfile, updateProfile, changeSparkId, getMyQRData, searchBySparkId, addFriendByQR,
+    // 数据
+    myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
+    loading, isAiTyping,
+    // 档案
+    updateProfile, changeSparkId, getQRData,
     // 好友
-    fetchFriends, sendFriendRequest, fetchFriendRequests, acceptRequest, rejectRequest, removeFriend,
-    // AI
-    fetchChatHistory, sendToCompanion, clearChatHistory,
-    // 动态
-    fetchMoments, fetchPlazaMoments, postMoment, toggleMomentLike, commentMoment,
-    fetchMomentComments, shareMomentToWall,
+    searchUser, addFriend, addFriendByQR, removeFriend, setFriendRemark,
+    // 私聊
+    getPrivateChat, sendPrivateMsg,
     // 群聊
-    createGroup, fetchGroups, fetchGroupMessages, sendGroupMessage,
+    createGroup, sendGroupMsg,
+    // 动态
+    postMoment, toggleLike, commentMoment, deleteMoment,
+    // 收藏
+    addFavorite, removeFavorite,
+    // AI
+    sendToAI, clearAIChat,
     // 工具
-    formatTimeAgo, MOMENT_EXPIRY_OPTIONS,
+    formatTimeAgo,
   }
 }

@@ -27,10 +27,8 @@
     <main class="chat-main">
       <header class="top-bar">
         <button class="menu-btn" @click="sidebarOpen = !sidebarOpen">☰</button>
-        <div class="top-brand"><span class="top-icon">⚡</span><span class="top-title">星火助手</span></div>
-        <div class="top-right">
-          <div class="sync-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>已打通 9 个模块</div>
-        </div>
+        <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
+        <div class="top-right"></div>
       </header>
 
       <!-- 消息区 -->
@@ -365,7 +363,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
 .top-bar { height:42px; border-bottom:1px solid rgba(255,255,255,.03); display:flex; align-items:center; padding:0 16px; flex-shrink:0; }
 .menu-btn { display:none; background:none; border:none; font-size:18px; color:white; cursor:pointer; }
-.top-brand { display:flex; align-items:center; gap:5px; } .top-icon { font-size:15px; } .top-title { font-size:13px; font-weight:700; color:white; }
+.top-brand { display:flex; align-items:center; gap:5px; } .top-icon { font-size:15px; } .top-icon.pulse { animation:iconPulse 3s ease-in-out infinite; } @keyframes iconPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.4) drop-shadow(0 0 4px rgba(139,92,246,.3))} } .top-title { font-size:13px; font-weight:700; color:white; }
 .top-right { margin-left:auto; display:flex; align-items:center; }
 .sync-badge { display:flex; align-items:center; gap:3px; padding:3px 8px; border-radius:6px; background:rgba(139,92,246,.03); color:rgba(139,92,246,.3); font-size:10px; font-weight:500; }
 

@@ -1,798 +1,561 @@
 <template>
-  <div class="companion-page">
-    <!-- 顶栏 -->
-    <div class="cp-topbar">
-      <div class="cp-greeting">
-        <h1 class="cp-title">💬 星火伴侣</h1>
-        <p class="cp-subtitle" v-if="myProfile">
-          星火ID: <span class="cp-spark-id">{{ myProfile.spark_id }}</span>
+  <div class="cp-layout">
+    <!-- Toast -->
+    <Transition name="toast"><div v-if="toast.show" class="cp-toast">{{ toast.msg }}</div></Transition>
+
+    <!-- 左侧：会话列表 -->
+    <aside class="cp-sidebar" :class="{ collapsed: chatOpen }">
+      <div class="cp-sb-top">
+        <h2 class="cp-logo">💬 伴侣</h2>
+        <div class="cp-sb-actions">
+          <button @click="showProfileModal=true" class="cp-sb-btn" title="我的档案">👤</button>
+          <button @click="showQRModal=true" class="cp-sb-btn" title="我的名片">📱</button>
+          <button @click="showCreateModal=true" class="cp-sb-btn" title="创建群聊">➕</button>
+        </div>
+      </div>
+      <!-- Tab切换 -->
+      <div class="cp-tabs">
+        <button :class="{active:sideTab==='chat'}" @click="sideTab='chat'">💬 消息</button>
+        <button :class="{active:sideTab==='contacts'}" @click="sideTab='contacts'">👥 通讯录</button>
+        <button :class="{active:sideTab==='moments'}" @click="sideTab='moments'">📸 动态</button>
+      </div>
+
+      <!-- === 消息列表 === -->
+      <div v-if="sideTab==='chat'" class="cp-conv-list">
+        <div class="cp-conv-item" :class="{active:activeChat?.type==='ai'}" @click="openAIChat">
+          <span class="cp-av">🌟</span>
+          <div class="cp-conv-info"><span class="cp-conv-name">星火AI伙伴</span><span class="cp-conv-last">智能助手，随时待命</span></div>
+        </div>
+        <div v-for="g in groups" :key="g.id" class="cp-conv-item" :class="{active:activeChat?.id===g.id}" @click="openGroupChat(g.id)">
+          <span class="cp-av">{{ g.avatar }}</span>
+          <div class="cp-conv-info">
+            <span class="cp-conv-name">{{ g.name }}<span class="cp-conv-count">({{ g.members.length }})</span></span>
+            <span class="cp-conv-last">{{ g.messages[g.messages.length-1]?.content?.slice(0,20) || '暂无消息' }}</span>
+          </div>
+        </div>
+        <div v-for="f in friends" :key="f.id" class="cp-conv-item" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private'}" @click="openPrivateChat(f.spark_id)">
+          <span class="cp-av">{{ f.avatar }}</span>
+          <div class="cp-conv-info">
+            <span class="cp-conv-name">{{ f.remark || f.nickname }}</span>
+            <span class="cp-conv-last">{{ f.last_msg || f.bio?.slice(0,20) || '' }}</span>
+          </div>
+          <span v-if="f.unread" class="cp-badge">{{ f.unread }}</span>
+        </div>
+      </div>
+
+      <!-- === 通讯录 === -->
+      <div v-if="sideTab==='contacts'" class="cp-conv-list">
+        <div class="cp-search-row">
+          <input v-model="searchQuery" class="cp-search" placeholder="搜索星火ID或昵称..." @keydown.enter="handleSearch">
+          <button class="cp-search-btn" @click="handleSearch">搜索</button>
+        </div>
+        <p v-if="searchResult" class="cp-search-result">
+          找到：{{ searchResult.nickname }}（{{ searchResult.spark_id }}）
+          <button class="cp-add-btn" @click="handleAddSearchResult">添加</button>
         </p>
-      </div>
-      <button class="cp-profile-btn" @click="showProfileModal = true" title="我的档案">
-        <span class="cp-avatar-mini">{{ (myProfile?.nickname || '你')[0] }}</span>
-      </button>
-    </div>
-
-    <!-- Tab（4个） -->
-    <div class="cp-tabs">
-      <button v-for="tab in tabs" :key="tab.key" class="cp-tab" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">
-        {{ tab.icon }} {{ tab.label }}
-      </button>
-    </div>
-
-    <!-- ===== 好友 Tab ===== -->
-    <div v-if="activeTab === 'friends'" class="cp-content">
-      <FriendList
-        :friend-list="friends"
-        :requests="friendRequests"
-        @accept="handleAcceptReq"
-        @reject="handleRejectReq"
-        @remove="handleRemoveFriend"
-        @chat="handleFriendChat"
-        @showQR="showQRModal = true"
-      />
-
-      <!-- 群聊列表 -->
-      <div class="cp-groups" v-if="groups.length">
-        <h3 class="cp-section-title">💬 群聊 ({{ groups.length }})</h3>
-        <div v-for="g in groups" :key="g.id" class="cp-group-card" @click="openGroupChat(g)">
-          <span class="cp-group-icon">{{ g.ai_enabled ? '🤖' : '👥' }}</span>
-          <div class="cp-group-info">
-            <span class="cp-group-name">{{ g.name }}</span>
-            <span class="cp-group-meta">{{ g.member_count }}人 {{ g.ai_enabled ? '· AI参与' : '' }}</span>
+        <div class="cp-section-title">好友 ({{ friends.length }})</div>
+        <div v-for="f in friends" :key="f.id" class="cp-contact-item">
+          <span class="cp-av sm">{{ f.avatar }}</span>
+          <div class="cp-contact-info">
+            <span class="cp-contact-name">{{ f.remark || f.nickname }}</span>
+            <span class="cp-contact-id">{{ f.spark_id }}</span>
           </div>
+          <button class="cp-contact-act" @click="openPrivateChat(f.spark_id)">💬</button>
+          <button class="cp-contact-act del" @click="handleRemoveFriend(f.spark_id)">✕</button>
+        </div>
+        <div class="cp-section-title">群聊 ({{ groups.length }})</div>
+        <div v-for="g in groups" :key="g.id" class="cp-contact-item">
+          <span class="cp-av sm">{{ g.avatar }}</span>
+          <div class="cp-contact-info">
+            <span class="cp-contact-name">{{ g.name }}</span>
+            <span class="cp-contact-id">{{ g.members.length }}人</span>
+          </div>
+          <button class="cp-contact-act" @click="openGroupChat(g.id)">💬</button>
         </div>
       </div>
-      <button class="cp-create-group-btn" @click="showCreateGroupModal = true">➕ 创建群聊</button>
-    </div>
 
-    <!-- ===== 动态 Tab（好友朋友圈） ===== -->
-    <div v-else-if="activeTab === 'moments'" class="cp-content">
-      <!-- 发布入口（分开：📸图片 📹视频） -->
-      <div class="cp-post-entry">
-        <span class="cp-post-avatar">{{ (myProfile?.nickname || '你')[0] }}</span>
-        <span class="cp-post-hint" @click="openPostModal('text')">分享你的想法...</span>
-        <button class="cp-post-icon-btn" @click="openPostModal('image')" title="发图片动态">📸</button>
-        <button class="cp-post-icon-btn" @click="openPostModal('video')" title="发视频动态">📹</button>
-      </div>
-
-      <MomentCard
-        v-for="m in moments" :key="m.id" :moment="m"
-        @like="handleLike" @share="handleShareToWall" @commented="refreshMoments"
-      />
-      <p v-if="!loading && moments.length === 0" class="cp-empty">还没有动态，发一条吧 ✨</p>
-    </div>
-
-    <!-- ===== 广场 Tab ===== -->
-    <div v-else-if="activeTab === 'plaza'" class="cp-content">
-      <div class="cp-plaza-header">
-        <h3 class="cp-section-title">🌍 好友广场</h3>
-        <p class="cp-plaza-desc">发现有趣的人和事</p>
-      </div>
-      <MomentCard
-        v-for="m in plazaMoments" :key="m.id" :moment="m"
-        @like="handleLike" @share="handleShareToWall" @commented="refreshPlaza"
-      />
-      <p v-if="!loading && plazaMoments.length === 0" class="cp-empty">广场还没有动态，你来当第一个？ 🌟</p>
-    </div>
-
-    <!-- ===== 发布动态弹窗 V2 ===== -->
-    <Transition name="fade">
-      <div v-if="showPostModal" class="cp-modal-overlay" @click.self="showPostModal = false">
-        <div class="cp-modal">
-          <h3>{{ postMode === 'video' ? '📹 发视频动态' : postMode === 'image' ? '📸 发图片动态' : '✏️ 发文字动态' }}</h3>
-          <textarea v-model="postContent" class="cp-post-textarea" rows="4" placeholder="分享你的想法、心情或日常..." maxlength="1000"></textarea>
-
-          <!-- 图片上传 -->
-          <label v-if="postMode !== 'video'" class="cp-upload">
-            <input type="file" accept="image/*" multiple @change="handleImgSelect" style="display:none" />
-            📸 {{ postImgFiles.length ? `已选${postImgFiles.length}张图片` : '添加图片（最多9张）' }}
-          </label>
-
-          <!-- 视频上传 -->
-          <label v-if="postMode !== 'image'" class="cp-upload video">
-            <input type="file" accept="video/*" @change="handleVidSelect" style="display:none" />
-            📹 {{ postVidFiles.length ? `已选${postVidFiles.length}个视频` : '添加视频（最多3个）' }}
-          </label>
-
-          <!-- 可见范围 -->
-          <div class="cp-vis-row">
-            <span class="cp-vis-label">可见范围</span>
-            <div class="cp-vis-btns">
-              <button v-for="v in visOptions" :key="v.value" class="cp-vis-btn" :class="{ active: postVis === v.value }" @click="postVis = v.value">
-                {{ v.icon }} {{ v.label }}
-              </button>
-            </div>
-          </div>
-
-          <!-- 广场推送(仅公开时) -->
-          <label v-if="postVis === 'public'" class="cp-plaza-toggle">
-            <input type="checkbox" v-model="postShowInPlaza" /> 推送到好友广场
-          </label>
-
-          <!-- 有效期 -->
-          <div class="cp-expiry-row">
-            <span class="cp-vis-label">有效期</span>
-            <div class="cp-vis-btns">
-              <button v-for="e in MOMENT_EXPIRY_OPTIONS" :key="String(e.value)" class="cp-vis-btn" :class="{ active: postExpiry === e.value }" @click="postExpiry = e.value">
-                {{ e.icon }} {{ e.label }}
-              </button>
-            </div>
-          </div>
-
-          <div class="cp-modal-actions">
-            <button class="cp-modal-cancel" @click="showPostModal = false">取消</button>
-            <button class="cp-modal-confirm" :disabled="!postContent.trim() || posting" @click="handlePost">
-              {{ posting ? '发布中...' : '🚀 发布' }}
-            </button>
+      <!-- === 动态 === -->
+      <div v-if="sideTab==='moments'" class="cp-conv-list moments-tab">
+        <div class="cp-post-entry">
+          <textarea v-model="postContent" class="cp-post-input" placeholder="分享你的想法..." rows="3" maxlength="500"></textarea>
+          <div class="cp-post-actions">
+            <select v-model="postVis" class="cp-post-vis">
+              <option value="public">🌐 公开</option><option value="friends">👥 好友可见</option><option value="private">🔒 仅自己</option>
+            </select>
+            <button class="cp-post-btn" :disabled="!postContent.trim()" @click="handlePost">发布</button>
           </div>
         </div>
+        <div v-for="m in moments" :key="m.id" class="cp-moment">
+          <div class="cp-moment-head">
+            <span class="cp-av sm">{{ m.author_avatar }}</span>
+            <div><span class="cp-moment-name">{{ m.author_name }}</span><span class="cp-moment-time">{{ formatTimeAgo(m.created_at) }}</span></div>
+            <button v-if="m.author_id===myProfile?.spark_id" class="cp-moment-del" @click="handleDeleteMoment(m.id)">✕</button>
+          </div>
+          <p class="cp-moment-text">{{ m.content }}</p>
+          <div class="cp-moment-acts">
+            <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="handleLike(m.id)">❤️ {{ m.likes.length || '' }}</button>
+            <button @click="toggleCommentInput(m.id)">💬 {{ m.comments.length || '' }}</button>
+            <button @click="handleFavMoment(m)">⭐ 收藏</button>
+          </div>
+          <!-- 评论 -->
+          <div v-if="expandedComments[m.id]" class="cp-comments">
+            <div v-for="c in m.comments" :key="c.id" class="cp-comment">
+              <span class="cp-comment-name">{{ c.author_name }}：</span>{{ c.content }}
+            </div>
+            <div class="cp-comment-input">
+              <input v-model="commentInputs[m.id]" placeholder="写评论..." @keydown.enter="handleComment(m.id)">
+              <button @click="handleComment(m.id)">发送</button>
+            </div>
+          </div>
+        </div>
+        <p v-if="moments.length===0" class="cp-empty">还没有动态，发第一条吧 🌟</p>
       </div>
-    </Transition>
+    </aside>
 
-    <!-- ===== 我的星火档案弹窗（完整个人主页） ===== -->
+    <!-- 右侧：聊天面板 -->
+    <main class="cp-main" v-if="chatOpen">
+      <div class="cp-chat-header">
+        <button class="cp-back" @click="chatOpen=false">←</button>
+        <h3>{{ chatTitle }}</h3>
+        <span v-if="activeChat?.type==='group'" class="cp-member-count">{{ activeGroup?.members.length }}人</span>
+        <button v-if="activeChat?.type==='group'" class="cp-qr-btn" @click="showGroupQR=true" title="群二维码">📱</button>
+      </div>
+      <div class="cp-messages" ref="chatScrollRef">
+        <div v-for="msg in chatMessages" :key="msg.id" class="cp-msg" :class="{mine:msg.sender_id===myProfile?.spark_id, ai:msg.sender_type==='ai', sys:msg.type==='system'}">
+          <span v-if="msg.type!=='system'&&msg.sender_id!==myProfile?.spark_id" class="cp-msg-av">{{ msg.sender_avatar }}</span>
+          <div class="cp-msg-body">
+            <span v-if="msg.type!=='system'&&msg.sender_id!==myProfile?.spark_id" class="cp-msg-name">{{ msg.sender_name }}</span>
+            <div class="cp-msg-bubble" :class="{system:msg.type==='system'}">
+              <span v-if="msg.type==='share'" class="cp-share-card" @click="handleShareClick(msg)">📎 {{ msg.share_data?.title || '分享内容' }}</span>
+              <span v-else>{{ msg.content }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="isAiTyping" class="cp-msg ai"><span class="cp-msg-av">🌟</span><div class="cp-msg-body"><span class="cp-msg-name">星火AI</span><div class="cp-msg-bubble"><span class="cp-typing-dots"><span></span><span></span><span></span></span></div></div></div>
+      </div>
+      <div class="cp-input-area">
+        <textarea v-model="chatInput" :placeholder="activeChat?.type==='group'?'发消息... (@星火 唤AI)':'发消息...'" rows="1" @keydown.enter.exact.prevent="handleChatSend" @input="autoResizeChat"></textarea>
+        <button class="cp-send" :disabled="!chatInput.trim()||isAiTyping" @click="handleChatSend">{{ isAiTyping ? '⏳' : '⬆️' }}</button>
+      </div>
+    </main>
+    <main v-else class="cp-main cp-main-empty">
+      <div class="cp-empty-state">
+        <div class="cp-empty-icon">💬</div>
+        <h2>星火伴侣</h2>
+        <p>选择一个对话开始聊天，或创建新的群聊</p>
+        <div class="cp-empty-stats" v-if="myProfile">
+          <div class="cp-stat"><span class="cp-stat-num">{{ friends.length }}</span>好友</div>
+          <div class="cp-stat"><span class="cp-stat-num">{{ groups.length }}</span>群聊</div>
+          <div class="cp-stat"><span class="cp-stat-num">{{ moments.length }}</span>动态</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- === 档案弹窗 === -->
     <Transition name="fade">
-      <div v-if="showProfileModal" class="cp-modal-overlay" @click.self="showProfileModal = false">
-        <div class="cp-modal profile-modal">
+      <div v-if="showProfileModal" class="cp-overlay" @click.self="showProfileModal=false">
+        <div class="cp-modal wide">
           <h3>🌟 我的星火档案</h3>
-          <div class="cp-profile-full" v-if="myProfile">
-            <!-- 头像+基本信息 -->
-            <div class="pf-header">
-              <label class="pf-avatar-wrap">
-                <input type="file" accept="image/*" @change="handleAvatarUpload" style="display:none" />
-                <img v-if="myProfile.avatar_url" :src="myProfile.avatar_url" class="pf-avatar-img" />
-                <span v-else class="pf-avatar-text">{{ myProfile.nickname[0] }}</span>
-                <span class="pf-avatar-edit">📷</span>
-              </label>
-              <div class="pf-meta">
-                <span class="pf-name">{{ myProfile.nickname }}</span>
-                <span class="pf-sparkid">星火ID: {{ myProfile.spark_id }}</span>
-                <span class="pf-bio">{{ myProfile.bio || '这个人很懒，什么都没写~' }}</span>
+          <div class="cp-profile" v-if="myProfile">
+            <div class="cp-pf-top">
+              <div class="cp-pf-avatar-wrap">
+                <span class="cp-pf-avatar">{{ myProfile.avatar }}</span>
+                <input v-model="editAvatar" class="cp-pf-avatar-input" maxlength="2" placeholder="emoji">
+              </div>
+              <div class="cp-pf-info">
+                <div class="cp-pf-name">{{ myProfile.nickname }}</div>
+                <div class="cp-pf-id">ID: {{ myProfile.spark_id }}</div>
+                <div class="cp-pf-bio">{{ myProfile.bio }}</div>
               </div>
             </div>
-
-            <!-- 数据统计 -->
-            <div class="pf-stats">
-              <div class="pf-stat"><span class="pf-stat-num">{{ friends.length }}</span><span class="pf-stat-label">好友</span></div>
-              <div class="pf-stat"><span class="pf-stat-num">{{ myMomentsCount }}</span><span class="pf-stat-label">动态</span></div>
-              <div class="pf-stat"><span class="pf-stat-num">{{ groups.length }}</span><span class="pf-stat-label">群聊</span></div>
+            <div class="cp-pf-stats">
+              <div class="cp-stat"><span class="cp-stat-num">{{ friends.length }}</span>好友</div>
+              <div class="cp-stat"><span class="cp-stat-num">{{ groups.length }}</span>群聊</div>
+              <div class="cp-stat"><span class="cp-stat-num">moments.filter(m=>m.author_id===myProfile.spark_id).length</span>动态</div>
+              <div class="cp-stat"><span class="cp-stat-num">{{ favorites.length }}</span>收藏</div>
             </div>
-
-            <!-- 编辑资料区 -->
-            <div class="pf-edit-section">
-              <h4>✏️ 编辑资料</h4>
-              <div class="pf-field">
-                <label>昵称</label>
-                <input v-model="editNickname" class="pf-input" maxlength="20" />
+            <div class="cp-pf-form">
+              <div class="cp-field"><label>昵称</label><input v-model="editNick" maxlength="20"></div>
+              <div class="cp-field"><label>个性签名</label><input v-model="editBio" maxlength="100"></div>
+              <div class="cp-field-row">
+                <div class="cp-field"><label>性别</label><select v-model="editGender"><option value="男">男</option><option value="女">女</option><option value="未知">保密</option></select></div>
+                <div class="cp-field"><label>学校</label><input v-model="editUni"></div>
+                <div class="cp-field"><label>年级</label><select v-model="editYear"><option v-for="y in ['大一','大二','大三','大四','研一','研二','研三']" :key="y" :value="y">{{ y }}</option></select></div>
               </div>
-              <div class="pf-field">
-                <label>个性签名</label>
-                <textarea v-model="editBio" class="pf-input" rows="2" maxlength="100" placeholder="一句话介绍自己..."></textarea>
+              <div class="cp-field"><label>兴趣标签</label><input v-model="editInterests" placeholder="用逗号分隔"></div>
+              <div v-if="!myProfile.id_changed" class="cp-field">
+                <label>修改星火ID <span class="cp-hint">(仅限一次)</span></label>
+                <div class="cp-id-row"><input v-model="newSparkId" placeholder="4-16位字母数字" maxlength="16"><button @click="handleChangeId">确认</button></div>
               </div>
-              <div class="pf-field-row">
-                <div class="pf-field half">
-                  <label>性别</label>
-                  <select v-model="editGender" class="pf-input">
-                    <option value="unknown">不公开</option>
-                    <option value="male">男</option>
-                    <option value="female">女</option>
-                  </select>
-                </div>
-                <div class="pf-field half">
-                  <label>年级</label>
-                  <select v-model="editYear" class="pf-input">
-                    <option value="">未填写</option>
-                    <option v-for="y in ['大一','大二','大三','大四','研一','研二','研三']" :key="y" :value="y">{{ y }}</option>
-                  </select>
-                </div>
-              </div>
-              <div class="pf-field">
-                <label>学校</label>
-                <input v-model="editUniversity" class="pf-input" placeholder="你的学校" />
-              </div>
-              <div class="pf-field">
-                <label>兴趣标签</label>
-                <div class="pf-tags">
-                  <span v-for="(tag, i) in editInterests" :key="i" class="pf-tag">
-                    {{ tag }} <button @click="editInterests.splice(i, 1)">✕</button>
-                  </span>
-                  <input v-model="newTag" class="pf-tag-input" placeholder="+添加" maxlength="10" @keydown.enter="addTag" />
-                </div>
-              </div>
-              <button class="pf-save-btn" @click="handleSaveProfile" :disabled="savingProfile">
-                {{ savingProfile ? '保存中...' : '💾 保存资料' }}
-              </button>
+              <button class="cp-save-btn" @click="handleSaveProfile">💾 保存资料</button>
             </div>
-
-            <!-- 星火ID修改 -->
-            <div v-if="!myProfile.id_changed" class="pf-edit-section">
-              <h4>🆔 修改星火ID <span class="pf-hint">(仅限一次)</span></h4>
-              <div class="cp-sparkid-change">
-                <input v-model="newSparkId" class="cp-sparkid-input" placeholder="4-12位字母数字" maxlength="12" />
-                <button class="cp-sparkid-btn" @click="handleChangeId" :disabled="!newSparkId.trim()">确认修改</button>
-              </div>
-            </div>
-
-            <!-- 广场设置 -->
-            <div class="pf-edit-section">
-              <h4>⚙️ 隐私设置</h4>
-              <label class="cp-plaza-toggle">
-                <input type="checkbox" :checked="myProfile.show_in_plaza" @change="togglePlazaVisibility" /> 出现在好友广场
-              </label>
-            </div>
-
-            <!-- 我的动态 -->
-            <div class="pf-edit-section">
-              <h4>📸 我的动态 ({{ myMomentsList.length }})</h4>
-              <div v-if="myMomentsList.length === 0" class="cp-empty">还没有发布动态</div>
-              <div v-for="m in myMomentsList" :key="m.id" class="pf-moment-mini">
-                <span class="pf-moment-time">{{ formatTimeAgo(m.created_at) }}</span>
-                <span class="pf-moment-content">{{ m.content.slice(0, 50) }}{{ m.content.length > 50 ? '...' : '' }}</span>
-                <span class="pf-moment-stats">❤️{{ m.like_count }} 💬{{ m.comment_count }}</span>
+            <!-- 收藏列表 -->
+            <div v-if="favorites.length" class="cp-fav-section">
+              <h4>⭐ 我的收藏 ({{ favorites.length }})</h4>
+              <div v-for="fav in favorites" :key="fav.id" class="cp-fav-item">
+                <span>{{ fav.title }}</span><span class="cp-fav-src">{{ fav.source }}</span>
+                <button @click="removeFavorite(fav.id)">✕</button>
               </div>
             </div>
           </div>
-
-          <button class="cp-modal-cancel full" @click="showProfileModal = false">关闭</button>
+          <button class="cp-close-btn" @click="showProfileModal=false">关闭</button>
         </div>
       </div>
     </Transition>
 
-    <!-- ===== 真实二维码弹窗 ===== -->
+    <!-- === 二维码弹窗 === -->
     <Transition name="fade">
-      <div v-if="showQRModal" class="cp-modal-overlay" @click.self="showQRModal = false">
+      <div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false">
         <div class="cp-modal small">
           <h3>📱 我的星火名片</h3>
-          <div class="cp-qr-display">
-            <div class="cp-qr-card">
-              <div class="cp-qr-card-header">
-                <img v-if="myProfile?.avatar_url" :src="myProfile.avatar_url" class="cp-qr-card-avatar" />
-                <span v-else class="cp-qr-card-avatar-text">{{ (myProfile?.nickname || '?')[0] }}</span>
-                <div class="cp-qr-card-info">
-                  <span class="cp-qr-card-name">{{ myProfile?.nickname }}</span>
-                  <span class="cp-qr-card-id">{{ myProfile?.spark_id }}</span>
-                </div>
-              </div>
-              <!-- 真实二维码 -->
-              <canvas ref="qrCanvasRef" class="cp-qr-canvas"></canvas>
-              <span class="cp-qr-tip">扫一扫上方二维码，加我为星火好友</span>
-            </div>
+          <div class="cp-qr-card">
+            <div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div>
+            <canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas>
+            <p class="cp-qr-tip">扫一扫添加我为星火好友</p>
           </div>
-
-          <!-- 手动添加（扫码后粘贴内容） -->
-          <div class="cp-qr-manual">
-            <p class="cp-vis-label">📋 粘贴好友二维码内容</p>
-            <div class="cp-qr-paste-row">
-              <input v-model="qrPasteInput" class="pf-input" placeholder="粘贴好友的二维码数据..." />
-              <button class="cp-sparkid-btn" @click="handleAddByQRPaste" :disabled="!qrPasteInput.trim()">添加</button>
-            </div>
+          <div class="cp-qr-paste">
+            <p>📋 粘贴好友/群聊二维码数据</p>
+            <div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴二维码数据..."><button @click="handleQRPaste">添加</button></div>
           </div>
-
-          <div class="cp-modal-actions">
-            <button class="cp-modal-cancel" @click="showQRModal = false">关闭</button>
-            <button class="cp-modal-confirm" @click="copyQRData">📋 复制我的名片数据</button>
+          <div class="cp-modal-btns">
+            <button @click="showQRModal=false">关闭</button>
+            <button class="primary" @click="copyQRData">📋 复制名片数据</button>
           </div>
         </div>
       </div>
     </Transition>
 
-    <!-- ===== 创建群聊弹窗 ===== -->
+    <!-- === 群二维码弹窗 === -->
     <Transition name="fade">
-      <div v-if="showCreateGroupModal" class="cp-modal-overlay" @click.self="showCreateGroupModal = false">
+      <div v-if="showGroupQR" class="cp-overlay" @click.self="showGroupQR=false">
+        <div class="cp-modal small">
+          <h3>📱 群聊二维码</h3>
+          <div class="cp-qr-card">
+            <div class="cp-qr-top"><span class="cp-qr-av">{{ activeGroup?.avatar }}</span><div><div class="cp-qr-name">{{ activeGroup?.name }}</div><div class="cp-qr-id">{{ activeGroup?.members.length }}人</div></div></div>
+            <canvas ref="groupQrCanvas" class="cp-qr-canvas"></canvas>
+            <p class="cp-qr-tip">扫一扫加入群聊</p>
+          </div>
+          <div class="cp-modal-btns">
+            <button @click="showGroupQR=false">关闭</button>
+            <button class="primary" @click="copyGroupQR">📋 复制群二维码数据</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- === 创建群聊弹窗 === -->
+    <Transition name="fade">
+      <div v-if="showCreateModal" class="cp-overlay" @click.self="showCreateModal=false">
         <div class="cp-modal">
           <h3>👥 创建群聊</h3>
-          <input v-model="newGroupName" class="cp-post-textarea single" placeholder="群聊名称" maxlength="30" />
-          <label class="cp-plaza-toggle">
-            <input type="checkbox" v-model="newGroupAI" /> 🤖 AI「星火」参与群聊（@星火 触发）
-          </label>
-          <div class="cp-group-members-select">
-            <p class="cp-vis-label">选择好友加入群聊</p>
-            <label v-for="f in friends" :key="f.id" class="cp-member-option">
-              <input type="checkbox" :value="f.friend_id" v-model="newGroupMembers" />
-              {{ f.nickname || (f.profile as SparkProfile)?.nickname || '好友' }}
+          <div class="cp-field"><label>群聊名称</label><input v-model="newGroupName" maxlength="30" placeholder="给群聊起个名字"></div>
+          <label class="cp-check"><input type="checkbox" v-model="newGroupAI"> 🌟 星火AI参与群聊（@星火 触发）</label>
+          <div class="cp-member-select" v-if="friends.length">
+            <p class="cp-field-label">选择成员</p>
+            <label v-for="f in friends" :key="f.id" class="cp-member-opt">
+              <input type="checkbox" :value="f.spark_id" v-model="newGroupMembers"> {{ f.avatar }} {{ f.nickname }}
             </label>
           </div>
-          <div class="cp-modal-actions">
-            <button class="cp-modal-cancel" @click="showCreateGroupModal = false">取消</button>
-            <button class="cp-modal-confirm" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button>
+          <div class="cp-modal-btns">
+            <button @click="showCreateModal=false">取消</button>
+            <button class="primary" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button>
           </div>
         </div>
       </div>
     </Transition>
-
-    <!-- ===== 群聊面板 ===== -->
-    <Transition name="fade">
-      <div v-if="showGroupPanel" class="cp-modal-overlay" @click.self="showGroupPanel = false">
-        <div class="cp-modal tall">
-          <div class="cp-group-header">
-            <button @click="showGroupPanel = false">←</button>
-            <h3>{{ currentGroup?.name }}</h3>
-            <span class="cp-group-badge">{{ currentGroup?.member_count }}人</span>
-          </div>
-          <div class="cp-group-messages" ref="groupScrollRef">
-            <div v-for="msg in groupMessages" :key="msg.id" class="cp-gmsg" :class="{ mine: msg.sender_id === myProfile?.user_id, ai: msg.sender_type === 'ai' }">
-              <span v-if="msg.sender_type === 'ai'" class="cp-gmsg-avatar ai">🌟</span>
-              <span v-else class="cp-gmsg-avatar">{{ (msg.sender_profile?.nickname || '?')[0] }}</span>
-              <div class="cp-gmsg-bubble">{{ msg.content }}</div>
-            </div>
-          </div>
-          <div class="cp-group-input">
-            <textarea v-model="groupInput" placeholder="发消息... (@星火 唤AI)" rows="1" @keydown.enter.exact.prevent="handleGroupSend"></textarea>
-            <button @click="handleGroupSend" :disabled="!groupInput.trim()">发送</button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Toast -->
-    <Transition name="fade">
-      <div v-if="toastMsg" class="cp-toast">{{ toastMsg }}</div>
-    </Transition>
-
-    <div v-if="loading" class="cp-loading"><div class="cp-spinner"></div></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
-import { useCompanion, MOMENT_EXPIRY_OPTIONS } from '../../composables/useCompanion'
-import type { Friend, Moment, GroupChat, GroupMessage, SparkProfile } from '../../composables/useCompanion'
+import { ref, computed, onMounted, nextTick, watch, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { useCompanion, formatTimeAgo } from '../../composables/useCompanion'
 import QRCode from 'qrcode'
-import FriendList from '../../components/companion/FriendList.vue'
-import MomentCard from '../../components/companion/MomentCard.vue'
 
+const router = useRouter()
 const {
-  myProfile, friends, friendRequests, moments, plazaMoments, groups, loading,
-  fetchMyProfile, updateProfile, changeSparkId, getMyQRData, addFriendByQR,
-  fetchFriends, fetchFriendRequests, acceptRequest, rejectRequest, removeFriend,
-  fetchMoments, fetchPlazaMoments, postMoment, toggleMomentLike, shareMomentToWall,
-  createGroup, fetchGroups, fetchGroupMessages, sendGroupMessage,
-  formatTimeAgo,
+  myProfile, friends, groups, moments, favorites, isAiTyping,
+  updateProfile, changeSparkId, getQRData, searchUser, addFriend, addFriendByQR,
+  removeFriend, getPrivateChat, sendPrivateMsg, createGroup, sendGroupMsg,
+  postMoment, toggleLike, commentMoment, deleteMoment, addFavorite, removeFavorite,
+  sendToAI, aiChatHistory,
 } = useCompanion()
 
-const activeTab = ref<'friends' | 'moments' | 'plaza'>('friends')
+// 状态
+const sideTab = ref<'chat'|'contacts'|'moments'>('chat')
+const chatOpen = ref(false)
+const activeChat = ref<{id:string;type:'private'|'group'|'ai'}|null>(null)
+const chatInput = ref('')
+const chatScrollRef = ref<HTMLElement|null>(null)
+const searchQuery = ref('')
+const searchResult = ref<ReturnType<typeof searchUser>>(null)
+const toast = reactive({ show: false, msg: '' })
 
-// 弹窗控制
-const showPostModal = ref(false)
+// 弹窗
 const showProfileModal = ref(false)
 const showQRModal = ref(false)
-const showCreateGroupModal = ref(false)
-const showGroupPanel = ref(false)
+const showGroupQR = ref(false)
+const showCreateModal = ref(false)
 
-// 发布动态
-const postMode = ref<'text' | 'image' | 'video'>('text')
-const postContent = ref('')
-const postVis = ref<'public' | 'friends' | 'private'>('friends')
-const postImgFiles = ref<File[]>([])
-const postVidFiles = ref<File[]>([])
-const postShowInPlaza = ref(false)
-const postExpiry = ref<number | null>(null)
-const posting = ref(false)
+// 编辑字段
+const editNick = ref(''); const editBio = ref(''); const editGender = ref(''); const editUni = ref('')
+const editYear = ref(''); const editInterests = ref(''); const editAvatar = ref(''); const newSparkId = ref('')
 
-// 星火ID
-const newSparkId = ref('')
+// 群聊创建
+const newGroupName = ref(''); const newGroupAI = ref(true); const newGroupMembers = ref<string[]>([])
 
-// 群聊
-const newGroupName = ref('')
-const newGroupAI = ref(true)
-const newGroupMembers = ref<string[]>([])
-const currentGroup = ref<GroupChat | null>(null)
-const groupMessages = ref<GroupMessage[]>([])
-const groupInput = ref('')
-const groupScrollRef = ref<HTMLElement | null>(null)
+// 动态发布
+const postContent = ref(''); const postVis = ref<'public'|'friends'|'private'>('public')
+const expandedComments = reactive<Record<string,boolean>>({})
+const commentInputs = reactive<Record<string,string>>({})
 
-// Toast
-const toastMsg = ref('')
-function showToast(msg: string) { toastMsg.value = msg; setTimeout(() => { toastMsg.value = '' }, 2500) }
-
-// ===== 星火档案编辑 =====
-const editNickname = ref('')
-const editBio = ref('')
-const editGender = ref('unknown')
-const editYear = ref('')
-const editUniversity = ref('')
-const editInterests = ref<string[]>([])
-const newTag = ref('')
-const savingProfile = ref(false)
-const myMomentsCount = ref(0)
-const myMomentsList = ref<Moment[]>([])
-
-function addTag() {
-  const tag = newTag.value.trim()
-  if (tag && !editInterests.value.includes(tag) && editInterests.value.length < 8) {
-    editInterests.value.push(tag)
-  }
-  newTag.value = ''
-}
-
-async function handleSaveProfile() {
-  savingProfile.value = true
-  await updateProfile({
-    nickname: editNickname.value || myProfile.value?.nickname,
-    bio: editBio.value,
-    gender: editGender.value,
-    school_year: editYear.value,
-    university: editUniversity.value,
-    interests: editInterests.value,
-  } as Record<string, unknown>)
-  savingProfile.value = false
-  showToast('💾 资料已保存')
-}
-
-async function handleAvatarUpload(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file || !myProfile.value) return
-  try {
-    const ext = file.name.split('.').pop()
-    const path = `companion/${myProfile.value.user_id}/avatar.${ext}`
-    const { supabase } = await import('../../supabase')
-    await supabase.storage.from('campus-wall').upload(path, file, { contentType: file.type, upsert: true })
-    const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
-    await updateProfile({ avatar_url: urlData.publicUrl } as Record<string, unknown>)
-    showToast('📷 头像已更新')
-  } catch (err) { console.error(err); showToast('上传失败') }
-}
-
-async function loadMyMoments() {
-  const { supabase } = await import('../../supabase')
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-  const { data, count } = await supabase.from('companion_moments')
-    .select('*', { count: 'exact' })
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false }).limit(10)
-  myMomentsList.value = (data || []) as Moment[]
-  myMomentsCount.value = count || 0
-}
-
-// 打开档案弹窗时同步编辑数据
-watch(showProfileModal, async (val) => {
-  if (val && myProfile.value) {
-    editNickname.value = myProfile.value.nickname
-    editBio.value = myProfile.value.bio || ''
-    editGender.value = myProfile.value.gender || 'unknown'
-    editYear.value = myProfile.value.school_year || ''
-    editUniversity.value = myProfile.value.university || ''
-    editInterests.value = [...(myProfile.value.interests || [])]
-    await loadMyMoments()
-  }
-})
-
-// ===== 真实二维码 =====
-const qrCanvasRef = ref<HTMLCanvasElement | null>(null)
+// QR
+const userQrCanvas = ref<HTMLCanvasElement|null>(null)
+const groupQrCanvas = ref<HTMLCanvasElement|null>(null)
 const qrPasteInput = ref('')
 
-async function generateQRCode() {
-  if (!qrCanvasRef.value || !myProfile.value) return
-  const qrData = getMyQRData()
-  try {
-    await QRCode.toCanvas(qrCanvasRef.value, qrData, {
-      width: 180,
-      margin: 2,
-      color: { dark: '#8b5cf6', light: '#0d0b1e' },
-      errorCorrectionLevel: 'M',
-    })
-  } catch (e) { console.error('二维码生成失败:', e) }
-}
-
-function copyQRData() {
-  const data = getMyQRData()
-  navigator.clipboard.writeText(data).then(() => {
-    showToast('📋 名片数据已复制，发给好友即可添加')
-  }).catch(() => { showToast('复制失败') })
-}
-
-async function handleAddByQRPaste() {
-  if (!qrPasteInput.value.trim()) return
-  const { ok, msg } = await addFriendByQR(qrPasteInput.value.trim())
-  showToast(msg)
-  if (ok) qrPasteInput.value = ''
-}
-
-// 二维码弹窗打开时生成
-watch(showQRModal, (val) => {
-  if (val) nextTick(() => generateQRCode())
+// 计算属性
+const activeGroup = computed(() => activeChat.value?.type==='group' ? groups.value.find(g=>g.id===activeChat.value!.id) : null)
+const chatTitle = computed(() => {
+  if (!activeChat.value) return ''
+  if (activeChat.value.type==='ai') return '🌟 星火AI伙伴'
+  if (activeChat.value.type==='group') return activeGroup.value?.name || '群聊'
+  const f = friends.value.find(f=>f.spark_id===activeChat.value!.id)
+  return f?.remark || f?.nickname || '私聊'
+})
+const chatMessages = computed(() => {
+  if (!activeChat.value) return []
+  if (activeChat.value.type==='ai') return aiChatHistory.value
+  if (activeChat.value.type==='group') return activeGroup.value?.messages || []
+  return getPrivateChat(activeChat.value.id)
 })
 
-const tabs = [
-  { key: 'friends' as const, label: '好友', icon: '👥' },
-  { key: 'moments' as const, label: '动态', icon: '📸' },
-  { key: 'plaza' as const, label: '广场', icon: '🌍' },
-]
+// 操作
+function showToast(msg:string) { toast.msg=msg; toast.show=true; setTimeout(()=>{toast.show=false},2000) }
+function openAIChat() { activeChat.value={id:'ai',type:'ai'}; chatOpen.value=true; scrollChat() }
+function openGroupChat(id:string) { activeChat.value={id,type:'group'}; chatOpen.value=true; scrollChat() }
+function openPrivateChat(sparkId:string) { activeChat.value={id:sparkId,type:'private'}; chatOpen.value=true; scrollChat() }
+function scrollChat() { nextTick(()=>{if(chatScrollRef.value) chatScrollRef.value.scrollTop=chatScrollRef.value.scrollHeight}) }
 
-const visOptions = [
-  { value: 'public' as const, icon: '🌍', label: '公开' },
-  { value: 'friends' as const, icon: '👥', label: '好友' },
-  { value: 'private' as const, icon: '🔒', label: '自己' },
-]
-
-function switchTab(key: typeof activeTab.value) {
-  activeTab.value = key
-  if (key === 'friends') { fetchFriends(); fetchFriendRequests(); fetchGroups() }
-  if (key === 'moments') fetchMoments(1)
-  if (key === 'plaza') fetchPlazaMoments(1)
+async function handleChatSend() {
+  const text=chatInput.value.trim(); if(!text||isAiTyping.value) return; chatInput.value=''
+  if(activeChat.value?.type==='ai') { await sendToAI(text); scrollChat() }
+  else if(activeChat.value?.type==='group') { sendGroupMsg(activeChat.value.id, text); scrollChat() }
+  else if(activeChat.value?.type==='private') { sendPrivateMsg(activeChat.value.id, text); scrollChat() }
 }
 
-
-
-// ===== 好友 =====
-async function handleAcceptReq(id: string) { if (await acceptRequest(id)) showToast('✅ 已添加好友') }
-async function handleRejectReq(id: string) { if (await rejectRequest(id)) showToast('已拒绝申请') }
-async function handleRemoveFriend(fid: string) {
-  if (!confirm('确定删除该好友？')) return
-  if (await removeFriend(fid)) showToast('已删除好友')
+function handleSearch() { searchResult.value = searchQuery.value.trim() ? searchUser(searchQuery.value.trim()) : null }
+function handleAddSearchResult() {
+  if(!searchResult.value) return
+  const r=addFriend({spark_id:searchResult.value.spark_id,nickname:searchResult.value.nickname,avatar:searchResult.value.avatar,bio:searchResult.value.bio})
+  showToast(r.msg); searchResult.value=null; searchQuery.value=''
 }
-function handleFriendChat(_f: Friend) { showToast('💬 私聊功能即将上线') }
+function handleRemoveFriend(id:string) { removeFriend(id); showToast('已删除好友') }
+function handleCreateGroup() {
+  if(!newGroupName.value.trim()) return
+  createGroup(newGroupName.value.trim(), newGroupMembers.value, newGroupAI.value)
+  showToast('群聊已创建！'); showCreateModal.value=false; newGroupName.value=''; newGroupMembers.value=[]
+}
+function handlePost() {
+  if(!postContent.value.trim()) return
+  postMoment(postContent.value.trim(),[],postVis.value)
+  postContent.value=''; showToast('动态已发布')
+}
+function handleLike(id:string) { toggleLike(id) }
+function handleDeleteMoment(id:string) { deleteMoment(id); showToast('已删除') }
+function toggleCommentInput(id:string) { expandedComments[id]=!expandedComments[id] }
+function handleComment(id:string) {
+  const c=commentInputs[id]?.trim(); if(!c) return
+  commentMoment(id,c); commentInputs[id]=''
+}
+function handleFavMoment(m:any) { addFavorite({type:'moment',title:m.content.slice(0,30),content:m.content,source:m.author_name}); showToast('已收藏') }
 
-// ===== 动态 =====
-function openPostModal(mode: 'text' | 'image' | 'video') {
-  postMode.value = mode
-  postContent.value = ''
-  postImgFiles.value = []
-  postVidFiles.value = []
-  postVis.value = 'friends'
-  postShowInPlaza.value = false
-  postExpiry.value = null
-  showPostModal.value = true
-}
+function handleShareClick(msg:any) { if(msg.share_data?.route) router.push(msg.share_data.route) }
+function autoResizeChat(e:Event) { const el=e.target as HTMLTextAreaElement; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px' }
 
-function handleImgSelect(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (input.files) postImgFiles.value = Array.from(input.files).slice(0, 9)
-}
-function handleVidSelect(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (input.files) postVidFiles.value = Array.from(input.files).slice(0, 3)
-}
-
-async function handlePost() {
-  if (!postContent.value.trim() || posting.value) return
-  posting.value = true
-  const ok = await postMoment(
-    postContent.value.trim(),
-    postImgFiles.value.length ? postImgFiles.value : undefined,
-    postVidFiles.value.length ? postVidFiles.value : undefined,
-    postVis.value,
-    postShowInPlaza.value,
-    postExpiry.value,
-  )
-  posting.value = false
-  if (ok) {
-    showToast('📸 动态发布成功！')
-    showPostModal.value = false
-    fetchMoments(1)
-  } else { showToast('发布失败') }
-}
-
-async function handleLike(id: string) { await toggleMomentLike(id) }
-async function handleShareToWall(m: Moment) {
-  if (!confirm('确认转发到校园墙？')) return
-  showToast((await shareMomentToWall(m)) ? '🚀 已转发到校园墙' : '转发失败')
-}
-function refreshMoments() { fetchMoments(1) }
-function refreshPlaza() { fetchPlazaMoments(1) }
-
-// ===== 星火ID =====
-async function handleChangeId() {
-  const { ok, msg } = await changeSparkId(newSparkId.value)
-  showToast(msg)
-  if (ok) { newSparkId.value = ''; showProfileModal.value = false }
-}
-async function togglePlazaVisibility() {
-  if (!myProfile.value) return
-  await updateProfile({ show_in_plaza: !myProfile.value.show_in_plaza })
-}
-
-// ===== 群聊 =====
-async function handleCreateGroup() {
-  if (!newGroupName.value.trim()) return
-  const gid = await createGroup(newGroupName.value.trim(), newGroupMembers.value, newGroupAI.value)
-  if (gid) {
-    showToast('👥 群聊创建成功')
-    showCreateGroupModal.value = false
-    newGroupName.value = ''
-    newGroupMembers.value = []
-    fetchGroups()
-  }
-}
-
-async function openGroupChat(g: GroupChat) {
-  currentGroup.value = g
-  groupMessages.value = await fetchGroupMessages(g.id)
-  showGroupPanel.value = true
-  nextTick(() => { if (groupScrollRef.value) groupScrollRef.value.scrollTop = groupScrollRef.value.scrollHeight })
-}
-
-async function handleGroupSend() {
-  if (!groupInput.value.trim() || !currentGroup.value) return
-  const content = groupInput.value.trim()
-  groupInput.value = ''
-  // 本地追加
-  groupMessages.value.push({
-    id: Date.now().toString(), group_id: currentGroup.value.id,
-    sender_id: myProfile.value?.user_id || '', sender_type: 'user',
-    content, created_at: new Date().toISOString(),
+// 档案
+function handleSaveProfile() {
+  updateProfile({
+    nickname: editNick.value||myProfile.value?.nickname, bio: editBio.value||myProfile.value?.bio,
+    gender: editGender.value||myProfile.value?.gender, university: editUni.value||myProfile.value?.university,
+    school_year: editYear.value||myProfile.value?.school_year, avatar: editAvatar.value||myProfile.value?.avatar,
+    interests: editInterests.value ? editInterests.value.split(/[,，]/).map(s=>s.trim()).filter(Boolean) : myProfile.value?.interests,
   })
-  nextTick(() => { if (groupScrollRef.value) groupScrollRef.value.scrollTop = groupScrollRef.value.scrollHeight })
-  await sendGroupMessage(currentGroup.value.id, content)
-  // 刷新消息（获取AI回复）
-  setTimeout(async () => {
-    groupMessages.value = await fetchGroupMessages(currentGroup.value!.id)
-    nextTick(() => { if (groupScrollRef.value) groupScrollRef.value.scrollTop = groupScrollRef.value.scrollHeight })
-  }, 2000)
+  showToast('资料已保存'); showProfileModal.value=false
+}
+function handleChangeId() {
+  const r=changeSparkId(newSparkId.value.trim()); showToast(r.msg); if(r.ok) newSparkId.value=''
 }
 
-// ===== 初始化 =====
-onMounted(async () => {
-  await fetchMyProfile()
-  await fetchFriends()
-  await fetchFriendRequests()
-  await fetchGroups()
+// 二维码渲染
+async function renderQR(canvas:HTMLCanvasElement|null, data:string) {
+  if(!canvas) return
+  try { await QRCode.toCanvas(canvas, data, { width:180, margin:2, color:{dark:'#8b5cf6',light:'#0f0b1e'} }) }
+  catch { /* 渲染失败静默 */ }
+}
+function copyQRData() { navigator.clipboard.writeText(getQRData()); showToast('名片数据已复制') }
+function copyGroupQR() { if(activeGroup.value) { navigator.clipboard.writeText(getQRData(undefined,'group',activeGroup.value.id)); showToast('群二维码已复制') } }
+function handleQRPaste() { const r=addFriendByQR(qrPasteInput.value.trim()); showToast(r.msg); if(r.ok) qrPasteInput.value='' }
+
+// 监听
+watch(showQRModal, v=>{ if(v) nextTick(()=>renderQR(userQrCanvas.value, getQRData())) })
+watch(showGroupQR, v=>{ if(v&&activeGroup.value) nextTick(()=>renderQR(groupQrCanvas.value, getQRData(undefined,'group',activeGroup.value!.id))) })
+watch(()=>chatMessages.value.length, ()=>scrollChat())
+watch(isAiTyping, ()=>scrollChat())
+
+onMounted(()=>{
+  if(myProfile.value) { editNick.value=myProfile.value.nickname; editBio.value=myProfile.value.bio; editGender.value=myProfile.value.gender; editUni.value=myProfile.value.university; editYear.value=myProfile.value.school_year; editAvatar.value=myProfile.value.avatar; editInterests.value=myProfile.value.interests.join(', ') }
 })
 </script>
 
 <style scoped>
-.companion-page{min-height:100vh;padding:0 16px 80px;max-width:640px;margin:0 auto;position:relative}
+.cp-layout{display:flex;height:calc(100vh - 72px);background:#0a0814;overflow:hidden}
+.cp-toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:10px;background:rgba(139,92,246,.15);backdrop-filter:blur(12px);border:1px solid rgba(139,92,246,.15);color:rgba(139,92,246,.9);font-size:12px;font-weight:600;z-index:200;white-space:nowrap}
+.toast-enter-active{transition:all .3s}.toast-leave-active{transition:all .2s}.toast-enter-from{opacity:0;transform:translateX(-50%) translateY(-10px)}.toast-leave-to{opacity:0}
+.fade-enter-active,.fade-leave-active{transition:opacity .2s}.fade-enter-from,.fade-leave-to{opacity:0}
 
-/* 顶栏 */
-.cp-topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 0 10px}
-.cp-greeting{flex:1}.cp-title{font-size:20px;font-weight:700;color:rgba(255,255,255,.88);margin:0}
-.cp-subtitle{font-size:11px;color:rgba(255,255,255,.25);margin:2px 0 0}
-.cp-spark-id{color:rgba(139,92,246,.6);font-family:monospace;font-weight:700}
-.cp-profile-btn{background:none;border:none;cursor:pointer;padding:0}
-.cp-avatar-mini{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(59,130,246,.2));display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+/* 左侧栏 */
+.cp-sidebar{width:300px;border-right:1px solid rgba(255,255,255,.04);display:flex;flex-direction:column;flex-shrink:0;background:rgba(8,6,18,.98)}
+.cp-sb-top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
+.cp-logo{font-size:14px;margin:0;color:white;font-weight:700}
+.cp-sb-actions{display:flex;gap:2px}
+.cp-sb-btn{width:28px;height:28px;border-radius:7px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.cp-sb-btn:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6)}
+.cp-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.03)}
+.cp-tabs button{flex:1;padding:8px 0;border:none;background:none;color:rgba(255,255,255,.2);font-size:11px;cursor:pointer;font-weight:500;transition:all .15s;border-bottom:2px solid transparent}
+.cp-tabs button.active{color:rgba(139,92,246,.7);border-bottom-color:rgba(139,92,246,.3)}
+.cp-conv-list{flex:1;overflow-y:auto;padding:4px}
+.cp-conv-list::-webkit-scrollbar{width:2px}.cp-conv-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.cp-conv-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:all .15s}
+.cp-conv-item:hover{background:rgba(255,255,255,.02)}.cp-conv-item.active{background:rgba(139,92,246,.06)}
+.cp-av{width:34px;height:34px;border-radius:9px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.cp-av.sm{width:28px;height:28px;font-size:13px;border-radius:7px}
+.cp-conv-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.cp-conv-name{font-size:12px;color:rgba(255,255,255,.6);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-conv-count{font-size:10px;color:rgba(255,255,255,.15);margin-left:3px}
+.cp-conv-last{font-size:10px;color:rgba(255,255,255,.15);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-badge{min-width:16px;height:16px;border-radius:8px;background:rgba(239,68,68,.6);color:white;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700}
 
-/* Tab */
-.cp-tabs{display:flex;gap:0;padding:3px;background:rgba(255,255,255,.025);border-radius:12px;border:1px solid rgba(255,255,255,.04);margin-bottom:14px}
-.cp-tab{flex:1;padding:8px 0;border-radius:9px;border:none;background:transparent;color:rgba(255,255,255,.3);font-size:11px;font-weight:500;cursor:pointer;transition:all .25s}
-.cp-tab.active{background:rgba(139,92,246,.12);color:rgba(139,92,246,.85);font-weight:600}
+/* 通讯录 */
+.cp-search-row{display:flex;gap:4px;padding:6px 6px 4px}
+.cp-search{flex:1;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;outline:none}
+.cp-search-btn{padding:4px 10px;border-radius:7px;border:none;background:rgba(139,92,246,.08);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer;font-weight:600}
+.cp-search-result{padding:6px 10px;font-size:11px;color:rgba(139,92,246,.5);display:flex;align-items:center;gap:6px}
+.cp-add-btn{padding:2px 8px;border-radius:5px;border:none;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:10px;cursor:pointer;font-weight:600}
+.cp-section-title{font-size:9px;color:rgba(255,255,255,.1);padding:8px 10px 2px;font-weight:700;letter-spacing:1px}
+.cp-contact-item{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:6px}
+.cp-contact-info{flex:1;min-width:0;display:flex;flex-direction:column}
+.cp-contact-name{font-size:11px;color:rgba(255,255,255,.5)}.cp-contact-id{font-size:9px;color:rgba(255,255,255,.1)}
+.cp-contact-act{width:24px;height:24px;border-radius:5px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cp-contact-act.del:hover{color:rgba(239,68,68,.5)}
 
-/* 发布入口 */
-.cp-post-entry{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);margin-bottom:12px}
-.cp-post-avatar{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(59,130,246,.2));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;flex-shrink:0}
-.cp-post-hint{flex:1;font-size:13px;color:rgba(255,255,255,.2);cursor:pointer}
-.cp-post-icon-btn{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;font-size:16px;padding:6px 10px;cursor:pointer;transition:all .2s}
-.cp-post-icon-btn:hover{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.15)}
+/* 动态 */
+.moments-tab{padding:8px}
+.cp-post-entry{margin-bottom:8px;padding:8px;border-radius:10px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
+.cp-post-input{width:100%;background:none;border:none;color:white;font-size:12px;resize:none;outline:none;font-family:inherit;line-height:1.5}
+.cp-post-input::placeholder{color:rgba(255,255,255,.12)}
+.cp-post-actions{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.cp-post-vis{padding:3px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:10px;outline:none}
+.cp-post-btn{padding:4px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;font-size:10px;font-weight:600;cursor:pointer}
+.cp-post-btn:disabled{opacity:.3;cursor:default}
+.cp-moment{padding:10px;border-radius:10px;background:rgba(255,255,255,.01);border:1px solid rgba(255,255,255,.02);margin-bottom:6px}
+.cp-moment-head{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.cp-moment-name{font-size:11px;color:rgba(255,255,255,.5);font-weight:600}.cp-moment-time{font-size:9px;color:rgba(255,255,255,.1);margin-left:4px}
+.cp-moment-del{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.1);cursor:pointer;font-size:11px}
+.cp-moment-text{font-size:12px;color:rgba(255,255,255,.55);line-height:1.6;margin:0 0 6px;white-space:pre-wrap}
+.cp-moment-acts{display:flex;gap:6px}
+.cp-moment-acts button{padding:2px 8px;border-radius:5px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .15s}
+.cp-moment-acts button:hover{background:rgba(139,92,246,.04);color:rgba(139,92,246,.5)}
+.cp-moment-acts button.liked{color:rgba(239,68,68,.5)}
+.cp-comments{margin-top:6px;padding:6px;border-radius:6px;background:rgba(255,255,255,.01)}
+.cp-comment{font-size:10px;color:rgba(255,255,255,.3);margin-bottom:3px}.cp-comment-name{color:rgba(139,92,246,.5);font-weight:600}
+.cp-comment-input{display:flex;gap:4px;margin-top:4px}
+.cp-comment-input input{flex:1;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.02);color:white;font-size:10px;outline:none}
+.cp-comment-input button{padding:2px 8px;border-radius:5px;border:none;background:rgba(139,92,246,.08);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer}
+.cp-empty{text-align:center;padding:30px 0;color:rgba(255,255,255,.08);font-size:11px}
 
-.cp-empty{text-align:center;font-size:12px;color:rgba(255,255,255,.15);padding:30px}
-
-/* Section */
-.cp-section-title{font-size:13px;font-weight:600;color:rgba(255,255,255,.5);margin:16px 0 10px}
-.cp-plaza-header{text-align:center;margin-bottom:14px}
-.cp-plaza-desc{font-size:11px;color:rgba(255,255,255,.2);margin:2px 0 0}
-
-/* 群聊 */
-.cp-groups{margin-top:16px}
-.cp-group-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);margin-bottom:5px;cursor:pointer;transition:all .2s}
-.cp-group-card:hover{background:rgba(139,92,246,.04)}
-.cp-group-icon{font-size:20px;flex-shrink:0}
-.cp-group-info{flex:1}.cp-group-name{display:block;font-size:13px;font-weight:600;color:rgba(255,255,255,.6)}.cp-group-meta{display:block;font-size:10px;color:rgba(255,255,255,.2)}
-.cp-create-group-btn{width:100%;padding:10px;border-radius:10px;border:1px dashed rgba(139,92,246,.15);background:rgba(139,92,246,.03);color:rgba(139,92,246,.5);font-size:12px;cursor:pointer;margin-top:10px;transition:all .2s}
-.cp-create-group-btn:hover{background:rgba(139,92,246,.08)}
+/* 右侧聊天面板 */
+.cp-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.cp-main-empty{align-items:center;justify-content:center}
+.cp-empty-state{text-align:center}
+.cp-empty-icon{font-size:36px;margin-bottom:8px}.cp-empty-state h2{color:white;font-size:16px;margin:0 0 4px;font-weight:700}.cp-empty-state p{color:rgba(255,255,255,.15);font-size:11px;margin:0 0 16px}
+.cp-empty-stats{display:flex;gap:20px;justify-content:center}
+.cp-stat{display:flex;flex-direction:column;align-items:center;gap:1px;color:rgba(255,255,255,.2);font-size:10px}
+.cp-stat-num{font-size:18px;font-weight:700;color:rgba(139,92,246,.5)}
+.cp-chat-header{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.03);flex-shrink:0}
+.cp-chat-header h3{margin:0;font-size:13px;color:white;font-weight:600;flex:1}
+.cp-back{background:none;border:none;color:rgba(255,255,255,.3);font-size:16px;cursor:pointer;padding:4px}
+.cp-member-count{font-size:10px;color:rgba(255,255,255,.15)}
+.cp-qr-btn{background:none;border:none;font-size:14px;cursor:pointer}
+.cp-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.cp-messages::-webkit-scrollbar{width:2px}.cp-messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.cp-msg{display:flex;gap:6px;max-width:85%}
+.cp-msg.mine{margin-left:auto;flex-direction:row-reverse}
+.cp-msg.sys{margin:0 auto;max-width:100%}
+.cp-msg-av{width:26px;height:26px;border-radius:7px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.cp-msg-body{display:flex;flex-direction:column;gap:1px;min-width:0}
+.cp-msg-name{font-size:9px;color:rgba(255,255,255,.15);padding:0 4px}
+.cp-msg-bubble{padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.6;color:rgba(255,255,255,.7);word-break:break-word;white-space:pre-wrap}
+.cp-msg.mine .cp-msg-bubble{background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.06)}
+.cp-msg:not(.mine):not(.sys) .cp-msg-bubble{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.03)}
+.cp-msg-bubble.system{background:none;border:none;text-align:center;color:rgba(255,255,255,.1);font-size:10px;padding:2px}
+.cp-msg.ai .cp-msg-bubble{background:rgba(139,92,246,.03);border:1px solid rgba(139,92,246,.04)}
+.cp-share-card{display:inline-flex;align-items:center;padding:4px 8px;border-radius:6px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);color:rgba(139,92,246,.6);font-size:11px;cursor:pointer}
+.cp-typing-dots{display:flex;gap:3px;padding:4px 0}.cp-typing-dots span{width:5px;height:5px;border-radius:50%;background:rgba(139,92,246,.3);animation:dot 1.4s infinite}.cp-typing-dots span:nth-child(2){animation-delay:.2s}.cp-typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes dot{0%,80%,100%{transform:scale(.6);opacity:.3}40%{transform:scale(1);opacity:.8}}
+.cp-input-area{padding:8px 14px;border-top:1px solid rgba(255,255,255,.03);display:flex;gap:6px;align-items:flex-end;flex-shrink:0}
+.cp-input-area textarea{flex:1;padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:12px;resize:none;outline:none;font-family:inherit;line-height:1.5;min-height:20px}
+.cp-input-area textarea::placeholder{color:rgba(255,255,255,.12)}
+.cp-send{width:32px;height:32px;border-radius:9px;border:none;background:rgba(139,92,246,.12);color:rgba(139,92,246,.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cp-send:disabled{opacity:.2;cursor:default}
 
 /* 弹窗 */
-.cp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
-.cp-modal{width:100%;max-width:480px;max-height:90vh;overflow-y:auto;background:linear-gradient(160deg,#0d0b1e,#12102a);border:1px solid rgba(139,92,246,.12);border-radius:20px;padding:24px}
-.cp-modal.small{max-width:360px}
-.cp-modal.tall{max-width:500px;height:80vh;display:flex;flex-direction:column}
-.cp-modal h3{font-size:16px;font-weight:600;color:rgba(255,255,255,.8);margin:0 0 14px;text-align:center}
-.cp-post-textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:13px;outline:none;box-sizing:border-box;font-family:inherit;resize:none;line-height:1.6;margin-bottom:10px}
-.cp-post-textarea.single{resize:none;height:auto;margin-bottom:12px}
-.cp-post-textarea:focus{border-color:rgba(139,92,246,.2)}
-.cp-post-textarea::placeholder{color:rgba(255,255,255,.2)}
+.cp-overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+.cp-modal{background:rgba(14,11,28,.98);border:1px solid rgba(255,255,255,.04);border-radius:16px;padding:20px;width:380px;max-height:80vh;overflow-y:auto}
+.cp-modal.wide{width:460px}.cp-modal.small{width:340px}
+.cp-modal::-webkit-scrollbar{width:2px}.cp-modal::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.cp-modal h3{margin:0 0 14px;font-size:14px;color:white;text-align:center;font-weight:700}
+.cp-field{margin-bottom:8px}.cp-field label{display:block;font-size:10px;color:rgba(255,255,255,.2);margin-bottom:2px;font-weight:600}
+.cp-field input,.cp-field select{width:100%;padding:6px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;outline:none}
+.cp-field-row{display:flex;gap:6px}.cp-field-row .cp-field{flex:1}
+.cp-field-label{font-size:10px;color:rgba(255,255,255,.15);margin:6px 0 3px}
+.cp-hint{font-size:9px;color:rgba(139,92,246,.3);margin-left:4px}
+.cp-id-row{display:flex;gap:4px}.cp-id-row input{flex:1}.cp-id-row button{padding:4px 10px;border-radius:6px;border:none;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:10px;cursor:pointer;font-weight:600;white-space:nowrap}
+.cp-check{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,.35);margin:8px 0;cursor:pointer}
+.cp-member-select{margin:8px 0}
+.cp-member-opt{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;color:rgba(255,255,255,.35);cursor:pointer}
+.cp-modal-btns{display:flex;gap:6px;margin-top:12px}
+.cp-modal-btns button{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;font-weight:600}
+.cp-modal-btns button.primary{background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;border:none}
+.cp-modal-btns button.primary:disabled{opacity:.3}
+.cp-close-btn{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:none;color:rgba(255,255,255,.2);font-size:11px;cursor:pointer;margin-top:10px}
+.cp-save-btn{width:100%;padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;font-size:11px;font-weight:600;cursor:pointer;margin-top:6px}
 
-.cp-upload{display:flex;align-items:center;justify-content:center;padding:14px;border-radius:12px;border:2px dashed rgba(139,92,246,.1);background:rgba(139,92,246,.03);cursor:pointer;margin-bottom:8px;font-size:12px;color:rgba(255,255,255,.3)}
-.cp-upload.video{border-color:rgba(239,68,68,.1);background:rgba(239,68,68,.02)}
+/* 档案 */
+.cp-profile{}.cp-pf-top{display:flex;gap:12px;margin-bottom:12px}
+.cp-pf-avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+.cp-pf-avatar{width:52px;height:52px;border-radius:14px;background:rgba(139,92,246,.08);display:flex;align-items:center;justify-content:center;font-size:26px}
+.cp-pf-avatar-input{width:52px;padding:2px;border-radius:5px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;text-align:center;outline:none}
+.cp-pf-info{flex:1}.cp-pf-name{font-size:15px;font-weight:700;color:white}.cp-pf-id{font-size:10px;color:rgba(139,92,246,.4);margin-top:1px}
+.cp-pf-bio{font-size:11px;color:rgba(255,255,255,.25);margin-top:3px}
+.cp-pf-stats{display:flex;gap:16px;justify-content:center;padding:10px;border-radius:10px;background:rgba(255,255,255,.01);border:1px solid rgba(255,255,255,.02);margin-bottom:12px}
+.cp-pf-form{border-top:1px solid rgba(255,255,255,.03);padding-top:10px}
 
-.cp-vis-row,.cp-expiry-row{margin-bottom:10px}
-.cp-vis-label{font-size:12px;color:rgba(255,255,255,.3);display:block;margin-bottom:6px}
-.cp-vis-btns{display:flex;gap:4px;flex-wrap:wrap}
-.cp-vis-btn{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:10px;cursor:pointer;transition:all .2s}
-.cp-vis-btn.active{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.2);color:rgba(139,92,246,.8)}
+/* 二维码 */
+.cp-qr-card{text-align:center;padding:14px;border-radius:12px;background:rgba(139,92,246,.02);border:1px solid rgba(139,92,246,.06);margin-bottom:10px}
+.cp-qr-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;text-align:left}
+.cp-qr-av{width:36px;height:36px;border-radius:10px;background:rgba(139,92,246,.08);display:flex;align-items:center;justify-content:center;font-size:18px}
+.cp-qr-name{font-size:12px;color:white;font-weight:600}.cp-qr-id{font-size:9px;color:rgba(139,92,246,.4)}
+.cp-qr-canvas{display:block;margin:0 auto;border-radius:8px}
+.cp-qr-tip{font-size:9px;color:rgba(255,255,255,.15);margin-top:6px}
+.cp-qr-paste{margin-top:8px}.cp-qr-paste p{font-size:10px;color:rgba(255,255,255,.15);margin:0 0 4px}
 
-.cp-plaza-toggle{display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.4);margin:6px 0 10px;cursor:pointer}
-.cp-plaza-toggle input{accent-color:rgba(139,92,246,.6)}
+/* 收藏 */
+.cp-fav-section{border-top:1px solid rgba(255,255,255,.03);padding-top:10px;margin-top:10px}
+.cp-fav-section h4{font-size:11px;color:rgba(255,255,255,.3);margin:0 0 6px}
+.cp-fav-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;font-size:10px;color:rgba(255,255,255,.3)}
+.cp-fav-src{color:rgba(255,255,255,.1);margin-left:auto;font-size:9px}
+.cp-fav-item button{background:none;border:none;color:rgba(255,255,255,.1);cursor:pointer;font-size:10px}
 
-.cp-modal-actions{display:flex;gap:8px;margin-top:10px}
-.cp-modal-cancel,.cp-modal-confirm{flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none}
-.cp-modal-cancel{background:rgba(255,255,255,.03);color:rgba(255,255,255,.4)}
-.cp-modal-cancel.full{width:100%;margin-top:12px}
-.cp-modal-confirm{background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white}
-.cp-modal-confirm:disabled{opacity:.3;cursor:default}
-
-/* 星火档案完整版 */
-.profile-modal{max-width:520px}
-.cp-profile-full{max-height:65vh;overflow-y:auto;padding-right:4px}
-.pf-header{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:linear-gradient(160deg,rgba(139,92,246,.06),rgba(59,130,246,.03));border:1px solid rgba(139,92,246,.08);margin-bottom:14px}
-.pf-avatar-wrap{position:relative;cursor:pointer;flex-shrink:0}
-.pf-avatar-img{width:56px;height:56px;border-radius:16px;object-fit:cover}
-.pf-avatar-text{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,rgba(139,92,246,.35),rgba(59,130,246,.2));display:flex;align-items:center;justify-content:center;color:white;font-size:24px;font-weight:700}
-.pf-avatar-edit{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:6px;background:rgba(139,92,246,.8);display:flex;align-items:center;justify-content:center;font-size:10px}
-.pf-meta{flex:1;min-width:0}
-.pf-name{display:block;font-size:16px;font-weight:700;color:rgba(255,255,255,.85)}
-.pf-sparkid{display:block;font-size:11px;color:rgba(139,92,246,.6);font-family:monospace}
-.pf-bio{display:block;font-size:11px;color:rgba(255,255,255,.3);margin-top:2px}
-
-.pf-stats{display:flex;gap:0;text-align:center;margin-bottom:14px;border-radius:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);overflow:hidden}
-.pf-stat{flex:1;padding:12px 0;border-right:1px solid rgba(255,255,255,.03)}
-.pf-stat:last-child{border-right:none}
-.pf-stat-num{display:block;font-size:18px;font-weight:700;color:rgba(139,92,246,.7)}
-.pf-stat-label{display:block;font-size:10px;color:rgba(255,255,255,.25)}
-
-.pf-edit-section{margin-bottom:14px;padding:12px;border-radius:12px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
-.pf-edit-section h4{font-size:13px;font-weight:600;color:rgba(255,255,255,.5);margin:0 0 10px}
-.pf-hint{font-size:10px;font-weight:400;color:rgba(245,158,11,.5)}
-.pf-field{margin-bottom:8px}
-.pf-field label{display:block;font-size:11px;color:rgba(255,255,255,.3);margin-bottom:3px}
-.pf-field-row{display:flex;gap:8px}
-.pf-field.half{flex:1}
-.pf-input{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:12px;outline:none;box-sizing:border-box;font-family:inherit;resize:none}
-.pf-input:focus{border-color:rgba(139,92,246,.2)}
-.pf-input::placeholder{color:rgba(255,255,255,.15)}
-select.pf-input{appearance:auto;cursor:pointer}
-
-.pf-tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.pf-tag{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:6px;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:11px}
-.pf-tag button{background:none;border:none;color:rgba(139,92,246,.4);font-size:10px;cursor:pointer;padding:0}
-.pf-tag-input{width:60px;padding:3px 6px;border-radius:6px;border:1px dashed rgba(139,92,246,.1);background:transparent;color:rgba(139,92,246,.5);font-size:11px;outline:none}
-.pf-tag-input::placeholder{color:rgba(139,92,246,.25)}
-
-.pf-save-btn{width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px}
-.pf-save-btn:disabled{opacity:.3}
-
-.pf-moment-mini{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.015);margin-bottom:4px}
-.pf-moment-time{font-size:10px;color:rgba(255,255,255,.15);flex-shrink:0;width:48px}
-.pf-moment-content{flex:1;font-size:11px;color:rgba(255,255,255,.4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pf-moment-stats{font-size:10px;color:rgba(255,255,255,.15);flex-shrink:0}
-
-.cp-sparkid-change{display:flex;gap:6px;margin-bottom:10px}
-.cp-sparkid-input{flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:12px;outline:none;font-family:monospace;text-transform:uppercase}
-.cp-sparkid-btn{padding:8px 14px;border-radius:8px;border:none;background:rgba(139,92,246,.15);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
-.cp-sparkid-btn:disabled{opacity:.3}
-
-/* 真实二维码卡片 */
-.cp-qr-display{display:flex;justify-content:center;padding:8px 0}
-.cp-qr-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 20px;border-radius:18px;background:linear-gradient(160deg,rgba(139,92,246,.08),rgba(59,130,246,.04));border:1px solid rgba(139,92,246,.12);width:240px}
-.cp-qr-card-header{display:flex;align-items:center;gap:10px;width:100%;margin-bottom:6px}
-.cp-qr-card-avatar{width:36px;height:36px;border-radius:10px;object-fit:cover}
-.cp-qr-card-avatar-text{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.35),rgba(59,130,246,.2));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;flex-shrink:0}
-.cp-qr-card-info{flex:1}
-.cp-qr-card-name{display:block;font-size:14px;font-weight:700;color:rgba(255,255,255,.8)}
-.cp-qr-card-id{display:block;font-size:10px;color:rgba(139,92,246,.6);font-family:monospace}
-.cp-qr-canvas{border-radius:10px;margin:6px 0}
-.cp-qr-tip{font-size:10px;color:rgba(255,255,255,.2);text-align:center}
-.cp-qr-manual{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.04)}
-.cp-qr-paste-row{display:flex;gap:6px}
-
-/* 群聊面板 */
-.cp-group-header{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.04)}
-.cp-group-header button{background:none;border:none;color:rgba(255,255,255,.5);font-size:16px;cursor:pointer}
-.cp-group-header h3{flex:1;margin:0;font-size:14px}
-.cp-group-badge{font-size:10px;color:rgba(255,255,255,.2);background:rgba(255,255,255,.03);padding:2px 8px;border-radius:20px}
-.cp-group-messages{flex:1;overflow-y:auto;padding:12px 0;scroll-behavior:smooth}
-.cp-gmsg{display:flex;gap:8px;margin-bottom:10px;max-width:85%}
-.cp-gmsg.mine{margin-left:auto;flex-direction:row-reverse}
-.cp-gmsg.ai{margin-right:auto}
-.cp-gmsg-avatar{width:24px;height:24px;border-radius:6px;background:rgba(139,92,246,.15);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;color:white;font-weight:700}
-.cp-gmsg-avatar.ai{background:rgba(245,158,11,.15)}
-.cp-gmsg-bubble{padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.5;background:rgba(255,255,255,.03);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.04)}
-.cp-gmsg.mine .cp-gmsg-bubble{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.1);color:rgba(255,255,255,.7)}
-.cp-gmsg.ai .cp-gmsg-bubble{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.1);color:rgba(255,255,255,.6)}
-.cp-group-input{display:flex;gap:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,.04)}
-.cp-group-input textarea{flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;color:white;font-size:12px;padding:8px 10px;resize:none;outline:none;font-family:inherit}
-.cp-group-input textarea::placeholder{color:rgba(255,255,255,.2)}
-.cp-group-input button{padding:8px 14px;border-radius:10px;border:none;background:rgba(139,92,246,.15);color:rgba(139,92,246,.7);font-size:12px;font-weight:600;cursor:pointer}
-.cp-group-input button:disabled{opacity:.3}
-
-.cp-group-members-select{margin:8px 0}
-.cp-member-option{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.4);padding:4px 0;cursor:pointer}
-.cp-member-option input{accent-color:rgba(139,92,246,.6)}
-
-/* 通用 */
-.cp-loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3);z-index:50;backdrop-filter:blur(2px)}
-.cp-spinner{width:28px;height:28px;border:2.5px solid rgba(139,92,246,.1);border-top-color:rgba(139,92,246,.6);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.fade-enter-active,.fade-leave-active{transition:opacity .2s}.fade-enter-from,.fade-leave-to{opacity:0}
-.cp-toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:14px;background:rgba(139,92,246,.9);color:white;font-size:13px;font-weight:500;white-space:nowrap;z-index:300;box-shadow:0 4px 20px rgba(139,92,246,.3)}
+@media(max-width:768px){.cp-sidebar{width:100%;position:absolute;z-index:5}.cp-sidebar.collapsed{display:none}}
 </style>
