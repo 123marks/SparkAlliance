@@ -53,19 +53,24 @@
         @template="handleTemplate"
       />
       <div v-else class="pl-goals-grid">
-        <GoalCard
+        <div
           v-for="g in activeGoals"
+          :id="`goal-${g.id}`"
           :key="g.id"
-          :goal="g"
-          @complete-task="handleCompleteTask"
-          @delete-task="handleDeleteTask"
-          @edit-task="handleEditTask"
-          @add-task="handleAddTask"
-          @archive="handleArchive"
-          @delete-goal="handleDeleteGoal"
-          @push-to-schedule="handlePushToSchedule"
-          @record-task="handleRecordTask"
-        />
+          class="pl-goal-anchor"
+        >
+          <GoalCard
+            :goal="g"
+            @complete-task="handleCompleteTask"
+            @delete-task="handleDeleteTask"
+            @edit-task="handleEditTask"
+            @add-task="handleAddTask"
+            @archive="handleArchive"
+            @delete-goal="handleDeleteGoal"
+            @push-to-schedule="handlePushToSchedule"
+            @record-task="handleRecordTask"
+          />
+        </div>
       </div>
     </div>
 
@@ -187,7 +192,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { usePlanner } from '../../composables/usePlanner'
 import { useAchievements } from '../../composables/useAchievements'
 import type { PlannerTask } from '../../composables/usePlanner'
@@ -212,9 +218,15 @@ const {
 } = usePlanner()
 
 const { checkAndUnlockAchievements, fetchUserAchievements } = useAchievements()
+const route = useRoute()
+const router = useRouter()
+const allowedTabs = new Set(['today', 'goals', 'history', 'habits', 'achievements'])
 
 // 页面状态
-const activeTab = ref<'today' | 'goals' | 'history' | 'habits' | 'achievements'>('today')
+const routeTab = typeof route.query.tab === 'string' ? route.query.tab : ''
+const activeTab = ref<'today' | 'goals' | 'history' | 'habits' | 'achievements'>(
+  allowedTabs.has(routeTab) ? routeTab as 'today' | 'goals' | 'history' | 'habits' | 'achievements' : 'today',
+)
 const showCreate = ref(false)
 const greeting = getGreeting()
 const statsCardRef = ref<InstanceType<typeof StatsCard> | null>(null)
@@ -285,6 +297,40 @@ function switchTab(key: typeof activeTab.value) {
   if (key === 'history') fetchHistory()
   if (key === 'achievements') fetchUserAchievements()
 }
+
+function focusGoalFromQuery() {
+  const goalId = typeof route.query.goalId === 'string' ? route.query.goalId : ''
+  if (!goalId || activeTab.value !== 'goals') return
+
+  nextTick(() => {
+    const target = document.getElementById(`goal-${goalId}`)
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+watch(() => route.query.tab, (value) => {
+  if (typeof value === 'string' && allowedTabs.has(value) && value !== activeTab.value) {
+    switchTab(value as typeof activeTab.value)
+  }
+})
+
+watch(() => route.query.goalId, () => {
+  focusGoalFromQuery()
+})
+
+watch(activeTab, (value) => {
+  if (route.query.tab === value) {
+    focusGoalFromQuery()
+    return
+  }
+
+  router.replace({
+    query: {
+      ...route.query,
+      tab: value,
+    },
+  })
+})
 
 // ===== 快速添加任务 =====
 function showQuickAdd() {
@@ -501,6 +547,7 @@ async function submitRecord() {
 onMounted(async () => {
   await fetchGoals()
   await fetchTodayTasks()
+  focusGoalFromQuery()
 })
 </script>
 

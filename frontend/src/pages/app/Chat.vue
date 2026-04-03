@@ -136,6 +136,8 @@ import { useRouter } from 'vue-router'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode } from '../../composables/useSparkAI'
 import { useSchedule } from '../../composables/useSchedule'
+import { usePlanner } from '../../composables/usePlanner'
+import { resolveAssistantLocation } from '../../utils/assistantProtocol'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
@@ -144,6 +146,7 @@ import DOMPurify from 'dompurify'
 const router = useRouter()
 const { isStreaming, streamPhase, error: aiError, currentModel, conversations, currentConversationId, createConversation, getCurrentConversation, switchConversation, deleteConversation, sendMessage, stopGenerating } = useSparkAI()
 const { createEvent } = useSchedule()
+const { createGoal } = usePlanner()
 
 const sidebarOpen = ref(false)
 const inputText = ref('')
@@ -171,7 +174,7 @@ function switchModel(key: ModelMode) {
 }
 
 // 能力工具栏点击
-function activateAbility(t: typeof ABILITY_TOOLS[0]) {
+function activateAbility(t: (typeof ABILITY_TOOLS)[number]) {
   inputText.value = t.prompt
   nextTick(() => inputRef.value?.focus())
 }
@@ -201,12 +204,14 @@ mdRenderer.code = function({ text, lang }: { text:string; lang?:string }) {
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const hi = hljs.highlight(text, { language }).value
   const encoded = encodeURIComponent(text)
-  return `<div class="codeblock"><div class="cb-head"><span class="cb-lang">${language}</span><button class="cb-copy" onclick="navigator.clipboard.writeText(decodeURIComponent('${encoded}'));this.textContent='✓ 已复制';setTimeout(()=>this.textContent='复制',1500)">复制</button></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
+  return `<div class="codeblock"><div class="cb-head"><span class="cb-lang">${language}</span><button class="cb-copy" data-copy-text="${encoded}">复制</button></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
 }
 // 导航链接渲染为可点击按钮
 mdRenderer.link = function({ href, text }: { href: string; text: string }) {
-  if (href.startsWith('/app/')) {
-    return `<button class="nav-link" data-path="${href}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>${text}</button>`
+  const safeLocation = resolveAssistantLocation(href)
+  if (safeLocation) {
+    const query = safeLocation.query ? `?${new URLSearchParams(safeLocation.query).toString()}` : ''
+    return `<button class="nav-link" data-path="${safeLocation.path}${query}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>${text}</button>`
   }
   return `<a href="${href}" target="_blank" rel="noopener">${text}</a>`
 }
@@ -223,14 +228,29 @@ function renderMd(content: string): string {
     c = renderLatex(c)
     c = c.replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
     const html = marked.parse(c) as string
-    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['onclick','class','style','data-path'] })
+    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['class','style','data-path','data-copy-text'] })
   } catch { return DOMPurify.sanitize(content.replace(/\n/g, '<br>')) }
 }
 
 // 点击导航链接
 function handleMdClick(e: Event) {
-  const target = (e.target as HTMLElement).closest('.nav-link') as HTMLElement
-  if (target?.dataset?.path) { router.push(target.dataset.path); toast('正在跳转...') }
+  const element = e.target as HTMLElement
+  const copyButton = element.closest('.cb-copy') as HTMLElement | null
+  if (copyButton?.dataset?.copyText) {
+    navigator.clipboard.writeText(decodeURIComponent(copyButton.dataset.copyText))
+    copyButton.textContent = '✓ 已复制'
+    setTimeout(() => { copyButton.textContent = '复制' }, 1500)
+    return
+  }
+
+  const target = element.closest('.nav-link') as HTMLElement | null
+  if (!target?.dataset?.path) return
+
+  const location = resolveAssistantLocation(target.dataset.path)
+  if (!location) return
+
+  router.push({ path: location.path, query: location.query })
+  toast('正在跳转...')
 }
 
 function toast(msg: string) { toastMsg.value = msg; showToast.value = true; setTimeout(() => { showToast.value = false }, 1500) }
@@ -244,6 +264,18 @@ const starters = [
   { i:'🧭', l:'功能导航', t:'带我看看 Spark Alliance 都有哪些功能模块' },
   { i:'✍️', l:'写作助手', t:'帮我写一份实习申请自荐信' },
 ]
+
+function getActionCardMeta(action: SparkAction): { icon: string; label: string; desc: string } {
+  if (action.action === 'add_schedule') {
+    return { icon: '📅', label: '同步日程', desc: action.data.title }
+  }
+  if (action.action === 'create_goal') {
+    return { icon: '🎯', label: '创建规划', desc: action.data.title }
+  }
+  return { icon: '🔗', label: '跳转', desc: action.data.label || action.data.path }
+}
+
+void getActionCardMeta
 
 const displayMsgs = computed(() => {
   const conv = conversations.value.find(c => c.id === currentConversationId.value)
@@ -285,13 +317,62 @@ async function handleSend() {
 
 async function execAction(a: SparkAction) {
   try {
-    if (a.action==='add_schedule') {
-      await createEvent({ title:String(a.data.title||''), description:String(a.data.description||''), location:'', start_time:String(a.data.start_time||new Date().toISOString()), end_time:String(a.data.end_time||''), all_day:false, event_type:(a.data.event_type as 'task')||'task', event_subtype:'', color:'', recurrence_type:'none', recurrence_days:[], recurrence_end:'', reminders:[], priority:Number(a.data.priority)||1 })
+    if (a.action === 'add_schedule') {
+      const ok = await createEvent({
+        title: a.data.title,
+        description: a.data.description || '',
+        location: '',
+        start_time: a.data.start_time,
+        end_time: a.data.end_time || '',
+        all_day: false,
+        event_type: a.data.event_type || 'task',
+        event_subtype: '',
+        color: '',
+        recurrence_type: 'none',
+        recurrence_days: [],
+        recurrence_end: '',
+        reminders: [],
+        priority: a.data.priority || 1,
+      })
+
+      if (!ok) throw new Error('日程创建失败')
       toast('✓ 日程已同步')
-    } else if (a.action==='navigate') { router.push(String(a.data.path||'/app/home')); toast('正在跳转...') }
-    else { router.push('/app/schedule') }
-    const card = actionCards.value.find(c => c.action === a); if(card) card.done = true
-  } catch(e) { console.error(e) }
+    } else if (a.action === 'create_goal') {
+      const goal = await createGoal(
+        a.data.title,
+        a.data.goal_type,
+        a.data.deadline,
+        a.data.description,
+      )
+
+      if (!goal) throw new Error('目标创建失败')
+
+      router.push({
+        path: '/app/schedule',
+        query: {
+          module: 'planner',
+          tab: 'goals',
+          goalId: goal.id,
+        },
+      })
+      toast('✓ 目标已创建')
+    } else if (a.action === 'navigate') {
+      const location = resolveAssistantLocation({
+        path: a.data.path,
+        query: a.data.query,
+      })
+
+      if (!location) throw new Error('无效跳转目标')
+      router.push({ path: location.path, query: location.query })
+      toast('正在跳转...')
+    }
+
+    const card = actionCards.value.find(c => c.action === a)
+    if (card) card.done = true
+  } catch (e) {
+    console.error(e)
+    toast(e instanceof Error ? e.message : '执行失败')
+  }
 }
 
 function copyText(t: string) { navigator.clipboard.writeText(t); toast('已复制到剪贴板') }

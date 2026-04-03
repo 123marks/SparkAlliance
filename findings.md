@@ -23,6 +23,14 @@
 - The current main action executor appears limited to `add_schedule`, `create_goal`, and `navigate`, with only `add_schedule` and `navigate` actually implemented in the page layer.
 - Real-time jump-to-content already partially exists: markdown links to `/app/...` are rewritten into clickable buttons and `router.push()` is called on click, but the path only covers static route jumps and not deeper contextual navigation.
 - The router file appears to contain mojibake/comments with encoding corruption, which is a maintainability smell and may indicate mixed file encodings in the repo.
+- `frontend/vite.config.ts` proxies `/api/nvidia` only in the Vite dev server, so the current main chat transport is likely development-only unless production hosting adds an equivalent rewrite outside the repo.
+- The repository already contains Supabase Edge Functions (`supabase/functions/ai-schedule-import`, `supabase/functions/tarot-reading`) with authenticated server-side API calls and secret management patterns, so the assistant can reuse an existing backend boundary rather than inventing a new stack.
+- `frontend/src/components/schedule/AIImportModal.vue` already calls a Supabase Edge Function over `functions/v1/...`, which is a concrete precedent for migrating main assistant calls off the client.
+- `frontend/src/composables/usePlanner.ts` exposes a real `createGoal(...)` persistence path, which means the chat action loop could execute goal creation properly today but currently does not wire into it.
+- `frontend/src/composables/useSchedule.ts` exposes `createEvent(...)` as a real persistence path and is already used by chat action execution.
+- `frontend/.env.local` contains concrete Supabase project values, confirming the repo expects runtime secrets/config to come from environment variables rather than hardcoded source for deployment-sensitive paths.
+- `frontend/src/pages/app/Chat.vue` allows inline `onclick` through DOMPurify and injects inline clipboard handlers into rendered markdown code blocks; combined with model-controlled markdown, this is an avoidable XSS surface.
+- The main chat advertises file/image understanding, but image attachments are only labeled in prompt text rather than being sent as real multimodal payloads; this creates a capability mismatch that harms answer quality and user trust.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -31,6 +39,7 @@
 | Keep scope centered on assistant core behavior, orchestration, safety, and content/action flow | User explicitly said UI changes are not the goal. |
 | Treat hardcoded client API credentials as top-priority blockers | This is a direct security exposure, not an optional optimization. |
 | Treat duplicated assistant logic as a major architecture issue | Split prompts/models/action logic will degrade answer quality and make fixes inconsistent. |
+| Use Supabase Edge Functions as the preferred server-side boundary for assistant requests | The pattern already exists locally and matches the deployment model in this repo. |
 
 ## Issues Encountered
 | Issue | Resolution |

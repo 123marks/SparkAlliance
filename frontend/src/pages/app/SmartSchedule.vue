@@ -23,7 +23,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent, markRaw, type Component } from 'vue'
+import { ref, computed, defineAsyncComponent, markRaw, watch, type Component } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 // 懒加载原有模块（保持完整功能）
 const Schedule = defineAsyncComponent(() => import('./Schedule.vue'))
@@ -37,7 +38,11 @@ const modules = [
   { key: 'tarot', icon: '🔮', label: '每日灵感' },
 ]
 
-const activeModule = ref('calendar')
+const route = useRoute()
+const router = useRouter()
+const allowedModules = new Set(modules.map(module => module.key))
+const routeModule = typeof route.query.module === 'string' ? route.query.module : ''
+const activeModule = ref(allowedModules.has(routeModule) ? routeModule : 'calendar')
 
 const moduleMap: Record<string, Component> = {
   calendar: markRaw(Schedule),
@@ -46,6 +51,22 @@ const moduleMap: Record<string, Component> = {
 }
 
 const currentModule = computed(() => moduleMap[activeModule.value])
+
+watch(() => route.query.module, (value) => {
+  if (typeof value === 'string' && allowedModules.has(value) && value !== activeModule.value) {
+    activeModule.value = value
+  }
+})
+
+watch(activeModule, (value) => {
+  if (route.query.module === value) return
+  router.replace({
+    query: {
+      ...route.query,
+      module: value,
+    },
+  })
+})
 </script>
 
 <style scoped>
