@@ -1,129 +1,116 @@
 /**
- * useSparkAI.ts — 星火助手 AI 核心引擎 v3
+ * useSparkAI.ts — 星火助手 AI 核心引擎 v4
  *
- * v3 优化：
- * 1. 思考状态：连接后到首字输出前显示"思考中"
- * 2. 超时控制：30s 无响应自动中断并提示
- * 3. 逐字平滑输出：模拟打字机效果（队列+定时器）
- * 4. 网络连接检测：提前检查 API 可达性
- * 5. Function Calling 协议完整保留
+ * v4 架构：
+ * 1. 多模型切换（默认 Kimi K2.5 / 深度思考 GLM5 / 快速 MiniMax M2.5）
+ * 2. 思考链解析（reasoning_content / <think> 标签分离）
+ * 3. 二进制文件检测（.docx/.pdf 等不读取内容）
+ * 4. 逐字平滑输出 + 思考过程独立流
+ * 5. Function Calling 模块打通
  */
 
 import { ref } from 'vue'
 
 // ============ API 配置 ============
 const API_KEY = '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'
-// 通过 Vite 代理转发，避免浏览器 CORS 限制
 const BASE_URL = '/api/nvidia'
-const MODEL = 'z-ai/glm5'
 
-// 超时设置（毫秒）
-const CONNECT_TIMEOUT = 30000  // 连接超时 30s
-const FIRST_TOKEN_TIMEOUT = 45000  // 首字超时 45s
+// 模型配置
+export type ModelMode = 'default' | 'thinking' | 'fast'
+export const MODEL_OPTIONS: Record<ModelMode, { id: string; label: string; desc: string; icon: string; maxTokens: number }> = {
+    default: { id: 'moonshotai/kimi-k2.5', label: '均衡', desc: 'Kimi K2.5 · 全能均衡', icon: '⚡', maxTokens: 4096 },
+    thinking: { id: 'z-ai/glm5', label: '深度思考', desc: 'GLM5 · 思考链推理', icon: '🧠', maxTokens: 8192 },
+    fast: { id: 'minimaxai/minimax-m2.5', label: '极速', desc: 'MiniMax M2.5 · 快速回复', icon: '🚀', maxTokens: 2048 },
+}
 
 // ============ 系统提示词 ============
-const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance（星火联盟）平台的核心 AI 助手，由 Spark Alliance 团队自主研发。
+const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance（星火联盟）平台的核心 AI 助手。
 
-## 身份规则
-- 你的名字是「星火助手」，使用「星火认知引擎」提供服务。
-- 绝对不要透露底层模型的真实名称（如 GLM、GPT、DeepSeek 等）或来源。
-- 当用户问"你是什么模型/谁开发的" → 回答"我是 Spark Alliance 团队开发的星火助手"。
+## 身份
+- 你叫「星火助手」，由 Spark Alliance 团队自主研发，使用「星火认知引擎」。
+- 绝对不要透露底层模型名称（GPT/GLM/DeepSeek/Kimi等）。
 
-## 平台功能架构（你可以主动引导用户使用这些功能）
-1. **智能日程** — 日历事件管理、课程安排、考试提醒
-2. **星火规划** — 目标管理、里程碑拆解、任务追踪（支持考研/四级/健身/技能学习等）
-3. **学习中心** — 自习室、学习资源
-4. **星火伴侣** — 好友社交、动态、广场
-5. **星火传承** — 经验分享、寄语留言
-6. **星火墙** — 校园动态
-7. **星火购物** — 二手交易
-8. **健康生活** — 运动健康追踪
-9. **星火人才** — 人才市场
-10. **星火共创** — 共创平台、开发者社区
+## 回复质量要求（非常重要）
+你必须提供高质量、有深度的回答：
+
+1. **结构化回答**：采用"总-分-总"结构
+   - 开头：一句话精准概括核心答案
+   - 正文：分层展开，每层有标题，有通俗解释+专业细节
+   - 结尾：总结要点，给出下一步建议
+
+2. **内容深度**：
+   - 通俗比喻 + 专业术语并存
+   - 给出具体例子和数据
+   - 代码题要给完整可运行代码 + 逐行注释 + 复杂度分析
+   - 数学/物理问题要给公式推导
+
+3. **格式要求**：
+   - 善用 Markdown：## 标题、**加粗**、\`代码\`、表格、有序/无序列表
+   - 代码块必须标注语言（\`\`\`python）
+   - 数学公式用 LaTeX 行内 $...$ 或块级 $$...$$
+   - 适度使用 emoji 增加辨识度
+
+4. **回答长度**：
+   - 简单问答：200-500字
+   - 技术问题：500-2000字
+   - 规划/分析：800-3000字
+   - 绝不敷衍，也不灌水
+
+## 平台功能架构
+1. **智能日程** — 日历管理、课程安排、考试提醒（路径: /app/schedule）
+2. **星火规划** — 目标拆解、里程碑任务追踪（路径: /app/schedule，规划Tab）
+3. **学习中心** — 自习室、学习资源（路径: /app/learn）
+4. **星火伴侣** — 好友社交（路径: /app/companion）
+5. **星火传承** — 经验分享（路径: /app/legacy）
+6. **星火墙** — 校园动态（路径: /app/wall）
+7. **健康生活** — 运动健康（路径: /app/health）
+8. **星火人才** — 人才市场（路径: /app/talent）
+9. **星火共创** — 共创平台（路径: /app/cocreate）
 
 ## 操作能力（Function Calling）
-你可以帮用户执行以下操作。当你认为需要操作时，在回复末尾输出操作指令块。
+当用户需求涉及以下操作时，**主动提醒用户**"💡 我可以帮你同步到对应模块"，用户确认后输出操作指令。
 
-### 操作指令格式
-在回复正文之后，用如下格式输出操作（可多个）:
+### 格式
 \`\`\`spark-action
-{
-  "action": "操作类型",
-  "data": { ... }
-}
+{"action":"类型","data":{...}}
 \`\`\`
 
-### 支持的操作类型
+### 操作类型
+1. **add_schedule** — 添加日程
+   data: {title, description, start_time(ISO), end_time(ISO), event_type(course|exam|task|life|reminder), priority(1-3)}
 
-#### 1. add_schedule — 添加日程事件
-\`\`\`spark-action
-{
-  "action": "add_schedule",
-  "data": {
-    "title": "事件标题",
-    "description": "详细描述",
-    "start_time": "2026-04-03T09:00:00",
-    "end_time": "2026-04-03T10:00:00",
-    "event_type": "course|exam|task|life|reminder|holiday",
-    "priority": 1
-  }
-}
-\`\`\`
+2. **create_goal** — 创建规划目标
+   data: {title, goal_type(academic|skill|habit|fitness|career|custom), deadline(YYYY-MM-DD), description}
 
-#### 2. create_goal — 创建星火规划目标
-\`\`\`spark-action
-{
-  "action": "create_goal",
-  "data": {
-    "title": "目标名称",
-    "goal_type": "academic|skill|habit|fitness|career|custom",
-    "deadline": "2026-06-30",
-    "description": "目标描述"
-  }
-}
-\`\`\`
+3. **navigate** — 跳转页面
+   data: {path, label}
 
-#### 3. navigate — 导航到指定页面
-\`\`\`spark-action
-{
-  "action": "navigate",
-  "data": {
-    "path": "/app/schedule",
-    "label": "打开智能日程"
-  }
-}
-\`\`\`
+### 规则
+- 操作指令放在回复最末尾
+- 涉及日期时自动推算合理日期（今天是 ${new Date().toLocaleDateString('zh-CN')}）
+- 考试复习类：拆分为多个阶段添加多条日程
+- 目标类：自动建议 deadline 和 goal_type
 
-### 操作规则
-- 当用户的需求涉及日程安排、目标规划时，主动提出"是否需要我帮你同步到对应模块？"
-- 用户明确同意后，才输出操作指令块
-- 操作指令块放在回复最末尾
-
-## 交互模式
-1. 理解用户意图后，给出**专业建议 + 可操作方案**
-2. 如果用户的需求和平台功能相关，主动推荐使用平台功能
-3. 例：用户说"我要备考四级" → 你应该：
-   a. 分析用户现状（询问基础、考试时间等）
-   b. 给出复习规划方案
-   c. 主动提示"💡 我可以帮你把计划同步到『星火规划』或『智能日程』，要不要试试？"
-   d. 用户同意后输出 create_goal 操作指令
-
-## 回复风格
-- 使用中文（除非用户要求其他语言）
-- Markdown 格式：标题、列表、代码块（标注语言）、表格、加粗
-- 有深度但不啰嗦，专业但易懂
-- 适当使用 emoji 增加亲和力
-
-## 底线原则
+## 底线
 - 不生成违法、色情、暴力内容
-- 不协助作弊（可讲解解题思路）
+- 不协助作弊，可讲解思路
 - 不确定时诚实说明`
 
 // ============ 类型定义 ============
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system'
     content: string
-    attachments?: { type: 'image' | 'file'; name: string; url?: string; content?: string }[]
+    reasoning?: string  // 思考过程
+    attachments?: FileAttachment[]
+}
+
+export interface FileAttachment {
+    type: 'image' | 'file'
+    name: string
+    url?: string          // 图片预览 URL
+    content?: string      // 文本文件内容
+    size?: string         // 文件大小
+    isBinary?: boolean    // 是否二进制文件
 }
 
 export interface SparkAction {
@@ -132,17 +119,36 @@ export interface SparkAction {
 }
 
 export interface Conversation {
-    id: string
-    title: string
-    messages: ChatMessage[]
-    createdAt: string
-    updatedAt: string
+    id: string; title: string; messages: ChatMessage[]
+    createdAt: string; updatedAt: string
 }
 
-// 流式状态：connecting → thinking → streaming → done
-export type StreamPhase = 'idle' | 'connecting' | 'thinking' | 'streaming' | 'done'
+export type StreamPhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
-// ============ 解析操作指令 ============
+// ============ 工具函数 ============
+
+// 二进制文件检测
+const BINARY_EXTS = new Set([
+    'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt',
+    'zip', 'rar', '7z', 'gz', 'tar',
+    'exe', 'dll', 'bin', 'dat', 'so', 'dylib',
+    'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'ogg',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico',
+    'woff', 'woff2', 'ttf', 'otf', 'eot',
+])
+
+export function isBinaryFile(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase() || ''
+    return BINARY_EXTS.has(ext)
+}
+
+export function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// 解析操作指令
 export function parseSparkActions(content: string): { cleanContent: string; actions: SparkAction[] } {
     const actions: SparkAction[] = []
     const regex = /```spark-action\s*\n([\s\S]*?)```/g
@@ -153,8 +159,18 @@ export function parseSparkActions(content: string): { cleanContent: string; acti
             if (parsed.action && parsed.data) actions.push(parsed as SparkAction)
         } catch { /* 跳过 */ }
     }
-    const cleanContent = content.replace(/```spark-action\s*\n[\s\S]*?```/g, '').trim()
-    return { cleanContent, actions }
+    return { cleanContent: content.replace(/```spark-action\s*\n[\s\S]*?```/g, '').trim(), actions }
+}
+
+// 分离思考过程（<think> 标签）
+export function separateThinking(content: string): { thinking: string; answer: string } {
+    const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/)
+    if (thinkMatch) {
+        const thinking = thinkMatch[1].trim()
+        const answer = content.replace(/<think>[\s\S]*?<\/think>/, '').trim()
+        return { thinking, answer }
+    }
+    return { thinking: '', answer: content }
 }
 
 // ============ Composable ============
@@ -164,20 +180,21 @@ export function useSparkAI() {
     const error = ref<string | null>(null)
     const abortController = ref<AbortController | null>(null)
     const pendingActions = ref<SparkAction[]>([])
+    const currentModel = ref<ModelMode>('default')
 
     const conversations = ref<Conversation[]>([])
     const currentConversationId = ref<string | null>(null)
 
     function loadConversations() {
         try {
-            const saved = localStorage.getItem('spark_conversations')
+            const saved = localStorage.getItem('spark_conversations_v2')
             if (saved) conversations.value = JSON.parse(saved)
         } catch { /* 忽略 */ }
     }
 
     function saveConversations() {
         try {
-            localStorage.setItem('spark_conversations', JSON.stringify(conversations.value.slice(0, 50)))
+            localStorage.setItem('spark_conversations_v2', JSON.stringify(conversations.value.slice(0, 50)))
         } catch { /* 忽略 */ }
     }
 
@@ -207,6 +224,12 @@ export function useSparkAI() {
         saveConversations()
     }
 
+    function clearAllConversations() {
+        conversations.value = []
+        currentConversationId.value = null
+        saveConversations()
+    }
+
     function autoTitle(conv: Conversation) {
         const first = conv.messages.find(m => m.role === 'user')
         if (first) conv.title = first.content.slice(0, 30) + (first.content.length > 30 ? '...' : '')
@@ -214,27 +237,31 @@ export function useSparkAI() {
 
     /**
      * 核心发送方法
-     * 流式阶段回调：onPhase(phase) → connecting → thinking → streaming → done
-     * 平滑输出：收到的 token 放入队列，用定时器逐字释放
+     * onThinking: 思考过程实时回调
+     * onChunk: 正式回答实时回调
+     * onDone: 完成回调
      */
     async function sendMessage(
         userMessage: string,
-        onChunk: (fullText: string) => void,
-        onDone: (fullText: string, actions: SparkAction[]) => void,
+        onChunk: (text: string) => void,
+        onDone: (text: string, actions: SparkAction[], reasoning: string) => void,
         onError?: (err: string) => void,
-        onPhase?: (phase: StreamPhase) => void,
-        attachments?: ChatMessage['attachments'],
+        onThinking?: (text: string) => void,
+        attachments?: FileAttachment[],
     ) {
         const conv = getCurrentConversation()
+        const modelConfig = MODEL_OPTIONS[currentModel.value]
 
         // 构建用户消息
         let userContent = userMessage
         if (attachments?.length) {
             for (const att of attachments) {
                 if (att.type === 'file' && att.content) {
-                    userContent += `\n\n[附件: ${att.name}]\n\`\`\`\n${att.content}\n\`\`\``
-                } else if (att.type === 'image' && att.url) {
-                    userContent += `\n\n[图片: ${att.name}]`
+                    userContent += `\n\n📄 **文件: ${att.name}** (${att.size || '未知大小'})\n\`\`\`\n${att.content}\n\`\`\``
+                } else if (att.type === 'file' && att.isBinary) {
+                    userContent += `\n\n📄 **文件: ${att.name}** (${att.size || '未知大小'}) — 二进制文件，无法读取内容`
+                } else if (att.type === 'image') {
+                    userContent += `\n\n🖼️ **图片: ${att.name}**`
                 }
             }
         }
@@ -243,8 +270,8 @@ export function useSparkAI() {
         autoTitle(conv)
         conv.updatedAt = new Date().toISOString()
 
-        const contextMessages: ChatMessage[] = [
-            { role: 'system', content: SYSTEM_PROMPT },
+        const contextMessages = [
+            { role: 'system' as const, content: SYSTEM_PROMPT },
             ...conv.messages.slice(-60).map(m => ({ role: m.role, content: m.content })),
         ]
 
@@ -252,80 +279,68 @@ export function useSparkAI() {
         error.value = null
         pendingActions.value = []
         abortController.value = new AbortController()
+        streamPhase.value = 'thinking'
 
-        // 阶段切换
-        const setPhase = (p: StreamPhase) => { streamPhase.value = p; onPhase?.(p) }
-        setPhase('connecting')
-
-        // 全量文本 + 平滑输出队列
-        let rawFullText = ''           // API 返回的完整文本
-        let displayedLength = 0        // 已展示给用户的字符数
-        let tokenQueue: string[] = []  // 待展示字符队列
+        let rawText = ''
+        let reasoningText = ''
+        let displayedLen = 0
+        let tokenQueue: string[] = []
         let smoothTimer: ReturnType<typeof setInterval> | null = null
-        let firstTokenReceived = false
+        let firstContentToken = false
+        let isInThinkTag = false
 
-        // 平滑输出定时器：每 20ms 释放几个字符
-        const startSmoothOutput = () => {
+        // 逐字平滑释放
+        const startSmooth = () => {
             if (smoothTimer) return
             smoothTimer = setInterval(() => {
                 if (tokenQueue.length === 0) return
-                // 一次释放 1~3 个字符（模拟自然打字速度）
-                const batchSize = Math.min(tokenQueue.length, tokenQueue.length > 20 ? 5 : 2)
-                const chars = tokenQueue.splice(0, batchSize).join('')
-                displayedLength += chars.length
-                onChunk(rawFullText.slice(0, displayedLength))
-            }, 18)
+                const batch = Math.min(tokenQueue.length, tokenQueue.length > 30 ? 6 : 2)
+                const chars = tokenQueue.splice(0, batch).join('')
+                displayedLen += chars.length
+                onChunk(rawText.slice(0, displayedLen))
+            }, 16)
         }
 
-        // 清理定时器并刷完剩余
         const flushSmooth = () => {
             if (smoothTimer) { clearInterval(smoothTimer); smoothTimer = null }
-            if (displayedLength < rawFullText.length) {
-                displayedLength = rawFullText.length
-                onChunk(rawFullText)
-            }
+            if (displayedLen < rawText.length) { displayedLen = rawText.length; onChunk(rawText) }
         }
 
-        // 超时定时器
-        const connectTimer = setTimeout(() => {
-            if (!firstTokenReceived) {
+        // 超时
+        const timeout = setTimeout(() => {
+            if (!firstContentToken) {
                 abortController.value?.abort()
-                error.value = '连接超时，请检查网络后重试（提示：国内网络可能需要稳定的代理访问）'
+                error.value = '响应超时，请检查网络或切换模型重试'
                 onError?.(error.value)
             }
-        }, FIRST_TOKEN_TIMEOUT)
+        }, 50000)
 
         try {
-            const response = await fetch(`${BASE_URL}/chat/completions`, {
+            const res = await fetch(`${BASE_URL}/chat/completions`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${API_KEY}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
                 body: JSON.stringify({
-                    model: MODEL,
+                    model: modelConfig.id,
                     messages: contextMessages,
                     stream: true,
-                    temperature: 0.7,
+                    temperature: currentModel.value === 'thinking' ? 0.6 : 0.7,
                     top_p: 0.9,
-                    max_tokens: 4096,
+                    max_tokens: modelConfig.maxTokens,
                 }),
                 signal: abortController.value.signal,
             })
 
-            if (!response.ok) {
-                const errBody = await response.text().catch(() => '')
-                if (response.status === 401) throw new Error('API Key 无效或已过期')
-                if (response.status === 429) throw new Error('请求频率过高，请稍后再试')
-                if (response.status === 503) throw new Error('AI 服务暂时不可用，请稍后再试')
-                throw new Error(`请求失败 (${response.status}): ${errBody || response.statusText}`)
+            if (!res.ok) {
+                const body = await res.text().catch(() => '')
+                if (res.status === 401) throw new Error('API Key 无效，请联系管理员')
+                if (res.status === 429) throw new Error('请求频率过高，请稍后再试')
+                if (res.status === 502) throw new Error('AI 模型暂时不可用，请切换其他模型重试')
+                if (res.status === 503) throw new Error('服务暂时不可用，请稍后重试')
+                throw new Error(`请求失败 (${res.status}): ${body.slice(0, 100) || res.statusText}`)
             }
 
-            // 连接成功，进入思考阶段
-            setPhase('thinking')
-
-            const reader = response.body?.getReader()
-            if (!reader) throw new Error('响应体不可读')
+            const reader = res.body?.getReader()
+            if (!reader) throw new Error('响应不可读')
 
             const decoder = new TextDecoder()
             let buffer = ''
@@ -345,72 +360,98 @@ export function useSparkAI() {
 
                     try {
                         const json = JSON.parse(trimmed.slice(6))
-                        const delta = json.choices?.[0]?.delta?.content
-                        if (delta) {
-                            // 首个 token —— 从"思考"切换到"流式"
-                            if (!firstTokenReceived) {
-                                firstTokenReceived = true
-                                clearTimeout(connectTimer)
-                                setPhase('streaming')
-                                startSmoothOutput()
+                        const delta = json.choices?.[0]?.delta
+
+                        // 思考内容（DeepSeek/GLM 风格）
+                        const reasoning = delta?.reasoning_content
+                        if (reasoning) {
+                            reasoningText += reasoning
+                            onThinking?.(reasoningText)
+                            continue
+                        }
+
+                        const content = delta?.content
+                        if (content) {
+                            // 检测 <think> 标签
+                            if (content.includes('<think>')) { isInThinkTag = true }
+                            if (isInThinkTag) {
+                                if (content.includes('</think>')) {
+                                    // think 结束
+                                    const parts = content.split('</think>')
+                                    reasoningText += parts[0].replace('<think>', '')
+                                    onThinking?.(reasoningText)
+                                    isInThinkTag = false
+                                    // think 后面可能紧跟正文
+                                    if (parts[1]) {
+                                        if (!firstContentToken) {
+                                            firstContentToken = true
+                                            clearTimeout(timeout)
+                                            streamPhase.value = 'streaming'
+                                            startSmooth()
+                                        }
+                                        rawText += parts[1]
+                                        for (const c of parts[1]) tokenQueue.push(c)
+                                    }
+                                } else {
+                                    reasoningText += content.replace('<think>', '')
+                                    onThinking?.(reasoningText)
+                                }
+                                continue
                             }
-                            // 追加到原始文本 + 队列
-                            rawFullText += delta
-                            for (const char of delta) {
-                                tokenQueue.push(char)
+
+                            // 正式内容
+                            if (!firstContentToken) {
+                                firstContentToken = true
+                                clearTimeout(timeout)
+                                streamPhase.value = 'streaming'
+                                startSmooth()
                             }
+                            rawText += content
+                            for (const c of content) tokenQueue.push(c)
                         }
                     } catch { /* 跳过 */ }
                 }
             }
 
-            clearTimeout(connectTimer)
+            clearTimeout(timeout)
 
-            // 等待平滑输出完成（最多 2s）
+            // 等待平滑输出完成
             await new Promise<void>(resolve => {
-                const checkInterval = setInterval(() => {
-                    if (tokenQueue.length === 0 || displayedLength >= rawFullText.length) {
-                        clearInterval(checkInterval)
-                        flushSmooth()
-                        resolve()
+                const check = setInterval(() => {
+                    if (tokenQueue.length === 0 || displayedLen >= rawText.length) {
+                        clearInterval(check); flushSmooth(); resolve()
                     }
-                }, 50)
-                // 安全超时
-                setTimeout(() => { clearInterval(checkInterval); flushSmooth(); resolve() }, 2000)
+                }, 30)
+                setTimeout(() => { clearInterval(check); flushSmooth(); resolve() }, 2000)
             })
 
-            // 解析操作指令
-            const { cleanContent, actions } = parseSparkActions(rawFullText)
+            // 最终处理
+            const { thinking: thinkFromTags, answer: answerFromTags } = separateThinking(rawText)
+            const finalReasoning = reasoningText || thinkFromTags
+            const finalAnswer = answerFromTags || rawText
+            const { cleanContent, actions } = parseSparkActions(finalAnswer)
 
-            conv.messages.push({ role: 'assistant', content: rawFullText })
+            conv.messages.push({ role: 'assistant', content: finalAnswer, reasoning: finalReasoning || undefined })
             conv.updatedAt = new Date().toISOString()
             saveConversations()
 
             pendingActions.value = actions
-            setPhase('done')
-            onDone(cleanContent, actions)
+            streamPhase.value = 'done'
+            onDone(cleanContent, actions, finalReasoning)
 
         } catch (err: unknown) {
-            clearTimeout(connectTimer)
-            flushSmooth()
-
-            const errMsg = err instanceof Error
-                ? (err.name === 'AbortError'
-                    ? (error.value || '已取消生成')  // 可能是超时触发的 abort
-                    : err.message)
+            clearTimeout(timeout); flushSmooth()
+            const msg = err instanceof Error
+                ? (err.name === 'AbortError' ? (error.value || '已取消') : err.message)
                 : '未知错误'
-
-            if (!error.value) error.value = errMsg
+            if (!error.value) error.value = msg
             onError?.(error.value)
-
-            if (rawFullText && err instanceof Error && err.name !== 'AbortError') {
-                conv.messages.push({ role: 'assistant', content: rawFullText + '\n\n⚠️ *生成中断*' })
+            if (rawText && err instanceof Error && err.name !== 'AbortError') {
+                conv.messages.push({ role: 'assistant', content: rawText + '\n\n⚠️ *生成中断*' })
                 saveConversations()
             }
         } finally {
-            isStreaming.value = false
-            streamPhase.value = 'idle'
-            abortController.value = null
+            isStreaming.value = false; streamPhase.value = 'idle'; abortController.value = null
         }
     }
 
@@ -419,9 +460,10 @@ export function useSparkAI() {
     loadConversations()
 
     return {
-        isStreaming, streamPhase, error,
+        isStreaming, streamPhase, error, currentModel,
         conversations, currentConversationId, pendingActions,
-        createConversation, getCurrentConversation, switchConversation, deleteConversation,
-        sendMessage, stopGenerating, parseSparkActions,
+        createConversation, getCurrentConversation, switchConversation,
+        deleteConversation, clearAllConversations,
+        sendMessage, stopGenerating,
     }
 }
