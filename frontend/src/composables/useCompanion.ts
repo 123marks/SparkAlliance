@@ -189,7 +189,7 @@ function saveData(key: string, data: unknown) {
 }
 
 // ============ AI 配置 ============
-const AI_MODEL = 'minimaxai/minimax-m1' // 快速模型用于聊天
+const AI_MODEL = 'minimaxai/minimax-m2.5' // 快速模型用于聊天
 
 const AI_COMPANION_PROMPT = `你是「星火」，Spark Alliance 平台的 AI 伙伴。你在群聊和私聊中都可以被 @。
 性格：温暖、幽默、有见解、像一个懂你的学长/学姐。
