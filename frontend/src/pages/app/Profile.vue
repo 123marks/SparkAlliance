@@ -1,4 +1,7 @@
 <template>
+  <!-- 宇宙深空动态背景 -->
+  <CosmicBackground :enabled="true" />
+  
   <div class="profile-page" v-if="!isLoading">
     <!-- ====== Banner 区 ====== -->
     <div class="profile-banner">
@@ -36,6 +39,15 @@
             <button class="btn-action primary" @click="goToSettings">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
               编辑资料
+            </button>
+            <button class="btn-action ghost" @click="showSparkCard=true" title="星火名片">
+              📱
+            </button>
+            <button class="btn-action ghost" @click="showPostModal=true" title="发布动态">
+              ✍️
+            </button>
+            <button class="btn-action ghost" @click="showPrivacyModal=true" title="隐私设置">
+              🔒
             </button>
             <button class="btn-action ghost" @click="shareProfile" title="分享主页">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
@@ -223,13 +235,149 @@
     <div class="spinner"></div>
     <span>加载中...</span>
   </div>
+
+  <!-- 星火名片弹窗 -->
+  <Transition name="fade">
+    <div v-if="showSparkCard" class="spark-card-overlay" @click.self="showSparkCard=false">
+      <div class="spark-card-modal">
+        <button class="close-btn" @click="showSparkCard=false">✕</button>
+        <div class="spark-card-content">
+          <!-- 用户信息 -->
+          <div class="card-user-info">
+            <div class="card-avatar">
+              <img v-if="profile.avatar_url" :src="profile.avatar_url" alt="" />
+              <span v-else class="avatar-text">{{ avatarInitial }}</span>
+            </div>
+            <h2 class="card-nickname">{{ profile.nickname || '星火用户' }}</h2>
+            <p class="card-spark-id">{{ profile.spark_id }}</p>
+            <p class="card-bio">{{ profile.bio || '这个人很懒' }}</p>
+          </div>
+          <!-- 二维码 -->
+          <div class="card-qr-area">
+            <canvas ref="sparkQrCanvas" class="card-qr-canvas"></canvas>
+            <p class="card-qr-tip">扫一扫上面的二维码，添加我为好友</p>
+          </div>
+          <!-- 操作按钮 -->
+          <div class="card-actions">
+            <button class="card-btn primary" @click="copySparkLink">📋 复制名片链接</button>
+            <button class="card-btn" @click="saveQRImage">💾 保存二维码</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- 发布动态弹窗 -->
+  <Transition name="fade">
+    <div v-if="showPostModal" class="spark-card-overlay" @click.self="showPostModal=false">
+      <div class="spark-card-modal post-modal">
+        <div class="modal-header">
+          <h3>发布动态</h3>
+          <button class="close-btn" @click="showPostModal=false">✕</button>
+        </div>
+        <div class="post-form">
+          <textarea v-model="postContent" placeholder="分享你的想法..." rows="5" maxlength="500"></textarea>
+          <div class="post-toolbar">
+            <div class="media-btns">
+              <button title="添加图片" @click="showToast('图片上传即将上线')">🖼️</button>
+              <button title="添加视频" @click="showToast('视频上传即将上线')">🎬</button>
+              <button title="添加定位" @click="showToast('定位功能即将上线')">📍</button>
+            </div>
+            <select v-model="postVisibility" class="visibility-select">
+              <option value="public">🌐 公开可见</option>
+              <option value="friends">👥 仅好友可见</option>
+              <option value="private">🔒 仅自己可见</option>
+            </select>
+          </div>
+          <div class="post-actions">
+            <button class="post-cancel" @click="showPostModal=false">取消</button>
+            <button class="post-submit" :disabled="!postContent.trim()" @click="handlePostMoment">发布</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- 隐私设置弹窗 -->
+  <Transition name="fade">
+    <div v-if="showPrivacyModal" class="spark-card-overlay" @click.self="showPrivacyModal=false">
+      <div class="spark-card-modal privacy-modal">
+        <div class="modal-header">
+          <h3>🔒 隐私设置</h3>
+          <button class="close-btn" @click="showPrivacyModal=false">✕</button>
+        </div>
+        <div class="privacy-content">
+          <div class="privacy-item">
+            <div class="privacy-label">
+              <span class="privacy-icon">📅</span>
+              <div>
+                <h4>动态可见天数</h4>
+                <p>设置动态对好友可见的时间范围</p>
+              </div>
+            </div>
+            <select v-model="privacySettings.momentVisibleDays" class="privacy-select">
+              <option value="0">全部可见</option>
+              <option value="3">最近3天</option>
+              <option value="7">最近7天</option>
+              <option value="30">最近一个月</option>
+              <option value="180">最近半年</option>
+            </select>
+          </div>
+          <div class="privacy-item">
+            <div class="privacy-label">
+              <span class="privacy-icon">👁️</span>
+              <div>
+                <h4>允许陌生人查看</h4>
+                <p>非好友是否可以查看你的动态</p>
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" v-model="privacySettings.allowStrangerView" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="privacy-item">
+            <div class="privacy-label">
+              <span class="privacy-icon">🔔</span>
+              <div>
+                <h4>消息免打扰</h4>
+                <p>开启后不会收到消息通知提醒</p>
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" v-model="privacySettings.doNotDisturb" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="privacy-item">
+            <div class="privacy-label">
+              <span class="privacy-icon">📍</span>
+              <div>
+                <h4>显示在广场</h4>
+                <p>是否在星火广场展示你的主页</p>
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" v-model="privacySettings.showInPlaza" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="privacy-actions">
+          <button class="privacy-save" @click="savePrivacySettings">💾 保存设置</button>
+        </div>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, reactive, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
+import CosmicBackground from '../../components/CosmicBackground.vue'
+import QRCode from 'qrcode'
 
 // Props — 支持他人主页
 const props = defineProps<{
@@ -263,6 +411,24 @@ const followingList = ref<any[]>([])
 
 const toastMsg = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+// 弹窗状态
+const showSparkCard = ref(false)
+const showPostModal = ref(false)
+const showPrivacyModal = ref(false)
+const sparkQrCanvas = ref<HTMLCanvasElement | null>(null)
+
+// 发布动态
+const postContent = ref('')
+const postVisibility = ref<'public' | 'friends' | 'private'>('public')
+
+// 隐私设置
+const privacySettings = reactive({
+  momentVisibleDays: 0,
+  allowStrangerView: true,
+  doNotDisturb: false,
+  showInPlaza: true,
+})
 
 // ==================== 计算属性 ====================
 
@@ -573,6 +739,93 @@ function showToast(msg: string) {
   toastTimer = setTimeout(() => { toastMsg.value = '' }, 2500)
 }
 
+// ==================== 星火名片 ====================
+
+function getSparkQRData() {
+  return JSON.stringify({
+    platform: 'SparkAlliance',
+    type: 'user',
+    id: profile.value.spark_id || profileId.value,
+    name: profile.value.nickname || '星火用户',
+    avatar: profile.value.avatar_url || '',
+    ts: Date.now(),
+  })
+}
+
+async function renderSparkQR() {
+  if (!sparkQrCanvas.value) return
+  try {
+    await QRCode.toCanvas(sparkQrCanvas.value, getSparkQRData(), {
+      width: 180,
+      margin: 2,
+      color: { dark: '#8b5cf6', light: '#0d0a1a' }
+    })
+  } catch (e) {
+    console.error('[Profile] QR render error:', e)
+  }
+}
+
+function copySparkLink() {
+  const url = `${window.location.origin}/app/profile/${profileId.value}`
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('名片链接已复制 📋')
+  })
+}
+
+function saveQRImage() {
+  if (!sparkQrCanvas.value) return
+  const link = document.createElement('a')
+  link.download = `spark-card-${profile.value.spark_id || 'user'}.png`
+  link.href = sparkQrCanvas.value.toDataURL('image/png')
+  link.click()
+  showToast('二维码已保存 💾')
+}
+
+// ==================== 发布动态 ====================
+
+async function handlePostMoment() {
+  if (!postContent.value.trim()) return
+  
+  try {
+    const { error } = await supabase.from('posts').insert({
+      author_id: user.value?.id,
+      content: postContent.value.trim(),
+      media_urls: [],
+      category: 'moment',
+      visibility: postVisibility.value,
+      is_anonymous: false,
+    })
+    
+    if (error) throw error
+    
+    postContent.value = ''
+    showPostModal.value = false
+    showToast('动态发布成功 🎉')
+    stats.value.posts_count += 1
+    loadPosts()
+  } catch (e) {
+    console.error('[Profile] postMoment error:', e)
+    showToast('发布失败，请重试')
+  }
+}
+
+// ==================== 隐私设置 ====================
+
+function loadPrivacySettings() {
+  const saved = localStorage.getItem(`spark_privacy_${profileId.value}`)
+  if (saved) {
+    try {
+      Object.assign(privacySettings, JSON.parse(saved))
+    } catch {}
+  }
+}
+
+function savePrivacySettings() {
+  localStorage.setItem(`spark_privacy_${profileId.value}`, JSON.stringify(privacySettings))
+  showPrivacyModal.value = false
+  showToast('隐私设置已保存 ✓')
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso)
   const now = new Date()
@@ -591,6 +844,12 @@ function formatTime(iso: string) {
 
 onMounted(() => {
   loadProfile()
+  loadPrivacySettings()
+})
+
+// 监听星火名片弹窗
+watch(showSparkCard, (v) => {
+  if (v) nextTick(() => renderSparkQR())
 })
 
 // 路由参数变化时重新加载
@@ -970,6 +1229,400 @@ watch(() => route.params.userId, (newId) => {
 }
 .toast-enter-active, .toast-leave-active { transition: all 0.2s ease; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+/* ====== 淡入淡出过渡 ====== */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ====== 星火名片弹窗 ====== */
+.spark-card-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spark-card-modal {
+  position: relative;
+  width: 360px;
+  max-width: 90vw;
+  background: linear-gradient(145deg, rgba(20, 16, 40, 0.98), rgba(10, 8, 20, 0.98));
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.1);
+}
+
+.spark-card-modal .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+.spark-card-modal .close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.spark-card-content {
+  text-align: center;
+}
+
+.card-user-info {
+  margin-bottom: 20px;
+}
+
+.card-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(109, 40, 217, 0.2));
+  border: 3px solid rgba(139, 92, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.card-avatar .avatar-text {
+  font-size: 28px;
+  font-weight: 700;
+  color: rgba(139, 92, 246, 0.8);
+}
+
+.card-nickname {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 4px;
+}
+
+.card-spark-id {
+  font-size: 12px;
+  color: rgba(139, 92, 246, 0.6);
+  margin: 0 0 8px;
+}
+
+.card-bio {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.card-qr-area {
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 16px;
+  margin-bottom: 16px;
+}
+
+.card-qr-canvas {
+  display: block;
+  margin: 0 auto;
+  border-radius: 12px;
+}
+
+.card-qr-tip {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  margin: 10px 0 0;
+}
+
+.card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.card-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.card-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+}
+.card-btn.primary {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  border: none;
+  color: white;
+}
+.card-btn.primary:hover {
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+
+/* ====== 发布动态弹窗 ====== */
+.post-modal {
+  width: 420px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+.modal-header .close-btn {
+  position: static;
+}
+
+.post-form textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: white;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+.post-form textarea:focus {
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.post-form textarea::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.post-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.media-btns {
+  display: flex;
+  gap: 4px;
+}
+.media-btns button {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.media-btns button:hover {
+  background: rgba(139, 92, 246, 0.1);
+  transform: scale(1.05);
+}
+
+.visibility-select {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.post-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.post-cancel {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.post-cancel:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.post-submit {
+  flex: 2;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.post-submit:hover {
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+.post-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ====== 隐私设置弹窗 ====== */
+.privacy-modal {
+  width: 400px;
+}
+
+.privacy-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.privacy-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  transition: all 0.15s;
+}
+.privacy-item:hover {
+  border-color: rgba(139, 92, 246, 0.1);
+}
+
+.privacy-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.privacy-icon {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(139, 92, 246, 0.08);
+  border-radius: 10px;
+}
+
+.privacy-label h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 2px;
+}
+.privacy-label p {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0;
+}
+
+.privacy-select {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 26px;
+  transition: all 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+  background: white;
+}
+
+.privacy-actions {
+  margin-top: 16px;
+}
+
+.privacy-save {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.privacy-save:hover {
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
 
 /* ====== 加载页 ====== */
 .profile-loading {

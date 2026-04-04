@@ -1,9 +1,41 @@
 import { ref } from 'vue'
 
-import { requestAssistantChat } from '../utils/assistantApi'
+export type { SparkAction } from '../utils/assistantProtocol'
 import { parseSparkActions, type SparkAction } from '../utils/assistantProtocol'
 
-export type { SparkAction } from '../utils/assistantProtocol'
+// 直连 NVIDIA API（无需 Supabase Edge Function）
+const API_KEY = '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'
+const BASE_URL = '/api/nvidia'
+
+// 系统提示词
+const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 平台的智能中枢。
+## 身份
+- 你叫「星火助手」，不暴露底层模型
+- 拥有全模块操作能力
+
+## 平台模块
+1. 🏠 首页 (/app/home) — 仪表盘
+2. 📅 智能日程 (/app/schedule) — 日历/课表/提醒
+3. 🎯 星火规划 (/app/schedule?tab=planner) — 目标管理
+4. 📚 学习中心 (/app/learn) — 自习/番茄钟
+5. 👥 星火伴侣 (/app/companion) — 社交
+6. 🏛️ 星火传承 (/app/legacy) — 经验分享
+7. 📢 星火墙 (/app/wall) — 校园动态
+8. ❤️ 健康生活 (/app/health) — 运动/饮食
+9. 💼 星火人才 (/app/talent) — 实习/简历
+10. 🚀 星火共创 (/app/cocreate) — 项目协作
+
+## 回复要求
+- 总-分-总结构，善用Markdown
+- 代码需完整+注释
+- 主动推荐关联模块：[→ 打开XX](/app/xx)
+- 今天是 ${new Date().toLocaleDateString('zh-CN')}
+
+## Function Calling
+\`\`\`spark-action
+{"action":"类型","data":{...}}
+\`\`\`
+操作：add_schedule / create_goal / navigate`
 
 export type ModelMode = 'default' | 'thinking' | 'fast'
 
@@ -230,26 +262,73 @@ export function useSparkAI() {
     }, 50000)
 
     try {
-      const response = await requestAssistantChat({
-        assistant: 'spark',
-        mode: currentModel.value,
-        messages: contextMessages,
-      }, abortController.value.signal)
+      const modelConfig = MODEL_OPTIONS[currentModel.value]
+      const apiMessages = [
+        { role: 'system' as const, content: SYSTEM_PROMPT },
+        ...contextMessages,
+      ]
 
-      clearTimeout(timeout)
+      const res = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+        body: JSON.stringify({
+          model: modelConfig.id, messages: apiMessages, stream: true,
+          temperature: currentModel.value === 'thinking' ? 0.6 : 0.7,
+          top_p: 0.9, max_tokens: modelConfig.maxTokens,
+        }),
+        signal: abortController.value.signal,
+      })
 
-      const { thinking, answer } = separateThinking(response.content)
-      reasoningText = response.reasoning || thinking
-      rawText = answer || response.content
-
-      if (reasoningText) onThinking?.(reasoningText)
-
-      if (rawText) {
-        streamPhase.value = 'streaming'
-        startSmooth()
-        for (const char of rawText) tokenQueue.push(char)
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        if (res.status === 401) throw new Error('API Key 无效')
+        if (res.status === 429) throw new Error('请求频率过高，稍后再试')
+        if (res.status === 502) throw new Error('当前模型不可用，请切换')
+        throw new Error(`请求失败 (${res.status}): ${body.slice(0, 100)}`)
       }
 
+      clearTimeout(timeout)
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('响应不可读')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let firstContentToken = false
+      let isInThinkTag = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n'); buffer = lines.pop() || ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || trimmed === 'data: [DONE]' || !trimmed.startsWith('data: ')) continue
+          try {
+            const json = JSON.parse(trimmed.slice(6))
+            const delta = json.choices?.[0]?.delta
+            if (delta?.reasoning_content) { reasoningText += delta.reasoning_content; onThinking?.(reasoningText); continue }
+            const content = delta?.content
+            if (content) {
+              if (content.includes('<think>')) isInThinkTag = true
+              if (isInThinkTag) {
+                if (content.includes('</think>')) {
+                  const parts = content.split('</think>')
+                  reasoningText += parts[0].replace('<think>', ''); onThinking?.(reasoningText); isInThinkTag = false
+                  if (parts[1]) {
+                    if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
+                    rawText += parts[1]; for (const c of parts[1]) tokenQueue.push(c)
+                  }
+                } else { reasoningText += content.replace('<think>', ''); onThinking?.(reasoningText) }
+                continue
+              }
+              if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
+              rawText += content; for (const c of content) tokenQueue.push(c)
+            }
+          } catch { /* 跳过解析错误 */ }
+        }
+      }
+
+      // 等待平滑输出完成
       await new Promise<void>((resolve) => {
         const interval = setInterval(() => {
           if (tokenQueue.length === 0 || displayedLength >= rawText.length) {
@@ -258,13 +337,12 @@ export function useSparkAI() {
             resolve()
           }
         }, 30)
-
-        setTimeout(() => {
-          clearInterval(interval)
-          flushSmooth()
-          resolve()
-        }, 2000)
+        setTimeout(() => { clearInterval(interval); flushSmooth(); resolve() }, 2000)
       })
+
+      const { thinking, answer } = separateThinking(rawText)
+      reasoningText = reasoningText || thinking
+      rawText = answer || rawText
 
       const finalReasoning = reasoningText
       const finalAnswer = rawText

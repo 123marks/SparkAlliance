@@ -3,7 +3,7 @@
 ## Session: 2026-04-03
 
 ### Phase 1: Requirements & Discovery
-- **Status:** in_progress
+- **Status:** completed
 - **Started:** 2026-04-03
 - Actions taken:
   - Loaded process skills for startup, planning, brainstorming, debugging, verification, and code review.
@@ -18,16 +18,55 @@
   - `progress.md` (created)
 
 ### Phase 2: Architecture & Risk Review
-- **Status:** pending
+- **Status:** completed
 - Actions taken:
-  -
+  - Confirmed the main assistant entrypoint is `frontend/src/composables/useSparkAI.ts` plus `frontend/src/pages/app/Chat.vue`.
+  - Confirmed the companion assistant forms a second AI path in `frontend/src/composables/useCompanion.ts`.
+  - Identified critical client-side secret exposure, dev-only proxy dependence, markdown action parsing, and XSS-adjacent markdown rendering risks.
+  - Mapped real persistence/action hooks for goals and schedules and identified viable deep-link surfaces in schedule/planner routes.
 - Files created/modified:
-  -
+  - `findings.md`
+  - `docs/plans/2026-04-03-ai-assistant-core-hardening.md`
+
+### Phase 3: Implementation
+- **Status:** completed
+- Actions taken:
+  - Added a Supabase Edge Function assistant gateway at `supabase/functions/assistant-chat/index.ts`.
+  - Added `frontend/src/utils/assistantApi.ts` to centralize authenticated assistant requests.
+  - Added `frontend/src/utils/assistantProtocol.ts` plus tests for action parsing and route sanitization.
+  - Migrated the main chat path off browser-held secrets and onto the Edge Function.
+  - Migrated the companion AI path off browser-held secrets and onto the same backend boundary.
+  - Hardened markdown interaction handling in `Chat.vue` by removing inline `onclick` execution and validating internal routes before navigation.
+  - Wired real `createGoal(...)` execution plus planner deep-linking and schedule module query syncing.
+- Files created/modified:
+  - `frontend/src/utils/assistantApi.ts`
+  - `frontend/src/utils/assistantProtocol.ts`
+  - `frontend/src/utils/assistantProtocol.test.ts`
+  - `frontend/src/composables/useSparkAI.ts`
+  - `frontend/src/composables/useCompanion.ts`
+  - `frontend/src/pages/app/Chat.vue`
+  - `frontend/src/pages/app/Planner.vue`
+  - `frontend/src/pages/app/SmartSchedule.vue`
+  - `supabase/functions/assistant-chat/index.ts`
+
+### Phase 4: Verification & Bug Fixing
+- **Status:** in_progress
+- Actions taken:
+  - Resolved compatibility regressions introduced by stricter companion typings.
+  - Verified TypeScript compilation with `npx vue-tsc -b`.
+  - Verified production build with `npm run build`.
+  - Verified assistant protocol tests with `npx vitest run src/utils/assistantProtocol.test.ts`.
+- Files created/modified:
+  - `task_plan.md`
+  - `progress.md`
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |
 |------|-------|----------|--------|--------|
 | Planning file bootstrap | Create task/task findings/progress files | Files created successfully | Success | pass |
+| TypeScript build graph | `npx vue-tsc -b` | No type errors | Exit 0 | pass |
+| Frontend production build | `npm run build` | Build succeeds | Exit 0, Vite build completed | pass |
+| Assistant protocol tests | `npx vitest run src/utils/assistantProtocol.test.ts` | New parsing/safety tests pass | 5 tests passed | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |

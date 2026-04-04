@@ -1,5 +1,7 @@
 <template>
   <div class="chat-layout" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
+    <!-- 宇宙深空动态背景 -->
+    <CosmicBackground :enabled="true" />
     <!-- 拖拽遮罩 -->
     <Transition name="fade">
       <div v-if="isDragging" class="drop-overlay"><div class="drop-box"><div class="drop-icon">📎</div><div class="drop-text">松开即可上传</div><div class="drop-hint">支持文本、代码、图片等文件</div></div></div>
@@ -133,6 +135,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import CosmicBackground from '../../components/CosmicBackground.vue'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode } from '../../composables/useSparkAI'
 import { useSchedule } from '../../composables/useSchedule'
@@ -426,14 +429,15 @@ watch(currentConversationId, () => nextTick(scrollBot))
 </script>
 
 <style scoped>
-.chat-layout { display:flex; height:calc(100vh - 72px); background:#0a0814; position:relative; }
+.chat-layout { display:flex; height:calc(100vh - 72px); background:#0a0814; position:relative; overflow:hidden; }
+.chat-layout > .cosmic-bg { position:absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
 .fade-enter-active,.fade-leave-active { transition:opacity .2s; } .fade-enter-from,.fade-leave-to { opacity:0; }
 .toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); padding:8px 20px; border-radius:10px; background:rgba(139,92,246,.12); backdrop-filter:blur(12px); border:1px solid rgba(139,92,246,.15); color:rgba(139,92,246,.9); font-size:12px; font-weight:600; z-index:200; white-space:nowrap; }
 .toast-enter-active { transition:all .3s; } .toast-leave-active { transition:all .2s; } .toast-enter-from { opacity:0; transform:translateX(-50%) translateY(-10px); } .toast-leave-to { opacity:0; transform:translateX(-50%) translateY(-6px); }
 .drop-overlay { position:absolute; inset:0; z-index:100; background:rgba(139,92,246,.06); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; }
 .drop-box { text-align:center; padding:40px 60px; border:2px dashed rgba(139,92,246,.25); border-radius:20px; } .drop-icon { font-size:36px; margin-bottom:8px; } .drop-text { font-size:15px; font-weight:700; color:rgba(139,92,246,.7); } .drop-hint { font-size:11px; color:rgba(255,255,255,.2); margin-top:4px; }
 
-.chat-sidebar { width:250px; background:rgba(8,6,18,.98); border-right:1px solid rgba(255,255,255,.03); display:flex; flex-direction:column; flex-shrink:0; }
+.chat-sidebar { width:250px; background:rgba(8,6,18,.98); border-right:1px solid rgba(255,255,255,.03); display:flex; flex-direction:column; flex-shrink:0; position:relative; z-index:1; }
 .sb-top { padding:10px; } .new-btn { width:100%; height:36px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.06); border-radius:8px; color:rgba(139,92,246,.5); font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:center; gap:4px; cursor:pointer; } .new-btn:hover { background:rgba(139,92,246,.08); }
 .sb-list { flex:1; overflow-y:auto; padding:0 4px 8px; } .sb-list::-webkit-scrollbar { width:2px; } .sb-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.03); }
 .sb-group { margin-bottom:4px; } .sb-label { font-size:9px; color:rgba(255,255,255,.1); padding:5px 8px 1px; font-weight:700; letter-spacing:1px; }
@@ -441,7 +445,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .sb-text { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .sb-del { opacity:0; background:none; border:none; color:rgba(255,255,255,.1); font-size:14px; cursor:pointer; } .sb-item:hover .sb-del { opacity:1; }
 .sb-empty { text-align:center; padding:30px 0; color:rgba(255,255,255,.06); font-size:11px; }
 
-.chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
+.chat-main { flex:1; display:flex; flex-direction:column; min-width:0; position:relative; z-index:1; }
 .top-bar { height:42px; border-bottom:1px solid rgba(255,255,255,.03); display:flex; align-items:center; padding:0 16px; flex-shrink:0; }
 .menu-btn { display:none; background:none; border:none; font-size:18px; color:white; cursor:pointer; }
 .top-brand { display:flex; align-items:center; gap:5px; } .top-icon { font-size:15px; } .top-icon.pulse { animation:iconPulse 3s ease-in-out infinite; } @keyframes iconPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.4) drop-shadow(0 0 4px rgba(139,92,246,.3))} } .top-title { font-size:13px; font-weight:700; color:white; }

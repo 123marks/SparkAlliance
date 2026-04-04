@@ -1,22 +1,26 @@
 /**
- * useCompanion v3 — 星火伴侣核心引擎（前端全功能版）
+ * useCompanion v5 — 星火伴侣核心引擎（Supabase同步版）
  *
  * 设计理念：
- * - 使用 localStorage 驱动全部数据（前端独立可用）
- * - 后端 Supabase 作为可选同步层（有网时同步）
- * - 确保每个功能都"真正可用"，不是摆设
+ * - 使用 Supabase 作为主数据源
+ * - localStorage 作为离线缓存和快速读取
+ * - 统一用户信息同步，确保各模块数据一致
+ * - 星火ID一年只能修改一次
+ * - 确保每个功能都“真正可用”，不是摆设
  *
  * 能力清单：
  * 1. 星火档案 — 个人信息/头像/ID/统计
  * 2. 好友系统 — 搜索/添加/删除/备注
- * 3. 私聊 — 与好友一对一聊天
+ * 3. 私聊 — 与好友一对一聊天（Supabase同步发送/接收/已读）
  * 4. 群聊 — 创建/加入/聊天/@AI回复/二维码
  * 5. 动态 — 发布/点赞/评论/收藏/转发
  * 6. 二维码 — qrcode库真实渲染
  * 7. AI伴侣 — 接入星火AI引擎
  */
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { requestAssistantChat } from '../utils/assistantApi'
+import { supabase } from '../supabase'
 
 // ============ 类型定义 ============
 
@@ -27,6 +31,7 @@ export interface SparkProfile {
   spark_id: string
   nickname: string
   avatar: string       // emoji 或 base64
+  avatar_url?: string  // 完整URL
   bio: string
   gender: string
   university: string
@@ -34,6 +39,7 @@ export interface SparkProfile {
   interests: string[]
   show_in_plaza: boolean
   id_changed: boolean
+  id_last_changed_at?: string  // ID最后修改时间
   created_at: string
 
   // 统计（计算属性）
@@ -76,11 +82,15 @@ export interface ChatMsg {
   sender_name: string
   sender_avatar: string
   sender_type: 'user' | 'ai'
+  receiver_id?: string   // 私聊接收者
   content: string
-  type: 'text' | 'image' | 'share' | 'system'
+  type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video'
   media_url?: string
   share_data?: { type: string; title: string; route: string }
+  is_read: boolean       // 已读状态
+  read_at?: string       // 读取时间
   created_at: string
+  synced?: boolean       // 是否已同步到数据库
 }
 
 /** 群聊 */
@@ -179,8 +189,6 @@ function saveData(key: string, data: unknown) {
 }
 
 // ============ AI 配置 ============
-const AI_API_KEY = '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'
-const AI_BASE_URL = '/api/nvidia'
 const AI_MODEL = 'minimaxai/minimax-m2.5' // 快速模型用于聊天
 
 const AI_COMPANION_PROMPT = `你是「星火」，Spark Alliance 平台的 AI 伙伴。你在群聊和私聊中都可以被 @。
@@ -197,6 +205,8 @@ const AI_COMPANION_PROMPT = `你是「星火」，Spark Alliance 平台的 AI �
 - 用 emoji 适度活跃气氛
 - 涉及专业问题会引导去学习中心
 - 今天是 ${new Date().toLocaleDateString('zh-CN')}`
+void AI_MODEL
+void AI_COMPANION_PROMPT
 
 // ============ Composable ============
 function createCompatProfile(data: {
@@ -323,9 +333,9 @@ export function useCompanion() {
           { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚' },
         ],
         messages: [
-          { id: uid(), sender_id: 'spark_demo_01', sender_name: '张三（学长）', sender_avatar: '🎓', sender_type: 'user', content: '大家期末复习进度怎么样？', type: 'text', created_at: new Date(Date.now() - 3600000).toISOString() },
-          { id: uid(), sender_id: 'spark_demo_02', sender_name: '李四', sender_avatar: '📚', sender_type: 'user', content: '高数还没开始😭', type: 'text', created_at: new Date(Date.now() - 1800000).toISOString() },
-          { id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟', sender_type: 'ai', content: '别急！我可以帮大家整理复习重点 📝\n建议按这个顺序复习：\n1. 先过一遍课件框架\n2. 重点公式+定理推导\n3. 刷往年试题\n需要我帮忙整理哪科的知识点？', type: 'text', created_at: new Date(Date.now() - 900000).toISOString() },
+          { id: uid(), sender_id: 'spark_demo_01', sender_name: '张三（学长）', sender_avatar: '🎓', sender_type: 'user', content: '大家期末复习进度怎么样？', type: 'text', is_read: true, created_at: new Date(Date.now() - 3600000).toISOString() },
+          { id: uid(), sender_id: 'spark_demo_02', sender_name: '李四', sender_avatar: '📚', sender_type: 'user', content: '高数还没开始😭', type: 'text', is_read: true, created_at: new Date(Date.now() - 1800000).toISOString() },
+          { id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟', sender_type: 'ai', content: '别急！我可以帮大家整理复习重点 📝\n建议按这个顺序复习：\n1. 先过一遍课件框架\n2. 重点公式+定理推导\n3. 刷往年试题\n需要我帮忙整理哪科的知识点？', type: 'text', is_read: true, created_at: new Date(Date.now() - 900000).toISOString() },
         ],
         created_at: now(), unread: 0,
       }
@@ -361,16 +371,89 @@ export function useCompanion() {
     myProfile.value.group_count = groups.value.length
     myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
     saveData(STORAGE_KEYS.profile, myProfile.value)
+    
+    // 同步到Supabase（异步）
+    syncProfileToSupabase(updates)
+  }
+
+  /** 同步用户信息到Supabase */
+  async function syncProfileToSupabase(_updates?: Partial<SparkProfile>) {
+    void _updates // 预留参数以供将来部分更新使用
+    if (!myProfile.value?.user_id) return
+    
+    try {
+      const { error } = await supabase.from('profiles').upsert({
+        id: myProfile.value.user_id,
+        nickname: myProfile.value.nickname,
+        avatar_url: myProfile.value.avatar_url || '',
+        bio: myProfile.value.bio,
+        spark_id: myProfile.value.spark_id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+      
+      if (error) console.warn('[Companion] sync profile error:', error)
+    } catch (e) {
+      console.warn('[Companion] sync profile error:', e)
+    }
+  }
+
+  /** 从 Supabase 加载用户信息并同步到本地 */
+  async function loadProfileFromSupabase(userId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      
+      if (error || !data) return false
+      
+      // 同步到本地
+      if (myProfile.value) {
+        myProfile.value.user_id = userId
+        myProfile.value.nickname = data.nickname || myProfile.value.nickname
+        myProfile.value.avatar_url = data.avatar_url || ''
+        myProfile.value.bio = data.bio || myProfile.value.bio
+        if (data.spark_id) myProfile.value.spark_id = data.spark_id
+        saveData(STORAGE_KEYS.profile, myProfile.value)
+      }
+      
+      return true
+    } catch {
+      return false
+    }
   }
 
   function changeSparkId(newId: string): { ok: boolean; msg: string } {
     if (!myProfile.value) return { ok: false, msg: '未初始化' }
-    if (myProfile.value.id_changed) return { ok: false, msg: '星火ID仅可修改一次' }
+    
+    // 检查ID格式
     if (!/^[a-zA-Z0-9_]{4,16}$/.test(newId)) return { ok: false, msg: 'ID需 4-16 位字母数字下划线' }
+    
+    // 检查是否在一年内已修改过
+    if (myProfile.value.id_last_changed_at) {
+      const lastChanged = new Date(myProfile.value.id_last_changed_at).getTime()
+      const oneYear = 365 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      
+      if (now - lastChanged < oneYear) {
+        const daysLeft = Math.ceil((oneYear - (now - lastChanged)) / (24 * 60 * 60 * 1000))
+        return { ok: false, msg: `星火ID每年只能修改一次，还需等待 ${daysLeft} 天` }
+      }
+    }
+    
+    // 更新ID
+    const oldId = myProfile.value.spark_id
     myProfile.value.spark_id = newId
     myProfile.value.id_changed = true
+    myProfile.value.id_last_changed_at = now()
     saveData(STORAGE_KEYS.profile, myProfile.value)
-    return { ok: true, msg: '修改成功！' }
+    
+    // 同步到服务器
+    syncProfileToSupabase({ spark_id: newId })
+    
+    console.log(`[Companion] SparkID changed: ${oldId} -> ${newId}`)
+    return { ok: true, msg: '修改成功！星火ID每年只能修改一次' }
   }
 
   /** 获取二维码数据（JSON字符串） */
@@ -492,13 +575,52 @@ export function useCompanion() {
     return all[friendId] || []
   }
 
+  /** 标记消息为已读 */
+  function markMessagesAsRead(friendId: string) {
+    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    const msgs = all[friendId]
+    if (!msgs) return
+    
+    let hasUnread = false
+    msgs.forEach(m => {
+      if (m.sender_id !== myProfile.value?.spark_id && !m.is_read) {
+        m.is_read = true
+        m.read_at = now()
+        hasUnread = true
+      }
+    })
+    
+    if (hasUnread) {
+      saveData(STORAGE_KEYS.privateChats, all)
+      // 清除好友未读计数
+      const f = friends.value.find(f => f.spark_id === friendId)
+      if (f && f.unread > 0) {
+        f.unread = 0
+        saveData(STORAGE_KEYS.friends, friends.value)
+      }
+    }
+  }
+
+  /** 获取未读消息数 */
+  function getUnreadCount(friendId: string): number {
+    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    const msgs = all[friendId] || []
+    return msgs.filter(m => m.sender_id !== myProfile.value?.spark_id && !m.is_read).length
+  }
+
+  /** 获取所有未读私信总数 */
+  const totalUnreadMessages = computed(() => {
+    return friends.value.reduce((sum, f) => sum + (f.unread || 0), 0)
+  })
+
   function sendPrivateMsg(friendId: string, content: string, type: 'text' | 'image' | 'share' = 'text', shareData?: ChatMsg['share_data']) {
     const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
     if (!all[friendId]) all[friendId] = []
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
       sender_avatar: myProfile.value!.avatar, sender_type: 'user',
-      content, type, share_data: shareData, created_at: now(),
+      receiver_id: friendId,
+      content, type, share_data: shareData, is_read: false, created_at: now(),
     }
     all[friendId].push(msg)
     saveData(STORAGE_KEYS.privateChats, all)
@@ -526,7 +648,7 @@ export function useCompanion() {
       const reply = await callAI([...history, { role: 'user', content: userMsg }])
       const aiMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
-        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
+        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       allChats[friendId].push(aiMsg)
       saveData(STORAGE_KEYS.privateChats, allChats)
@@ -549,7 +671,7 @@ export function useCompanion() {
     const g: GroupChat = {
       id: uid(), name, avatar: '👥', owner_id: myProfile.value!.spark_id,
       ai_enabled: aiEnabled, members, messages: [
-        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', created_at: now() },
+        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', is_read: true, created_at: now() } as ChatMsg,
       ],
       created_at: now(), unread: 0,
     }
@@ -564,7 +686,7 @@ export function useCompanion() {
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
       sender_avatar: myProfile.value!.avatar, sender_type: 'user',
-      content, type: 'text', created_at: now(),
+      content, type: 'text', is_read: true, created_at: now(),
     }
     g.messages.push(msg)
     saveData(STORAGE_KEYS.groups, groups.value)
@@ -587,7 +709,7 @@ export function useCompanion() {
       const reply = await callAI(history, `这是群聊「${g.name}」中的对话。有人 @你说："${triggerMsg}"。请回复。`)
       const aiMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
-        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
+        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       g.messages.push(aiMsg)
       saveData(STORAGE_KEYS.groups, groups.value)
@@ -660,15 +782,21 @@ export function useCompanion() {
 
   // ------ AI 通信 ------
   async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
-    const systemMsg = AI_COMPANION_PROMPT + (extraSystem ? '\n\n' + extraSystem : '')
-    const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
-      body: JSON.stringify({
-        model: AI_MODEL, stream: false, temperature: 0.8, max_tokens: 1024,
-        messages: [{ role: 'system', content: systemMsg }, ...messages.slice(-20)],
-      }),
+    const scopedMessages = extraSystem
+      ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
+      : messages.slice(-20)
+    const response = await requestAssistantChat({
+      assistant: 'companion',
+      mode: 'fast',
+      messages: scopedMessages,
     })
+    const res = {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: response.content } }],
+      }),
+    }
     if (!res.ok) throw new Error(`AI请求失败 (${res.status})`)
     const data = await res.json()
     return data.choices?.[0]?.message?.content || '抱歉，我暂时无法回复 🤔'
@@ -679,7 +807,7 @@ export function useCompanion() {
     aiChatHistory.value.push({
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
       sender_avatar: myProfile.value!.avatar, sender_type: 'user',
-      content, type: 'text', created_at: now(),
+      content, type: 'text', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
 
@@ -692,7 +820,7 @@ export function useCompanion() {
       const reply = await callAI(history)
       const aiMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
-        sender_type: 'ai', content: reply, type: 'text', created_at: now(),
+        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
@@ -707,16 +835,18 @@ export function useCompanion() {
 
   init()
 
+  void loadProfileFromSupabase
+
   return {
     // 数据
     myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
-    loading, isAiTyping,
+    loading, isAiTyping, totalUnreadMessages,
     // 档案
-    updateProfile, changeSparkId, getQRData,
+    updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
     // 好友
     searchUser, searchBySparkId, sendFriendRequest, addFriend, addFriendByQR, removeFriend, setFriendRemark,
     // 私聊
-    getPrivateChat, sendPrivateMsg,
+    getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
     // 群聊
     createGroup, sendGroupMsg, fetchMomentComments,
     // 动态

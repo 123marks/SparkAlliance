@@ -53,7 +53,7 @@
           <span class="fl-friend-name">{{ getFriendName(f) }}</span>
           <span class="fl-friend-id">{{ (f.profile as SparkProfile)?.spark_id || '' }}</span>
         </div>
-        <button class="fl-friend-del" @click.stop="$emit('remove', f.friend_id)" title="删除好友">✕</button>
+        <button class="fl-friend-del" @click.stop="$emit('remove', f.friend_id || f.spark_id)" title="删除好友">✕</button>
       </div>
     </div>
   </div>

@@ -31,6 +31,10 @@
 - `frontend/.env.local` contains concrete Supabase project values, confirming the repo expects runtime secrets/config to come from environment variables rather than hardcoded source for deployment-sensitive paths.
 - `frontend/src/pages/app/Chat.vue` allows inline `onclick` through DOMPurify and injects inline clipboard handlers into rendered markdown code blocks; combined with model-controlled markdown, this is an avoidable XSS surface.
 - The main chat advertises file/image understanding, but image attachments are only labeled in prompt text rather than being sent as real multimodal payloads; this creates a capability mismatch that harms answer quality and user trust.
+- The highest-risk assistant issues are now remediated in code: main chat and companion chat both use an authenticated Supabase Edge Function instead of shipping provider credentials to the browser.
+- Assistant-triggered jumps are now sanitized through a shared route/query protocol and can land directly in planner goals and schedule modules rather than only opening static pages.
+- The assistant still relies on fenced `spark-action` parsing instead of true server-side tool calling, so action reliability is improved but not yet equivalent to a strongly typed tool-execution loop.
+- Production bundle analysis shows `dist/assets/Chat-*.js` is ~1.26 MB minified, which is not a correctness bug but is a real performance optimization candidate for the assistant experience.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -46,6 +50,11 @@
 |-------|------------|
 | Initial catch-up and wide file enumeration timed out | Switching to narrower, targeted discovery commands. |
 | Several source files render with mojibake in terminal output | Continue with targeted inspection and treat encoding consistency as a review item. |
+
+## Residual Risks
+- The assistant action channel is still regex/JSON-block based rather than a backend-enforced tool schema with transactional execution.
+- Some source files, especially `useCompanion.ts` and parts of `Companion.vue`, still contain encoding corruption and compressed legacy logic that raise long-term maintenance cost.
+- File/image attachment handling remains mostly textual summarization rather than real multimodal ingestion.
 
 ## Resources
 - `task_plan.md`

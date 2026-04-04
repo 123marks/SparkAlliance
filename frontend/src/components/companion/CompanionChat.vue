@@ -84,7 +84,10 @@ function formatMsg(text: string): string {
   const html = text
     .replace(/\n/g, '<br/>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  return DOMPurify.sanitize(html)
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['br', 'strong'],
+    ALLOWED_ATTR: [],
+  })
 }
 
 function handleSend() {
