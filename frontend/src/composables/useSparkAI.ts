@@ -40,9 +40,9 @@ const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 平台的智能
 export type ModelMode = 'default' | 'thinking' | 'fast'
 
 export const MODEL_OPTIONS: Record<ModelMode, { id: string; label: string; desc: string; icon: string; maxTokens: number }> = {
-  default: { id: 'moonshotai/kimi-k2.5', label: '均衡', desc: 'Kimi K2.5 · 全能均衡', icon: '⚡', maxTokens: 4096 },
+  default: { id: 'moonshotai/kimi-k2', label: '均衡', desc: 'Kimi K2 · 全能均衡', icon: '⚡', maxTokens: 4096 },
   thinking: { id: 'z-ai/glm5', label: '深度思考', desc: 'GLM5 · 推理增强', icon: '🧠', maxTokens: 8192 },
-  fast: { id: 'minimaxai/minimax-m2.5', label: '极速', desc: 'MiniMax M2.5 · 快速回复', icon: '🚀', maxTokens: 2048 },
+  fast: { id: 'minimaxai/minimax-m1', label: '极速', desc: 'MiniMax M1 · 快速回复', icon: '🚀', maxTokens: 2048 },
 }
 
 export const ABILITY_TOOLS = [

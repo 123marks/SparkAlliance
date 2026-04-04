@@ -550,8 +550,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .send.stop-mode:hover { background:rgba(239,68,68,.1); color:rgba(239,68,68,.7); }
 
 /* 能力工具栏（参考DeepSeek/Kimi设计） */
-.ability-bar { display:flex; align-items:center; gap:4px; margin-top:6px; padding:0 2px; overflow-x:auto; }
-.ability-bar::-webkit-scrollbar { height:0; }
+.ability-bar { display:flex; align-items:center; gap:4px; margin-top:6px; padding:0 2px; flex-wrap:wrap; }
 .ab-left { display:flex; gap:2px; flex-shrink:0; }
 .ab-model { display:flex; align-items:center; gap:3px; padding:4px 10px; border-radius:7px; border:1px solid rgba(255,255,255,.03); background:none; color:rgba(255,255,255,.2); font-size:11px; font-weight:500; cursor:pointer; transition:all .2s; white-space:nowrap; }
 .ab-model:hover { color:rgba(255,255,255,.35); background:rgba(255,255,255,.015); }
@@ -559,7 +558,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .ab-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
 .ab-dot.default { background:rgba(59,130,246,.5); } .ab-dot.thinking { background:rgba(168,85,247,.5); } .ab-dot.fast { background:rgba(34,197,94,.5); }
 .ab-divider { width:1px; height:16px; background:rgba(255,255,255,.04); margin:0 4px; flex-shrink:0; }
-.ab-tools { display:flex; gap:2px; overflow-x:auto; flex-shrink:0; }
+.ab-tools { display:flex; gap:2px; flex-wrap:wrap; }
 .ab-tool { display:flex; align-items:center; gap:3px; padding:4px 8px; border-radius:7px; border:none; background:none; color:rgba(255,255,255,.18); font-size:11px; cursor:pointer; transition:all .15s; white-space:nowrap; }
 .ab-tool:hover { color:rgba(139,92,246,.55); background:rgba(139,92,246,.03); }
 </style>

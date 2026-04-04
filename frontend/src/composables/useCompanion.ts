@@ -189,7 +189,7 @@ function saveData(key: string, data: unknown) {
 }
 
 // ============ AI 配置 ============
-const AI_MODEL = 'minimaxai/minimax-m2.5' // 快速模型用于聊天
+const AI_MODEL = 'minimaxai/minimax-m1' // 快速模型用于聊天
 
 const AI_COMPANION_PROMPT = `你是「星火」，Spark Alliance 平台的 AI 伙伴。你在群聊和私聊中都可以被 @。
 性格：温暖、幽默、有见解、像一个懂你的学长/学姐。
@@ -371,7 +371,7 @@ export function useCompanion() {
     myProfile.value.group_count = groups.value.length
     myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
     saveData(STORAGE_KEYS.profile, myProfile.value)
-    
+
     // 同步到Supabase（异步）
     syncProfileToSupabase(updates)
   }
@@ -380,7 +380,7 @@ export function useCompanion() {
   async function syncProfileToSupabase(_updates?: Partial<SparkProfile>) {
     void _updates // 预留参数以供将来部分更新使用
     if (!myProfile.value?.user_id) return
-    
+
     try {
       const { error } = await supabase.from('profiles').upsert({
         id: myProfile.value.user_id,
@@ -390,7 +390,7 @@ export function useCompanion() {
         spark_id: myProfile.value.spark_id,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
-      
+
       if (error) console.warn('[Companion] sync profile error:', error)
     } catch (e) {
       console.warn('[Companion] sync profile error:', e)
@@ -405,9 +405,9 @@ export function useCompanion() {
         .select('*')
         .eq('id', userId)
         .single()
-      
+
       if (error || !data) return false
-      
+
       // 同步到本地
       if (myProfile.value) {
         myProfile.value.user_id = userId
@@ -417,7 +417,7 @@ export function useCompanion() {
         if (data.spark_id) myProfile.value.spark_id = data.spark_id
         saveData(STORAGE_KEYS.profile, myProfile.value)
       }
-      
+
       return true
     } catch {
       return false
@@ -426,32 +426,32 @@ export function useCompanion() {
 
   function changeSparkId(newId: string): { ok: boolean; msg: string } {
     if (!myProfile.value) return { ok: false, msg: '未初始化' }
-    
+
     // 检查ID格式
     if (!/^[a-zA-Z0-9_]{4,16}$/.test(newId)) return { ok: false, msg: 'ID需 4-16 位字母数字下划线' }
-    
+
     // 检查是否在一年内已修改过
     if (myProfile.value.id_last_changed_at) {
       const lastChanged = new Date(myProfile.value.id_last_changed_at).getTime()
       const oneYear = 365 * 24 * 60 * 60 * 1000
       const now = Date.now()
-      
+
       if (now - lastChanged < oneYear) {
         const daysLeft = Math.ceil((oneYear - (now - lastChanged)) / (24 * 60 * 60 * 1000))
         return { ok: false, msg: `星火ID每年只能修改一次，还需等待 ${daysLeft} 天` }
       }
     }
-    
+
     // 更新ID
     const oldId = myProfile.value.spark_id
     myProfile.value.spark_id = newId
     myProfile.value.id_changed = true
     myProfile.value.id_last_changed_at = now()
     saveData(STORAGE_KEYS.profile, myProfile.value)
-    
+
     // 同步到服务器
     syncProfileToSupabase({ spark_id: newId })
-    
+
     console.log(`[Companion] SparkID changed: ${oldId} -> ${newId}`)
     return { ok: true, msg: '修改成功！星火ID每年只能修改一次' }
   }
@@ -580,7 +580,7 @@ export function useCompanion() {
     const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
     const msgs = all[friendId]
     if (!msgs) return
-    
+
     let hasUnread = false
     msgs.forEach(m => {
       if (m.sender_id !== myProfile.value?.spark_id && !m.is_read) {
@@ -589,7 +589,7 @@ export function useCompanion() {
         hasUnread = true
       }
     })
-    
+
     if (hasUnread) {
       saveData(STORAGE_KEYS.privateChats, all)
       // 清除好友未读计数
