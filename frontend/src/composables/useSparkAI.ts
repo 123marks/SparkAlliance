@@ -255,14 +255,15 @@ export function useSparkAI() {
       }
     }
 
+    const modelConfig = MODEL_OPTIONS[currentModel.value]
     const timeout = setTimeout(() => {
+      console.warn('[SparkAI] 请求超时，模型:', modelConfig.id)
       abortController.value?.abort()
       error.value = '响应超时，请稍后重试或切换模型'
       onError?.(error.value)
-    }, 50000)
+    }, 120000)
 
     try {
-      const modelConfig = MODEL_OPTIONS[currentModel.value]
       const apiMessages = [
         { role: 'system' as const, content: SYSTEM_PROMPT },
         ...contextMessages,
@@ -279,12 +280,15 @@ export function useSparkAI() {
         signal: abortController.value.signal,
       })
 
+      console.log('[SparkAI] 请求模型:', modelConfig.id, '状态:', res.status)
       if (!res.ok) {
         const body = await res.text().catch(() => '')
+        console.error('[SparkAI] API错误:', res.status, body)
         if (res.status === 401) throw new Error('API Key 无效')
         if (res.status === 429) throw new Error('请求频率过高，稍后再试')
-        if (res.status === 502) throw new Error('当前模型不可用，请切换')
-        throw new Error(`请求失败 (${res.status}): ${body.slice(0, 100)}`)
+        if (res.status === 404) throw new Error(`模型 ${modelConfig.id} 不存在，请切换其他模式`)
+        if (res.status === 502 || res.status === 503) throw new Error('当前模型服务不可用，请切换')
+        throw new Error(`请求失败 (${res.status}): ${body.slice(0, 200)}`)
       }
 
       clearTimeout(timeout)
@@ -366,6 +370,7 @@ export function useSparkAI() {
       const message = err instanceof Error
         ? (err.name === 'AbortError' ? (error.value || '已停止生成') : err.message)
         : '未知错误'
+      console.error('[SparkAI] 错误:', message, err)
 
       if (!error.value) error.value = message
       onError?.(error.value)

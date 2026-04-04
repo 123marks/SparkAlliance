@@ -60,11 +60,11 @@
       <!-- 消息列表 -->
       <div v-if="sideTab==='chat'" class="cp-list">
         <div class="cp-conv" :class="{active:activeChat?.type==='ai'}" @click="openAIChat" @contextmenu.prevent="e=>showCtxMenu(e,'ai','ai')">
-          <span class="cp-av">🌟</span>
+          <SparkAvatar avatar="🌟" name="星火AI" size="sm" />
           <div class="cp-conv-info"><span class="cp-conv-name">星火AI伙伴</span><span class="cp-conv-last">智能助手，随时待命</span></div>
         </div>
         <div v-for="g in groups" :key="g.id" class="cp-conv" :class="{active:activeChat?.id===g.id}" @click="openGroupChat(g.id)" @contextmenu.prevent="e=>showCtxMenu(e,'group',g.id)">
-          <span class="cp-av">{{ g.avatar }}</span>
+          <SparkAvatar :avatar="g.avatar" :name="g.name" size="sm" />
           <div class="cp-conv-info">
             <span class="cp-conv-name">{{ g.name }}<small>({{ g.members.length }})</small></span>
             <span class="cp-conv-last">{{ g.messages[g.messages.length-1]?.content?.slice(0,20)||'暂无消息' }}</span>
@@ -72,9 +72,9 @@
           <span v-if="g.unread" class="cp-badge">{{ g.unread }}</span>
         </div>
         <div v-for="f in sortedFriends" :key="f.id" class="cp-conv" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private'}" @click="openPrivateChat(f.spark_id)" @contextmenu.prevent="e=>showCtxMenu(e,'private',f.spark_id)">
-          <span class="cp-av">{{ f.avatar }}</span>
+          <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" />
           <div class="cp-conv-info">
-            <span class="cp-conv-name">{{ f.remark||f.nickname }}</span>
+            <span class="cp-conv-name">{{ f.remark ? `${f.nickname}（${f.remark}）` : f.nickname }}</span>
             <span class="cp-conv-last">{{ f.last_msg||f.bio?.slice(0,20)||'' }}</span>
           </div>
           <span v-if="f.unread" class="cp-badge">{{ f.unread }}</span>
@@ -83,7 +83,22 @@
 
       <!-- 通讯录(仿微信分组) -->
       <div v-if="sideTab==='contacts'" class="cp-list">
-        <div class="cp-contact-group" @click="showAddFriendModal=true"><span class="cp-cg-icon nr">👤</span><span class="cp-cg-text">新的朋友</span><span class="cp-cg-arrow">›</span></div>
+        <div class="cp-contact-group" @click="showFriendRequests=!showFriendRequests"><span class="cp-cg-icon nr">👤</span><span class="cp-cg-text">新的朋友</span><span v-if="friendRequests.filter(r=>r.status==='pending').length" class="cp-badge sm">{{ friendRequests.filter(r=>r.status==='pending').length }}</span><span class="cp-cg-arrow" :class="{open:showFriendRequests}">›</span></div>
+        <!-- 好友申请列表 -->
+        <template v-if="showFriendRequests">
+          <div v-for="req in friendRequests" :key="req.id" class="cp-friend-req">
+            <SparkAvatar :avatar="req.from.avatar" :name="req.from.nickname" size="sm" />
+            <div class="cp-req-info">
+              <span class="cp-req-name">{{ req.from.nickname }}</span>
+              <span class="cp-req-msg">{{ req.message || '请求加为好友' }}</span>
+            </div>
+            <div v-if="req.status==='pending'" class="cp-req-acts">
+              <button class="cp-req-accept" @click="addFriend({spark_id:req.from.spark_id,nickname:req.from.nickname,avatar:req.from.avatar,bio:req.from.bio});req.status='accepted';showToast('已添加')">+接受</button>
+            </div>
+            <span v-else class="cp-req-status">{{ req.status==='accepted'?'✓ 已添加':'× 已拒绝' }}</span>
+          </div>
+          <p v-if="!friendRequests.length" class="cp-empty">暂无好友申请</p>
+        </template>
         <div class="cp-contact-group" @click="contactGroupExpand.groups=!contactGroupExpand.groups"><span class="cp-cg-icon grp">👥</span><span class="cp-cg-text">群聊</span><span class="cp-cg-count">{{ groups.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.groups}">›</span></div>
         <template v-if="contactGroupExpand.groups">
           <div v-for="g in groups" :key="g.id" class="cp-contact" @click="openGroupChat(g.id)">
@@ -93,9 +108,9 @@
         </template>
         <div class="cp-contact-group" @click="contactGroupExpand.friends=!contactGroupExpand.friends"><span class="cp-cg-icon fri">📖</span><span class="cp-cg-text">联系人</span><span class="cp-cg-count">{{ friends.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.friends}">›</span></div>
         <template v-if="contactGroupExpand.friends">
-          <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="selectContact(f)">
-            <span class="cp-av sm">{{ f.avatar }}</span>
-            <div class="cp-contact-info"><span class="cp-contact-name">{{ f.remark||f.nickname }}</span></div>
+          <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="openProfilePopup(f.spark_id)">
+            <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" clickable />
+            <div class="cp-contact-info"><span class="cp-contact-name">{{ f.remark ? `${f.nickname}（${f.remark}）` : f.nickname }}</span></div>
           </div>
         </template>
         <p v-if="!friends.length&&!groups.length" class="cp-empty">还没有联系人</p>
@@ -128,7 +143,7 @@
           <div v-for="msg in chatMessages" :key="msg.id" class="cp-msg" :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system'}" @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)">
             <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
             <template v-else>
-              <span v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-av" @click="handleViewMsgSender(msg)">{{ msg.sender_avatar }}</span>
+              <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" />
               <div class="cp-msg-body">
                 <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta"><span class="cp-msg-name">{{ msg.sender_name }}</span></div>
                 <div class="cp-bubble">
@@ -141,7 +156,7 @@
                   <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓':'○' }}</span>
                 </div>
               </div>
-              <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-msg-av my">{{ myProfile?.avatar }}</span>
+              <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar" :name="myProfile?.nickname" size="sm" class="my" />
             </template>
           </div>
           <div v-if="isAiTyping" class="cp-msg ai"><span class="cp-msg-av">🌟</span><div class="cp-msg-body"><div class="cp-msg-meta"><span class="cp-msg-name">星火AI</span></div><div class="cp-bubble"><span class="typing-dots"><span></span><span></span><span></span></span></div></div></div>
@@ -255,6 +270,15 @@
     <Transition name="fade"><div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false"><div class="cp-modal sm"><h3>📱 星火名片</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div><canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-qr-paste"><p>📋 粘贴二维码数据</p><div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴..."><button @click="handleQRPaste">添加</button></div></div><div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button><button class="primary" @click="copyQRData">📋 复制名片</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showGroupQR" class="cp-overlay" @click.self="showGroupQR=false"><div class="cp-modal sm"><h3>📱 群二维码</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ activeGroup?.avatar }}</span><div><div class="cp-qr-name">{{ activeGroup?.name }}</div></div></div><canvas ref="groupQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-modal-btns"><button @click="showGroupQR=false">关闭</button><button class="primary" @click="copyGroupQR">📋 复制</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showCreateModal" class="cp-overlay" @click.self="showCreateModal=false"><div class="cp-modal"><h3>👥 创建群聊</h3><div class="cp-field"><label>群聊名称</label><input v-model="newGroupName" maxlength="30" placeholder="名字"></div><label class="cp-check"><input type="checkbox" v-model="newGroupAI"> 🌟 星火AI参与群聊</label><div v-if="friends.length" class="cp-member-sel"><p class="cp-field-label">选择成员</p><label v-for="f in friends" :key="f.id" class="cp-member-opt"><input type="checkbox" :value="f.spark_id" v-model="newGroupMembers"> {{ f.avatar }} {{ f.nickname }}</label></div><div class="cp-modal-btns"><button @click="showCreateModal=false">取消</button><button class="primary" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button></div></div></div></Transition>
+    <!-- ProfilePopup资料卡弹窗 -->
+    <ProfilePopup
+      :visible="showPopup"
+      :profile="popupProfile"
+      :moment-count="popupMomentCount"
+      @close="showPopup=false"
+      @action="handlePopupAction"
+      @update-remark="handlePopupUpdateRemark"
+    />
   </div>
 </template>
 
@@ -262,14 +286,16 @@
 import { ref, computed, nextTick, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { useCompanion, formatTimeAgo, type Friend, type ChatMsg } from '../../composables/useCompanion'
 import CosmicBackground from '../../components/CosmicBackground.vue'
+import SparkAvatar from '../../components/SparkAvatar.vue'
+import ProfilePopup from '../../components/ProfilePopup.vue'
 import QRCode from 'qrcode'
 
 const {
-  myProfile, friends, groups, moments, isAiTyping, getQRData,
+  myProfile, friends, friendRequests, groups, moments, isAiTyping, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, postMoment, toggleLike,
   commentMoment, deleteMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
-  updateProfile, favorites,
+  updateProfile, favorites, setFriendRemark, sendFriendRequest,
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
@@ -288,10 +314,16 @@ const isDragging = ref(false)
 const pendingFiles = ref<{type:string;name:string;url?:string}[]>([])
 const fileInput = ref<HTMLInputElement|null>(null)
 const viewProfile = ref<Friend|null>(null)
+// ProfilePopup弹窗(统一资料卡入口)
+const showPopup = ref(false)
+const popupProfile = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string}>({spark_id:'',nickname:'',avatar:'',remark:''})
+const popupMomentCount = ref(0)
 // 消息右键菜单
 const msgCtx = reactive<{show:boolean;x:number;y:number;msgId:string;canRecall:boolean}>({show:false,x:0,y:0,msgId:'',canRecall:false})
 // 通讯录分组折叠
 const contactGroupExpand = reactive({friends:true,groups:true})
+// 好友申请面板
+const showFriendRequests = ref(false)
 const showSearchModal = ref(false)
 const showAddFriendModal = ref(false)
 const showQRModal = ref(false)
@@ -341,10 +373,29 @@ function openPrivateChat(sparkId:string){activeChat.value={id:sparkId,type:'priv
 function closeRight(){rightPanel.value='none';activeChat.value=null;selectedContact.value=null}
 function scrollChat(){nextTick(()=>{if(chatScrollRef.value)chatScrollRef.value.scrollTop=chatScrollRef.value.scrollHeight})}
 function selectContact(f:Friend){selectedContact.value=f;rightPanel.value='contact'}
-// 聊天中点击⋯→弹出侧面板，showChatFriendCard改为打开资料弹窗
-function showChatFriendCard(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)viewProfile.value=f}
-function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)viewProfile.value=f}
-function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;const f=friends.value.find(f=>f.spark_id===msg.sender_id);if(f)viewProfile.value=f}
+// 统一资料卡弹窗入口
+function openProfilePopup(sparkId:string){
+  const f=friends.value.find(f=>f.spark_id===sparkId)
+  if(!f)return
+  popupProfile.value={spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,avatar_url:f.profile?.avatar_url,remark:f.remark,bio:f.bio}
+  popupMomentCount.value=moments.value.filter(m=>m.author_id===sparkId).length
+  showPopup.value=true
+}
+function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;openProfilePopup(msg.sender_id)}
+function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='private')return;openProfilePopup(activeChat.value.id)}
+function handlePopupAction(action:string){
+  const sid=popupProfile.value.spark_id
+  showPopup.value=false
+  if(action==='chat'){openPrivateChat(sid)}
+  else if(action==='moments'){sideTab.value='moments';rightPanel.value='none'}
+  else if(action==='voice')showToast('语音通话开发中')
+  else if(action==='video')showToast('视频通话开发中')
+  else if(action==='permissions')showToast('权限设置开发中')
+  else if(action==='recommend')showToast('推荐给朋友开发中')
+  else if(action==='star')showToast('已设为星标朋友')
+  else if(action==='block'){confirmDialog.show=true;confirmDialog.title='⚠️ 拉黑';confirmDialog.text=`确定拉黑「${popupProfile.value.nickname}」吗？`;confirmDialog.btnText='拉黑';confirmDialog.onConfirm=()=>{removeFriend(sid);showToast('已拉黑')}}
+}
+function handlePopupUpdateRemark(remark:string){setFriendRemark(popupProfile.value.spark_id,remark);popupProfile.value.remark=remark;showToast('备注已更新')}
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
 async function handleChatSend(){const text=chatInput.value.trim();if((!text&&!pendingFiles.value.length)||isAiTyping.value)return;chatInput.value='';pendingFiles.value=[];if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}else if(activeChat.value?.type==='group'){sendGroupMsg(activeChat.value.id,text);scrollChat()}else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,text);scrollChat()}}
 function formatMsgTime(s:string){const d=new Date(s);return`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`}
@@ -382,7 +433,7 @@ watch(()=>chatMessages.value.length,()=>scrollChat())
 watch(isAiTyping,()=>scrollChat())
 // 切换聊天时关闭设置面板
 watch(activeChat,()=>{showChatSettings.value=false})
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void showChatFriendCard;void viewProfile
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest
 </script>
 
 <style scoped>
@@ -441,6 +492,15 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-sb-hint{text-align:center;padding:16px 0;color:rgba(255,255,255,.1);font-size:10px}
 /* lg头像 */
 .cp-av.lg{width:48px;height:48px;font-size:22px;border-radius:12px}
+/* 好友申请列表 */
+.cp-friend-req{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 32px;border-bottom:1px solid rgba(255,255,255,.02)}
+.cp-req-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.cp-req-name{font-size:12px;color:rgba(255,255,255,.5);font-weight:500}
+.cp-req-msg{font-size:10px;color:rgba(255,255,255,.15)}
+.cp-req-acts{display:flex;gap:4px}
+.cp-req-accept{padding:4px 12px;border-radius:6px;border:none;background:rgba(34,197,94,.1);color:rgba(34,197,94,.7);font-size:10px;cursor:pointer;font-weight:600;transition:all .12s}.cp-req-accept:hover{background:rgba(34,197,94,.2)}
+.cp-req-status{font-size:10px;color:rgba(255,255,255,.15)}
+.cp-badge.sm{min-width:14px;height:14px;font-size:8px;padding:0 3px;border-radius:7px;margin-left:auto}
 /* 右侧主面板 */
 .cp-main{flex:1;display:flex;flex-direction:column;min-width:0;z-index:1;position:relative}
 .cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;background:rgba(8,6,18,.7);backdrop-filter:blur(20px)}
