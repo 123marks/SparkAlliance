@@ -40,6 +40,7 @@ export interface SparkProfile {
   show_in_plaza: boolean
   id_changed: boolean
   id_last_changed_at?: string  // ID最后修改时间
+  poke_suffix: string          // 拍一拍自定义文案(如"的肩膀")
   created_at: string
 
   // 统计（计算属性）
@@ -242,6 +243,7 @@ function createCompatProfile(data: {
     interests: [],
     show_in_plaza: true,
     id_changed: false,
+    poke_suffix: '',
     created_at: now(),
   }
 }
@@ -314,7 +316,7 @@ export function useCompanion() {
         id: uid(), user_id: '', spark_id: 'spark_' + Math.random().toString(36).slice(2, 8),
         nickname: '星火用户', avatar: '⚡', bio: '这个人很懒，什么都没留下',
         gender: '未知', university: '', school_year: '', interests: [],
-        show_in_plaza: true, id_changed: false, created_at: now(),
+        show_in_plaza: true, id_changed: false, poke_suffix: '', created_at: now(),
       }
       saveData(STORAGE_KEYS.profile, myProfile.value)
     }

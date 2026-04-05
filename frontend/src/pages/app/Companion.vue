@@ -259,8 +259,24 @@
           <div class="cp-tools-r"><button @click="showToast('语音通话开发中')">📞</button><button @click="showToast('视频通话开发中')">📹</button></div>
         </div>
         <input ref="fileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip" @change="onFileInput" style="display:none">
+        <!-- @提及下拉(仅群聊) -->
+        <Transition name="fade">
+          <div v-if="showMention && mentionList.length" class="cp-mention-panel">
+            <div v-for="m in mentionList" :key="m.spark_id" class="cp-mention-item" @click="selectMention(m)">
+              <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="xs" />
+              <span>{{ m.nickname }}</span>
+              <span v-if="m.role==='owner'" class="cp-role-tag owner" style="margin-left:auto">群主</span>
+              <span v-else-if="m.role==='admin'" class="cp-role-tag admin" style="margin-left:auto">管理</span>
+            </div>
+          </div>
+        </Transition>
+        <!-- 消息引用预览 -->
+        <div v-if="quoteMsg" class="cp-quote-bar">
+          <span class="cp-quote-text">回复 {{ quoteMsg.sender_name }}：{{ quoteMsg.content?.slice(0,30) }}</span>
+          <button class="cp-quote-close" @click="quoteMsg=null">×</button>
+        </div>
         <div class="cp-input-row">
-          <textarea v-model="chatInput" :placeholder="activeChat?.type==='group'?'@星火 唤AI · 输入消息...':'输入消息...'" rows="1" @keydown.enter.exact.prevent="handleChatSend" @input="autoResize" @focus="showEmoji=false"></textarea>
+          <textarea v-model="chatInput" :placeholder="activeChat?.type==='group'?'@星火 唤AI · 输入消息...':'输入消息...'" rows="1" @keydown.enter.exact.prevent="handleChatSend" @input="handleMentionInput" @focus="showEmoji=false"></textarea>
           <button class="cp-send" :disabled="!chatInput.trim()&&!pendingFiles.length||isAiTyping" @click="handleChatSend"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
         </div>
       </div>
@@ -472,6 +488,11 @@ const showInviteModal = ref(false)
 const addFriendRemark = ref('')
 const addFriendMessage = ref('')
 const addFriendSource = ref('通过搜索添加')
+// @提及状态
+const showMention = ref(false)
+const mentionList = ref<GroupMember[]>([])
+// 消息引用
+const quoteMsg = ref<ChatMsg|null>(null)
 // 排序后的群成员(群主→管理员→普通按首字母)
 const sortedGroupMembers = computed(() => {
   if (!activeGroup.value) return []
@@ -563,8 +584,11 @@ function startVoiceInput() {
 function handlePoke(targetName: string) {
   if (!activeChat.value || activeChat.value.type === 'ai') return
   const myName = myProfile.value?.nickname || '你'
-  const pokeMsg = `「${myName}」拍了拍「${targetName}」`
-  // 直接向聊天记录插入系统消息
+  // 使用自定义拍一拍文案
+  const suffix = myProfile.value?.poke_suffix || ''
+  const pokeMsg = suffix 
+    ? `「${myName}」拍了拍「${targetName}」${suffix}`
+    : `「${myName}」拍了拍「${targetName}」`
   const sysMsg: ChatMsg = {
     id: Date.now().toString() + '_poke',
     content: pokeMsg,
@@ -616,7 +640,16 @@ function handleAvatarContextMenu(e: MouseEvent, name: string) {
   handlePoke(name)
 }
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
-async function handleChatSend(){const text=chatInput.value.trim();if((!text&&!pendingFiles.value.length)||isAiTyping.value)return;chatInput.value='';pendingFiles.value=[];if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}else if(activeChat.value?.type==='group'){sendGroupMsg(activeChat.value.id,text);scrollChat()}else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,text);scrollChat()}}
+async function handleChatSend(){
+  const text=chatInput.value.trim();if((!text&&!pendingFiles.value.length)||isAiTyping.value)return
+  // 引用消息前缀
+  const prefix = quoteMsg.value ? `[引用 ${quoteMsg.value.sender_name}: ${quoteMsg.value.content?.slice(0,20)}] ` : ''
+  const finalText = prefix + text
+  chatInput.value='';pendingFiles.value=[];quoteMsg.value=null;showMention.value=false
+  if(activeChat.value?.type==='ai'){await sendToAI(finalText);scrollChat()}
+  else if(activeChat.value?.type==='group'){sendGroupMsg(activeChat.value.id,finalText);scrollChat()}
+  else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,finalText);scrollChat()}
+}
 // 格式化消息时间（今天/昨天/更早）
 function formatMsgTime(s:string){
   const d = new Date(s)
@@ -641,10 +674,32 @@ function getGroupNickname(msg: ChatMsg): string {
   return m?.nickname || msg.sender_name
 }
 function autoResize(e:Event){const el=e.target as HTMLTextAreaElement;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px'}
+// @提及输入监听
+function handleMentionInput(e:Event){
+  autoResize(e)
+  if (activeChat.value?.type !== 'group' || !activeGroup.value) { showMention.value = false; return }
+  const text = chatInput.value
+  // 检查最后一个@后的内容
+  const lastAt = text.lastIndexOf('@')
+  if (lastAt === -1 || lastAt < text.lastIndexOf(' ') - 1) { showMention.value = false; return }
+  const query = text.slice(lastAt + 1).toLowerCase()
+  showMention.value = true
+  mentionList.value = activeGroup.value.members
+    .filter((m: GroupMember) => m.spark_id !== myProfile.value?.spark_id && m.nickname.toLowerCase().includes(query))
+    .slice(0, 8)
+}
+// 选中@提及成员
+function selectMention(m: GroupMember) {
+  const lastAt = chatInput.value.lastIndexOf('@')
+  if (lastAt !== -1) {
+    chatInput.value = chatInput.value.slice(0, lastAt) + `@${m.nickname} `
+  }
+  showMention.value = false
+}
 function showCtxMenu(e:MouseEvent,type:string,id:string){ctxMenu.show=true;ctxMenu.x=e.clientX;ctxMenu.y=e.clientY;ctxMenu.type=type;ctxMenu.id=id}
 // 消息右键菜单(仿微信)：2分钟内可撤回
 function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=isMine&&elapsed<2*60*1000}
-function msgCtxAction(action:string){msgCtx.show=false;if(action==='copy'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)navigator.clipboard.writeText(msg.content);showToast('已复制')}else if(action==='recall'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1){const msg=chatMessages.value[idx];const recallSys:ChatMsg={id:Date.now().toString()+'_recall',content:`「${msg.sender_name}」撤回了一条消息`,type:'system',sender_id:'system',sender_name:'system',sender_avatar:'',sender_type:'user',created_at:new Date().toISOString(),is_read:true};chatMessages.value.splice(idx,1,recallSys);showToast('消息已撤回')}}else if(action==='delete'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1)chatMessages.value.splice(idx,1);showToast('已删除')}else if(action==='forward'){showToast('转发功能开发中')}else if(action==='favorite'){showToast('已收藏');const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)addFavorite({type:'message',title:'聊天消息',content:msg.content,source:`来自${msg.sender_name}`})}else if(action==='quote'){showToast('引用功能开发中')}else if(action==='select'){showToast('多选功能开发中')}}
+function msgCtxAction(action:string){msgCtx.show=false;if(action==='copy'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)navigator.clipboard.writeText(msg.content);showToast('已复制')}else if(action==='recall'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1){const msg=chatMessages.value[idx];const recallSys:ChatMsg={id:Date.now().toString()+'_recall',content:`「${msg.sender_name}」撤回了一条消息`,type:'system',sender_id:'system',sender_name:'system',sender_avatar:'',sender_type:'user',created_at:new Date().toISOString(),is_read:true};chatMessages.value.splice(idx,1,recallSys);showToast('消息已撤回')}}else if(action==='delete'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1)chatMessages.value.splice(idx,1);showToast('已删除')}else if(action==='forward'){showToast('转发功能开发中')}else if(action==='favorite'){showToast('已收藏');const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)addFavorite({type:'message',title:'聊天消息',content:msg.content,source:`来自${msg.sender_name}`})}else if(action==='quote'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg){quoteMsg.value=msg;showToast('已引用，输入回复内容')}}else if(action==='select'){showToast('多选功能开发中')}}
 // 查看联系人的朋友圈
 function contactMoments(sparkId:string){return moments.value.filter(m=>m.author_id===sparkId)}
 function ctxMenuAction(action:string){ctxMenu.show=false;if(action==='delete'){confirmDialog.show=true;confirmDialog.title='删除聊天';confirmDialog.text='确定删除该聊天吗？';confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{showToast('已删除')}}else if(action==='pin')showToast('已置顶');else if(action==='unread'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);if(f)f.unread=1;showToast('已标记未读')}else if(action==='mute')showToast('已设置免打扰')}
@@ -727,7 +782,7 @@ function handleQuitGroup(){
   confirmDialog.btnText='退出'
   confirmDialog.onConfirm=()=>{quitGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('已退出群聊')}
 }
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource;void getMsgRole;void getGroupNickname
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource;void getMsgRole;void getGroupNickname;void showMention;void mentionList;void quoteMsg;void selectMention;void handleMentionInput
 </script>
 
 <style scoped>
@@ -972,6 +1027,14 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-af-source{opacity:.5!important;cursor:not-allowed!important}
 .cp-add-btn.full{display:block;width:100%;text-align:center;margin-top:8px;padding:8px!important;border-radius:8px!important;background:linear-gradient(135deg,#8b5cf6,#6d28d9)!important;color:white!important;border:none!important;font-size:12px!important;font-weight:600!important;cursor:pointer}
 .cp-field textarea{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;font-family:inherit;outline:none;resize:none}.cp-field textarea:focus{border-color:rgba(139,92,246,.15)}
+/* @提及下拉面板 */
+.cp-mention-panel{position:absolute;bottom:100%;left:8px;right:8px;max-height:200px;overflow-y:auto;background:rgba(15,12,30,.96);backdrop-filter:blur(20px);border:1px solid rgba(139,92,246,.12);border-radius:10px;padding:4px;z-index:20;box-shadow:0 -4px 16px rgba(0,0,0,.4)}
+.cp-mention-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;cursor:pointer;transition:background .12s;font-size:12px;color:rgba(255,255,255,.7)}
+.cp-mention-item:hover{background:rgba(139,92,246,.08)}
+/* 消息引用预览条 */
+.cp-quote-bar{display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(139,92,246,.04);border-left:2px solid rgba(139,92,246,.4);border-radius:0 6px 6px 0;margin:0 8px}
+.cp-quote-text{flex:1;font-size:11px;color:rgba(139,92,246,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-quote-close{width:18px;height:18px;border-radius:50%;border:none;background:rgba(255,255,255,.04);color:rgba(255,255,255,.25);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}.cp-quote-close:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)}
 /* 录音动画 */
 .cp-tools button.active{color:rgba(239,68,68,.8)!important;animation:recordPulse 1s ease-in-out infinite}
 @keyframes recordPulse{0%,100%{opacity:1}50%{opacity:.4}}
