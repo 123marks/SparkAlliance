@@ -81,7 +81,13 @@ const bgColor = computed(() => {
 
 const avatarStyle = computed(() => {
   if (resolvedUrl.value || isEmoji.value) return {}
-  return { backgroundColor: bgColor.value + '20', color: bgColor.value }
+  // 渐变色背景 + 白色字体，更清晰可读
+  const c = bgColor.value
+  return {
+    background: `linear-gradient(135deg, ${c}cc, ${c}88)`,
+    color: '#ffffff',
+    border: `1px solid ${c}40`,
+  }
 })
 
 const sizeClass = computed(() => `sa-${props.size}`)

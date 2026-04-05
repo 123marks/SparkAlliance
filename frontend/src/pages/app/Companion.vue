@@ -143,19 +143,26 @@
           <div v-for="msg in chatMessages" :key="msg.id" class="cp-msg" :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system'}" @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)">
             <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
             <template v-else>
+              <!-- 对方头像(左侧) -->
               <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="handleAvatarContextMenu($event, msg.sender_name)" />
               <div class="cp-msg-body">
-                <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta"><span class="cp-msg-name">{{ msg.sender_name }}</span></div>
+                <!-- 对方消息头部：角色标签 + 昵称 -->
+                <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
+                  <span v-if="getMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
+                  <span v-else-if="getMsgRole(msg)==='admin'" class="cp-role-tag admin">管理</span>
+                  <span class="cp-msg-name">{{ getGroupNickname(msg) }}</span>
+                </div>
                 <div class="cp-bubble">
                   <img v-if="msg.type==='image'&&msg.media_url" :src="msg.media_url" class="cp-bubble-img">
                   <template v-else>{{ msg.content }}</template>
                 </div>
-                <!-- 时间+已读状态放在消息下方 -->
+                <!-- 时间+已读状态 -->
                 <div class="cp-msg-footer" :class="{reverse:msg.sender_id===myProfile?.spark_id}">
                   <span class="cp-msg-time2">{{ formatMsgTime(msg.created_at) }}</span>
-                  <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓':'○' }}</span>
+                  <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓✓':'✓' }}</span>
                 </div>
               </div>
+              <!-- 我的头像(右侧) -->
               <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar" :name="myProfile?.nickname" size="sm" class="my" @contextmenu.prevent="handleAvatarContextMenu($event, myProfile?.nickname||'')" />
             </template>
           </div>
@@ -610,7 +617,29 @@ function handleAvatarContextMenu(e: MouseEvent, name: string) {
 }
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
 async function handleChatSend(){const text=chatInput.value.trim();if((!text&&!pendingFiles.value.length)||isAiTyping.value)return;chatInput.value='';pendingFiles.value=[];if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}else if(activeChat.value?.type==='group'){sendGroupMsg(activeChat.value.id,text);scrollChat()}else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,text);scrollChat()}}
-function formatMsgTime(s:string){const d=new Date(s);return`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`}
+// 格式化消息时间（今天/昨天/更早）
+function formatMsgTime(s:string){
+  const d = new Date(s)
+  const now = new Date()
+  const hm = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+  const isToday = d.toDateString() === now.toDateString()
+  if (isToday) return hm
+  const yesterday = new Date(now); yesterday.setDate(now.getDate()-1)
+  if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`
+  return `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${hm}`
+}
+// 获取消息发送者在群聊中的角色(仅群聊有效)
+function getMsgRole(msg: ChatMsg): 'owner'|'admin'|'member'|'' {
+  if (activeChat.value?.type !== 'group' || !activeGroup.value) return ''
+  const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
+  return m?.role || ''
+}
+// 获取消息发送者的群昵称(优先群备注→昵称)
+function getGroupNickname(msg: ChatMsg): string {
+  if (activeChat.value?.type !== 'group' || !activeGroup.value) return msg.sender_name
+  const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
+  return m?.nickname || msg.sender_name
+}
 function autoResize(e:Event){const el=e.target as HTMLTextAreaElement;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px'}
 function showCtxMenu(e:MouseEvent,type:string,id:string){ctxMenu.show=true;ctxMenu.x=e.clientX;ctxMenu.y=e.clientY;ctxMenu.type=type;ctxMenu.id=id}
 // 消息右键菜单(仿微信)：2分钟内可撤回
@@ -698,7 +727,7 @@ function handleQuitGroup(){
   confirmDialog.btnText='退出'
   confirmDialog.onConfirm=()=>{quitGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('已退出群聊')}
 }
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource;void getMsgRole;void getGroupNickname
 </script>
 
 <style scoped>
@@ -784,10 +813,16 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-msg.mine .cp-bubble{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.08);border-top-right-radius:4px;color:rgba(255,255,255,.85)}
 .cp-msg.ai .cp-bubble{background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);border-top-left-radius:4px}
 .cp-msg-time{font-size:8px;color:rgba(255,255,255,.08);white-space:nowrap;flex-shrink:0}
-/* 已读状态 */
-.cp-read-status{font-size:10px;color:rgba(255,255,255,.12);flex-shrink:0;line-height:1}.cp-read-status.read{color:rgba(139,92,246,.5)}
+/* 已读状态：未读灰色单勾 / 已读紫色双勾 */
+.cp-read-status{font-size:11px;color:rgba(255,255,255,.18);flex-shrink:0;line-height:1;letter-spacing:-2px}.cp-read-status.read{color:rgba(139,92,246,.6)}
 /* 时间更醒目 */
 .cp-msg-time2{font-size:9px;color:rgba(255,255,255,.25);white-space:nowrap;flex-shrink:0;align-self:flex-end}
+/* 群聊角色标签 */
+.cp-role-tag{font-size:8px;padding:1px 4px;border-radius:3px;font-weight:700;flex-shrink:0}
+.cp-role-tag.owner{background:rgba(251,191,36,.12);color:rgba(251,191,36,.85);border:1px solid rgba(251,191,36,.15)}
+.cp-role-tag.admin{background:rgba(16,185,129,.1);color:rgba(16,185,129,.75);border:1px solid rgba(16,185,129,.12)}
+/* 我的消息名字隐藏(微信风格) */
+.cp-msg.mine .cp-msg-meta{display:none}
 /* 头像可点击 */
 .cp-msg-av{cursor:pointer;transition:transform .15s}.cp-msg-av:hover{transform:scale(1.08)}
 /* 图片气泡 */
