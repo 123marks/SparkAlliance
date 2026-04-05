@@ -69,8 +69,9 @@ export interface FriendRequest {
   id: string
   from: { spark_id: string; nickname: string; avatar: string; bio: string }
   from_profile?: SparkProfile
-  message: string
-  source: string         // 'search' | 'qrcode' | 'plaza'
+  message: string          // 验证消息/来意说明
+  remark_preset: string    // 预设备注
+  source: string           // 'search' | 'qrcode' | 'group:群名' | 'plaza'
   status: 'pending' | 'accepted' | 'rejected'
   created_at: string
 }
@@ -93,6 +94,15 @@ export interface ChatMsg {
   synced?: boolean       // 是否已同步到数据库
 }
 
+/** 群聊成员 */
+export interface GroupMember {
+  spark_id: string
+  nickname: string
+  avatar: string
+  role: 'owner' | 'admin' | 'member'  // 群主/管理员/普通成员
+  joined_at: string
+}
+
 /** 群聊 */
 export interface GroupChat {
   id: string
@@ -100,7 +110,10 @@ export interface GroupChat {
   avatar: string        // emoji
   owner_id: string      // spark_id
   ai_enabled: boolean
-  members: { spark_id: string; nickname: string; avatar: string }[]
+  admins: string[]       // 管理员spark_id列表
+  announcement: string   // 群公告
+  muted: boolean         // 消息免打扰
+  members: GroupMember[]
   messages: ChatMsg[]
   created_at: string
   unread: number
@@ -327,10 +340,11 @@ export function useCompanion() {
       const demoGroup: GroupChat = {
         id: uid(), name: '期末复习互助群', avatar: '📖',
         owner_id: myProfile.value.spark_id, ai_enabled: true,
+        admins: ['spark_demo_01'], announcement: '请大家更改备注，方便大家联系！', muted: false,
         members: [
-          { spark_id: myProfile.value.spark_id, nickname: myProfile.value.nickname, avatar: myProfile.value.avatar },
-          { spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓' },
-          { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚' },
+          { spark_id: myProfile.value.spark_id, nickname: myProfile.value.nickname, avatar: myProfile.value.avatar, role: 'owner' as const, joined_at: now() },
+          { spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓', role: 'admin' as const, joined_at: now() },
+          { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚', role: 'member' as const, joined_at: now() },
         ],
         messages: [
           { id: uid(), sender_id: 'spark_demo_01', sender_name: '张三（学长）', sender_avatar: '🎓', sender_type: 'user', content: '大家期末复习进度怎么样？', type: 'text', is_read: true, created_at: new Date(Date.now() - 3600000).toISOString() },
@@ -519,6 +533,7 @@ export function useCompanion() {
       },
       from_profile: sender,
       message,
+      remark_preset: '',
       source,
       status: 'pending',
       created_at: now(),
@@ -548,7 +563,7 @@ export function useCompanion() {
         const g = groups.value.find(g => g.id === data.id)
         if (g) {
           if (g.members.some(m => m.spark_id === myProfile.value?.spark_id)) return { ok: false, msg: '已在群聊中' }
-          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar })
+          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'member', joined_at: now() })
           saveData(STORAGE_KEYS.groups, groups.value)
           return { ok: true, msg: `已加入群聊「${g.name}」` }
         }
@@ -661,23 +676,124 @@ export function useCompanion() {
 
   // ------ 群聊 ------
   function createGroup(name: string, memberIds: string[], aiEnabled = true): string {
-    const members = [
-      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar },
+    const nowStr = now()
+    const members: GroupMember[] = [
+      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'owner', joined_at: nowStr },
       ...memberIds.map(id => {
         const f = friends.value.find(f => f.spark_id === id)
-        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤' }
+        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', role: 'member' as const, joined_at: nowStr }
       }),
     ]
     const g: GroupChat = {
       id: uid(), name, avatar: '👥', owner_id: myProfile.value!.spark_id,
-      ai_enabled: aiEnabled, members, messages: [
-        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', is_read: true, created_at: now() } as ChatMsg,
+      ai_enabled: aiEnabled, admins: [], announcement: '', muted: false,
+      members, messages: [
+        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', is_read: true, created_at: nowStr } as ChatMsg,
       ],
-      created_at: now(), unread: 0,
+      created_at: nowStr, unread: 0,
     }
     groups.value.push(g)
     saveData(STORAGE_KEYS.groups, groups.value)
     return g.id
+  }
+
+  // 群管理函数
+  /** 排序群成员：群主→管理员→普通(按首字母) */
+  function sortGroupMembers(g: GroupChat): GroupMember[] {
+    return [...g.members].sort((a, b) => {
+      const order = { owner: 0, admin: 1, member: 2 }
+      if (order[a.role] !== order[b.role]) return order[a.role] - order[b.role]
+      return a.nickname.localeCompare(b.nickname, 'zh-CN')
+    })
+  }
+
+  /** 设置管理员 */
+  function setGroupAdmin(groupId: string, sparkId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || g.owner_id !== myProfile.value?.spark_id) return
+    if (!g.admins.includes(sparkId)) g.admins.push(sparkId)
+    const m = g.members.find(m => m.spark_id === sparkId)
+    if (m) m.role = 'admin'
+    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${m?.nickname}」已被设为管理员`, type: 'system', is_read: true, created_at: now() })
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 移除管理员 */
+  function removeGroupAdmin(groupId: string, sparkId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || g.owner_id !== myProfile.value?.spark_id) return
+    g.admins = g.admins.filter(id => id !== sparkId)
+    const m = g.members.find(m => m.spark_id === sparkId)
+    if (m) m.role = 'member'
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 设置群公告 */
+  function setGroupAnnouncement(groupId: string, text: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    const isOwnerOrAdmin = g.owner_id === myProfile.value?.spark_id || g.admins.includes(myProfile.value?.spark_id || '')
+    if (!isOwnerOrAdmin) return
+    g.announcement = text
+    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `群公告已更新：${text}`, type: 'system', is_read: true, created_at: now() })
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 修改群名称 */
+  function renameGroup(groupId: string, newName: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    const isOwnerOrAdmin = g.owner_id === myProfile.value?.spark_id || g.admins.includes(myProfile.value?.spark_id || '')
+    if (!isOwnerOrAdmin) return
+    const old = g.name
+    g.name = newName
+    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `群名已从「${old}」改为「${newName}」`, type: 'system', is_read: true, created_at: now() })
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 踢出成员(群主/管理员可操作) */
+  function kickMember(groupId: string, sparkId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    const myId = myProfile.value?.spark_id || ''
+    const isOwner = g.owner_id === myId
+    const isAdmin = g.admins.includes(myId)
+    if (!isOwner && !isAdmin) return
+    // 管理员不能踢群主/其他管理员
+    if (!isOwner && (sparkId === g.owner_id || g.admins.includes(sparkId))) return
+    const m = g.members.find(m => m.spark_id === sparkId)
+    g.members = g.members.filter(m => m.spark_id !== sparkId)
+    g.admins = g.admins.filter(id => id !== sparkId)
+    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${m?.nickname}」已被移出群聊`, type: 'system', is_read: true, created_at: now() })
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 解散群聊(仅群主) */
+  function dissolveGroup(groupId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || g.owner_id !== myProfile.value?.spark_id) return
+    groups.value = groups.value.filter(g => g.id !== groupId)
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 退出群聊(非群主) */
+  function quitGroup(groupId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || g.owner_id === myProfile.value?.spark_id) return
+    const myId = myProfile.value?.spark_id || ''
+    g.members = g.members.filter(m => m.spark_id !== myId)
+    g.admins = g.admins.filter(id => id !== myId)
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 邀请好友入群 */
+  function inviteToGroup(groupId: string, sparkId: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || g.members.some(m => m.spark_id === sparkId)) return
+    const f = friends.value.find(f => f.spark_id === sparkId)
+    g.members.push({ spark_id: sparkId, nickname: f?.nickname || sparkId, avatar: f?.avatar || '👤', role: 'member', joined_at: now() })
+    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${f?.nickname || sparkId}」加入了群聊`, type: 'system', is_read: true, created_at: now() })
+    saveData(STORAGE_KEYS.groups, groups.value)
   }
 
   function sendGroupMsg(groupId: string, content: string) {
@@ -849,6 +965,8 @@ export function useCompanion() {
     getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
     // 群聊
     createGroup, sendGroupMsg, fetchMomentComments,
+    sortGroupMembers, setGroupAdmin, removeGroupAdmin, setGroupAnnouncement,
+    renameGroup, kickMember, dissolveGroup, quitGroup, inviteToGroup,
     // 动态
     postMoment, toggleLike, commentMoment, deleteMoment,
     // 收藏

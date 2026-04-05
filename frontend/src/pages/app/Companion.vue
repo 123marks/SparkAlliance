@@ -164,11 +164,58 @@
         <!-- 右侧聊天设置面板(仿微信) -->
         <Transition name="fade">
           <div v-if="showChatSettings" class="cp-chat-settings">
-            <div class="cs-members" v-if="activeChat?.type==='private'">
-              <div class="cs-member" @click="handleViewChatFriend"><span class="cs-av">{{ chatFriend?.avatar }}</span><span class="cs-mname">{{ chatFriend?.remark||chatFriend?.nickname }}</span></div>
-            </div>
+            <!-- 私聊设置 -->
+            <template v-if="activeChat?.type==='private'">
+              <div class="cs-members">
+                <div class="cs-member" @click="handleViewChatFriend">
+                  <SparkAvatar :avatar="chatFriend?.avatar" :name="chatFriend?.nickname" size="sm" />
+                  <span class="cs-mname">{{ chatFriend?.remark||chatFriend?.nickname }}</span>
+                </div>
+              </div>
+            </template>
+            <!-- 群聊设置(微信级) -->
+            <template v-if="activeChat?.type==='group' && activeGroup">
+              <!-- 成员九宫格 -->
+              <div class="cs-members-grid">
+                <div v-for="m in sortedGroupMembers.slice(0,9)" :key="m.spark_id" class="cs-gm" @click="openProfilePopup(m.spark_id)">
+                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="sm" />
+                  <span class="cs-gmname">{{ m.nickname }}</span>
+                  <span v-if="m.role==='owner'" class="cs-role owner">群主</span>
+                  <span v-else-if="m.role==='admin'" class="cs-role admin">管理</span>
+                </div>
+                <div v-if="isGroupOwnerOrAdmin" class="cs-gm cs-gm-add" @click="showInviteModal=true">
+                  <div class="cs-gm-icon">+</div><span class="cs-gmname">添加</span>
+                </div>
+                <div v-if="isGroupOwner" class="cs-gm cs-gm-add" @click="showKickPanel=!showKickPanel">
+                  <div class="cs-gm-icon">−</div><span class="cs-gmname">移出</span>
+                </div>
+              </div>
+              <div class="cs-hint">查看更多 ({{ activeGroup.members.length }}人) ▾</div>
+              <!-- 踢人面板 -->
+              <div v-if="showKickPanel" class="cs-kick-panel">
+                <div v-for="m in sortedGroupMembers.filter(m=>m.spark_id!==myProfile?.spark_id && (isGroupOwner || m.role==='member'))" :key="m.spark_id" class="cs-kick-row">
+                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="xs" />
+                  <span>{{ m.nickname }}</span>
+                  <button class="cs-kick-btn" @click="handleKickMember(m)">移出</button>
+                </div>
+              </div>
+              <!-- 群名称 -->
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="startRenameGroup">
+                  <span>群聊名称</span>
+                  <span class="cs-val">{{ activeGroup.name }}<span class="cs-arrow">›</span></span>
+                </div>
+              </div>
+              <!-- 群公告 -->
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="startEditAnnouncement">
+                  <span>群公告</span>
+                  <span class="cs-val">{{ activeGroup.announcement || '未设置' }}<span class="cs-arrow">›</span></span>
+                </div>
+              </div>
+            </template>
+            <!-- 通用设置 -->
             <div class="cs-section"><div class="cs-row clickable" @click="openChatSearch"><span>🔍 查找聊天内容</span><span class="cs-arrow">›</span></div></div>
-            <!-- 查找搜索栏 -->
             <div v-if="chatSearchMode" class="cs-search-bar">
               <input v-model="chatSearchQuery" placeholder="输入关键词搜索..." autofocus />
               <span class="cs-search-count">{{ chatSearchHits.size }} 条结果</span>
@@ -178,6 +225,11 @@
               <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox"><span class="cs-slider"></span></label></div>
             </div>
             <button class="cs-clear" @click="clearChatHistory">🗑️ 清空聊天记录</button>
+            <!-- 群聊解散/退出 -->
+            <template v-if="activeChat?.type==='group' && activeGroup">
+              <button v-if="isGroupOwner" class="cs-clear cs-danger" @click="handleDissolveGroup">解散群聊</button>
+              <button v-else class="cs-clear cs-warn" @click="handleQuitGroup">退出群聊</button>
+            </template>
           </div>
         </Transition>
       </div>
@@ -295,7 +347,22 @@
 
     <!-- 弹窗们 -->
     <Transition name="fade"><div v-if="showSearchModal" class="cp-overlay" @click.self="showSearchModal=false"><div class="cp-modal"><h3>🔍 搜索</h3><div class="cp-field"><input v-model="globalSearch" placeholder="搜索好友、群聊..." @input="handleGlobalSearch"></div><div v-if="globalSearchResults.length" class="cp-search-results"><div v-for="r in globalSearchResults" :key="r.id" class="cp-search-item" @click="r.action();showSearchModal=false"><span class="cp-av sm">{{ r.avatar }}</span><div class="cp-contact-info"><span class="cp-contact-name">{{ r.name }}</span><span class="cp-contact-id">{{ r.desc }}</span></div></div></div><p v-else-if="globalSearch.trim()" class="cp-empty">无结果</p><button class="cp-close-btn" @click="showSearchModal=false">关闭</button></div></div></Transition>
-    <Transition name="fade"><div v-if="showAddFriendModal" class="cp-overlay" @click.self="showAddFriendModal=false"><div class="cp-modal sm"><h3>👤 添加好友</h3><div class="cp-field"><label>星火ID 或昵称</label><input v-model="addFriendQuery" placeholder="输入星火ID..." @keydown.enter="handleSearchFriend"></div><button class="cp-save-btn" @click="handleSearchFriend">🔍 搜索</button><p v-if="addFriendResult" class="cp-search-result">找到：{{ addFriendResult.nickname }}<button class="cp-add-btn" @click="handleAddFriendResult">✓ 添加</button></p><div class="cp-modal-btns"><button @click="showAddFriendModal=false">关闭</button></div></div></div></Transition>
+    <Transition name="fade"><div v-if="showAddFriendModal" class="cp-overlay" @click.self="showAddFriendModal=false"><div class="cp-modal sm">
+      <h3>👤 添加好友</h3>
+      <div class="cp-field"><label>星火ID 或昵称</label><input v-model="addFriendQuery" placeholder="输入星火ID..." @keydown.enter="handleSearchFriend"></div>
+      <button class="cp-save-btn" @click="handleSearchFriend">🔍 搜索</button>
+      <div v-if="addFriendResult" class="cp-af-result">
+        <div class="cp-af-user">
+          <SparkAvatar :avatar="addFriendResult.avatar" :name="addFriendResult.nickname" size="sm" />
+          <div class="cp-af-info"><b>{{ addFriendResult.nickname }}</b><small>{{ addFriendResult.spark_id }}</small></div>
+        </div>
+        <div class="cp-field"><label>预设备注</label><input v-model="addFriendRemark" placeholder="给好友设置备注(可选)"></div>
+        <div class="cp-field"><label>来意说明</label><textarea v-model="addFriendMessage" rows="2" placeholder="介绍一下自己吧，让对方知道你是谁..."></textarea></div>
+        <div class="cp-field"><label>来源</label><input :value="addFriendSource" disabled class="cp-af-source"></div>
+        <button class="cp-add-btn full" @click="handleAddFriendResult">✔ 发送好友申请</button>
+      </div>
+      <div class="cp-modal-btns"><button @click="showAddFriendModal=false">关闭</button></div>
+    </div></div></Transition>
     <Transition name="fade"><div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false"><div class="cp-modal sm"><h3>📱 星火名片</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div><canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-qr-paste"><p>📋 粘贴二维码数据</p><div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴..."><button @click="handleQRPaste">添加</button></div></div><div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button><button class="primary" @click="copyQRData">📋 复制名片</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showGroupQR" class="cp-overlay" @click.self="showGroupQR=false"><div class="cp-modal sm"><h3>📱 群二维码</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ activeGroup?.avatar }}</span><div><div class="cp-qr-name">{{ activeGroup?.name }}</div></div></div><canvas ref="groupQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-modal-btns"><button @click="showGroupQR=false">关闭</button><button class="primary" @click="copyGroupQR">📋 复制</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showCreateModal" class="cp-overlay" @click.self="showCreateModal=false"><div class="cp-modal"><h3>👥 创建群聊</h3><div class="cp-field"><label>群聊名称</label><input v-model="newGroupName" maxlength="30" placeholder="名字"></div><label class="cp-check"><input type="checkbox" v-model="newGroupAI"> 🌟 星火AI参与群聊</label><div v-if="friends.length" class="cp-member-sel"><p class="cp-field-label">选择成员</p><label v-for="f in friends" :key="f.id" class="cp-member-opt"><input type="checkbox" :value="f.spark_id" v-model="newGroupMembers"> {{ f.avatar }} {{ f.nickname }}</label></div><div class="cp-modal-btns"><button @click="showCreateModal=false">取消</button><button class="primary" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button></div></div></div></Transition>
@@ -313,7 +380,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, reactive, onMounted, onUnmounted } from 'vue'
-import { useCompanion, formatTimeAgo, type Friend, type ChatMsg } from '../../composables/useCompanion'
+import { useCompanion, formatTimeAgo, type Friend, type ChatMsg, type GroupMember } from '../../composables/useCompanion'
 import CosmicBackground from '../../components/CosmicBackground.vue'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
@@ -325,6 +392,9 @@ const {
   markMessagesAsRead, createGroup, sendGroupMsg, postMoment, toggleLike,
   commentMoment, deleteMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
   updateProfile, favorites, setFriendRemark, sendFriendRequest,
+  // v6.0 群管理
+  sortGroupMembers, setGroupAdmin, removeGroupAdmin, setGroupAnnouncement,
+  renameGroup, kickMember, dissolveGroup, quitGroup, inviteToGroup,
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
@@ -388,6 +458,26 @@ const chatSearchHits = computed(() => {
   const q = chatSearchQuery.value.toLowerCase()
   const hits = chatMessages.value.filter(m => m.content?.toLowerCase().includes(q)).map(m => m.id)
   return new Set(hits)
+})
+// ===== v6.0 群聊管理 =====
+const showKickPanel = ref(false)
+const showInviteModal = ref(false)
+const addFriendRemark = ref('')
+const addFriendMessage = ref('')
+const addFriendSource = ref('通过搜索添加')
+// 排序后的群成员(群主→管理员→普通按首字母)
+const sortedGroupMembers = computed(() => {
+  if (!activeGroup.value) return []
+  return sortGroupMembers(activeGroup.value)
+})
+// 当前用户是否群主
+const isGroupOwner = computed(() => {
+  return activeGroup.value?.owner_id === myProfile.value?.spark_id
+})
+// 当前用户是否群主或管理员
+const isGroupOwnerOrAdmin = computed(() => {
+  if (!activeGroup.value || !myProfile.value) return false
+  return activeGroup.value.owner_id === myProfile.value.spark_id || activeGroup.value.admins.includes(myProfile.value.spark_id)
 })
 
 const activeGroup = computed(()=>activeChat.value?.type==='group'?groups.value.find(g=>g.id===activeChat.value!.id):null)
@@ -532,7 +622,17 @@ function ctxMenuAction(action:string){ctxMenu.show=false;if(action==='delete'){c
 function handleRemoveFriend(sparkId:string){const f=friends.value.find(f=>f.spark_id===sparkId);confirmDialog.show=true;confirmDialog.title='⚠️ 删除联系人';confirmDialog.text=`确定要删除「${f?.nickname||sparkId}」吗？`;confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{removeFriend(sparkId);selectedContact.value=null;rightPanel.value='none';showToast('已删除')}}
 function handleGlobalSearch(){const q=globalSearch.value.trim().toLowerCase();if(!q){globalSearchResults.value=[];return};const r:typeof globalSearchResults.value=[];friends.value.filter(f=>f.nickname.toLowerCase().includes(q)||f.spark_id.includes(q)).forEach(f=>r.push({id:f.id,name:f.nickname,avatar:f.avatar,desc:f.spark_id,action:()=>openPrivateChat(f.spark_id)}));groups.value.filter(g=>g.name.toLowerCase().includes(q)).forEach(g=>r.push({id:g.id,name:g.name,avatar:g.avatar,desc:`${g.members.length}人`,action:()=>openGroupChat(g.id)}));globalSearchResults.value=r.slice(0,10)}
 function handleSearchFriend(){addFriendResult.value=addFriendQuery.value.trim()?searchUser(addFriendQuery.value.trim()):null}
-function handleAddFriendResult(){if(!addFriendResult.value)return;const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio});showToast(r.msg);addFriendResult.value=null;addFriendQuery.value='';showAddFriendModal.value=false}
+function handleAddFriendResult(){
+  if(!addFriendResult.value)return
+  // 支持预设备注+来意说明
+  const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio})
+  if(r.ok && addFriendRemark.value.trim()){
+    setFriendRemark(addFriendResult.value.spark_id, addFriendRemark.value.trim())
+  }
+  showToast(r.msg)
+  addFriendResult.value=null;addFriendQuery.value='';addFriendRemark.value='';addFriendMessage.value=''
+  showAddFriendModal.value=false
+}
 function handleCreateGroup(){if(!newGroupName.value.trim())return;createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value);showToast('群聊已创建！');showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[]}
 function handlePost(){if(!postContent.value.trim())return;postMoment(postContent.value.trim(),[],postVis.value);postContent.value='';showToast('已发布')}
 function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return;commentMoment(id,c);commentInputs[id]=''}
@@ -554,8 +654,51 @@ watch(showGroupQR,v=>{if(v&&activeGroup.value)nextTick(()=>renderQR(groupQrCanva
 watch(()=>chatMessages.value.length,()=>scrollChat())
 watch(isAiTyping,()=>scrollChat())
 // 切换聊天时关闭设置面板
-watch(activeChat,()=>{showChatSettings.value=false})
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput
+watch(activeChat,()=>{showChatSettings.value=false;showKickPanel.value=false})
+// ===== v6.0 群管理handler =====
+/** 踢出群成员 */
+function handleKickMember(m:GroupMember){
+  if(!activeGroup.value)return
+  confirmDialog.show=true;confirmDialog.title='⚠️ 移出成员'
+  confirmDialog.text=`确定要将「${m.nickname}」移出群聊吗？`
+  confirmDialog.btnText='移出'
+  confirmDialog.onConfirm=()=>{kickMember(activeGroup.value!.id,m.spark_id);showToast(`已将「${m.nickname}」移出群聊`)}
+}
+/** 修改群名称 */
+function startRenameGroup(){
+  if(!activeGroup.value||!isGroupOwnerOrAdmin.value)return
+  const newName=prompt('输入新群名称:',activeGroup.value.name)
+  if(newName&&newName.trim()){
+    renameGroup(activeGroup.value.id,newName.trim())
+    showToast(`群名已修改为「${newName.trim()}」`)
+  }
+}
+/** 编辑群公告 */
+function startEditAnnouncement(){
+  if(!activeGroup.value||!isGroupOwnerOrAdmin.value){showToast('仅群主/管理员可修改公告');return}
+  const text=prompt('输入群公告:',activeGroup.value.announcement)
+  if(text!==null){
+    setGroupAnnouncement(activeGroup.value.id,text.trim())
+    showToast('群公告已更新')
+  }
+}
+/** 解散群聊 */
+function handleDissolveGroup(){
+  if(!activeGroup.value)return
+  confirmDialog.show=true;confirmDialog.title='⚠️ 解散群聊'
+  confirmDialog.text=`确定要解散「${activeGroup.value.name}」吗？此操作不可撤销！`
+  confirmDialog.btnText='解散'
+  confirmDialog.onConfirm=()=>{dissolveGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('群聊已解散')}
+}
+/** 退出群聊 */
+function handleQuitGroup(){
+  if(!activeGroup.value)return
+  confirmDialog.show=true;confirmDialog.title='退出群聊'
+  confirmDialog.text=`确定要退出「${activeGroup.value.name}」吗？`
+  confirmDialog.btnText='退出'
+  confirmDialog.onConfirm=()=>{quitGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('已退出群聊')}
+}
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource
 </script>
 
 <style scoped>
@@ -761,6 +904,39 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cs-search-bar{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
 .cs-search-bar input{flex:1;padding:6px 10px;border-radius:7px;border:1px solid rgba(139,92,246,.12);background:rgba(255,255,255,.02);color:white;font-size:11px;outline:none}.cs-search-bar input:focus{border-color:rgba(139,92,246,.25)}
 .cs-search-count{font-size:9px;color:rgba(139,92,246,.4);white-space:nowrap}
+/* 群聊设置 - 成员九宫格 */
+.cs-members-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:10px 12px}
+.cs-gm{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 2px;border-radius:8px;transition:all .12s;position:relative}
+.cs-gm:hover{background:rgba(139,92,246,.04)}
+.cs-gmname{font-size:9px;color:rgba(255,255,255,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50px;text-align:center}
+.cs-role{position:absolute;top:-2px;right:-4px;font-size:7px;padding:1px 3px;border-radius:3px;font-weight:700}
+.cs-role.owner{background:rgba(251,191,36,.15);color:rgba(251,191,36,.8)}
+.cs-role.admin{background:rgba(16,185,129,.12);color:rgba(16,185,129,.7)}
+.cs-gm-add{border:1px dashed rgba(255,255,255,.08);border-radius:8px}
+.cs-gm-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.02);display:flex;align-items:center;justify-content:center;font-size:16px;color:rgba(255,255,255,.18)}
+.cs-hint{font-size:9px;color:rgba(139,92,246,.3);text-align:center;padding:2px 0 8px;cursor:pointer}
+.cs-hint:hover{color:rgba(139,92,246,.5)}
+/* 踢人面板 */
+.cs-kick-panel{padding:6px 12px;border-top:1px solid rgba(255,255,255,.03);max-height:160px;overflow-y:auto}
+.cs-kick-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;transition:background .12s}
+.cs-kick-row:hover{background:rgba(239,68,68,.03)}
+.cs-kick-row span{flex:1;font-size:11px;color:rgba(255,255,255,.45)}
+.cs-kick-btn{padding:3px 10px;border-radius:5px;border:none;background:rgba(239,68,68,.08);color:rgba(239,68,68,.6);font-size:9px;cursor:pointer;font-weight:600;transition:all .12s}
+.cs-kick-btn:hover{background:rgba(239,68,68,.15);color:rgba(239,68,68,.85)}
+/* 群名/公告值 */
+.cs-val{font-size:10px;color:rgba(255,255,255,.25);display:flex;align-items:center;gap:4px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 解散/退群按钮 */
+.cs-danger{background:rgba(239,68,68,.06)!important;color:rgba(239,68,68,.7)!important;border-color:rgba(239,68,68,.1)!important}
+.cs-danger:hover{background:rgba(239,68,68,.12)!important;color:rgba(239,68,68,.9)!important}
+.cs-warn{background:rgba(251,191,36,.06)!important;color:rgba(251,191,36,.6)!important;border-color:rgba(251,191,36,.08)!important}
+.cs-warn:hover{background:rgba(251,191,36,.12)!important;color:rgba(251,191,36,.8)!important}
+/* 添加好友增强 */
+.cp-af-result{padding:10px;border-radius:10px;background:rgba(139,92,246,.02);border:1px solid rgba(139,92,246,.06);margin:10px 0}
+.cp-af-user{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.cp-af-info{display:flex;flex-direction:column;gap:2px}.cp-af-info b{font-size:13px;color:white;font-weight:600}.cp-af-info small{font-size:10px;color:rgba(139,92,246,.4)}
+.cp-af-source{opacity:.5!important;cursor:not-allowed!important}
+.cp-add-btn.full{display:block;width:100%;text-align:center;margin-top:8px;padding:8px!important;border-radius:8px!important;background:linear-gradient(135deg,#8b5cf6,#6d28d9)!important;color:white!important;border:none!important;font-size:12px!important;font-weight:600!important;cursor:pointer}
+.cp-field textarea{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;font-family:inherit;outline:none;resize:none}.cp-field textarea:focus{border-color:rgba(139,92,246,.15)}
 /* 录音动画 */
 .cp-tools button.active{color:rgba(239,68,68,.8)!important;animation:recordPulse 1s ease-in-out infinite}
 @keyframes recordPulse{0%,100%{opacity:1}50%{opacity:.4}}
