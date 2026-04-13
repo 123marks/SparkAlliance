@@ -67,6 +67,8 @@ export interface Friend {
   last_msg_time?: string
   unread: number
   is_starred?: boolean   // 星标好友
+  is_chat_pinned?: boolean // 会话置顶
+  is_muted?: boolean       // 消息免打扰
 }
 
 /** 好友标签 */
@@ -127,6 +129,8 @@ export interface GroupChat {
   created_at: string
   unread: number
   announcement?: string // 群公告
+  is_chat_pinned?: boolean // 会话置顶
+  is_muted?: boolean       // 消息免打扰
 }
 
 /** 动态可见时间范围设置 */
@@ -690,6 +694,13 @@ export function useCompanion() {
   // ------ 私聊（内存缓存 + Supabase 同步） ------
   function getPrivateChat(friendId: string): ChatMsg[] {
     return getPrivateChatStore()[friendId] || []
+  }
+
+  // 清空私聊记录
+  function clearPrivateChat(friendId: string) {
+    const all = getPrivateChatStore()
+    all[friendId] = []
+    savePrivateChatStore()
   }
 
   /** 标记消息为已读（本地缓存 + 异步 Supabase 同步） */
@@ -1341,7 +1352,7 @@ export function useCompanion() {
     blockFriend, unblockFriend, isBlocked,
     updateFriendPermissions, getFriendPermissions,
     // 私聊
-    getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
+    getPrivateChat, clearPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
     // 消息操作
     recallMessage, sendPokeMessage,
     // 群聊

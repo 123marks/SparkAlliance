@@ -19,9 +19,9 @@
 
     <!-- 会话右键菜单 -->
     <div v-if="ctxMenu.show" class="cp-ctx-menu" :style="{top:ctxMenu.y+'px',left:ctxMenu.x+'px'}" @click.self="ctxMenu.show=false">
-      <button @click="ctxMenuAction('pin')">📌 置顶</button>
+      <button @click="ctxMenuAction('pin')">{{ getCtxPinLabel() }}</button>
       <button @click="ctxMenuAction('unread')">🔴 标为未读</button>
-      <button @click="ctxMenuAction('mute')">🔕 消息免打扰</button>
+      <button @click="ctxMenuAction('mute')">{{ getCtxMuteLabel() }}</button>
       <button class="del" @click="ctxMenuAction('delete')">🗑️ 删除</button>
     </div>
     <!-- 消息右键菜单(仿微信) -->
@@ -63,7 +63,7 @@
           <span class="cp-av">🌟</span>
           <div class="cp-conv-info"><span class="cp-conv-name">星火AI伙伴</span><span class="cp-conv-last">智能助手，随时待命</span></div>
         </div>
-        <div v-for="g in groups" :key="g.id" class="cp-conv" :class="{active:activeChat?.id===g.id}" @click="openGroupChat(g.id)" @contextmenu.prevent="e=>showCtxMenu(e,'group',g.id)">
+        <div v-for="g in sortedGroups" :key="g.id" class="cp-conv" :class="{active:activeChat?.id===g.id,'is-pinned':g.is_chat_pinned}" @click="openGroupChat(g.id)" @contextmenu.prevent="e=>showCtxMenu(e,'group',g.id)">
           <div class="cp-group-av" :class="getGridClass(g.members.length)">
             <span v-for="(emoji,gi) in getGroupAvatarGrid(g)" :key="gi" class="cp-gav-item">{{ emoji }}</span>
           </div>
@@ -73,7 +73,7 @@
           </div>
           <span v-if="g.unread" class="cp-badge">{{ g.unread }}</span>
         </div>
-        <div v-for="f in sortedFriends" :key="f.id" class="cp-conv" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private'}" @click="openPrivateChat(f.spark_id)" @contextmenu.prevent="e=>showCtxMenu(e,'private',f.spark_id)">
+        <div v-for="f in sortedFriends" :key="f.id" class="cp-conv" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private','is-pinned':f.is_chat_pinned}" @click="openPrivateChat(f.spark_id)" @contextmenu.prevent="e=>showCtxMenu(e,'private',f.spark_id)">
           <span class="cp-av">{{ f.avatar }}</span>
           <div class="cp-conv-info">
             <span class="cp-conv-name">{{ f.remark||f.nickname }}</span>
@@ -156,22 +156,34 @@
         <!-- 右侧聊天设置面板(仿微信) -->
         <Transition name="fade">
           <div v-if="showChatSettings" class="cp-chat-settings">
-            <div class="cs-members" v-if="activeChat?.type==='private'">
-              <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :name="chatFriend?.nickname||''" size="md" clickable /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
-            </div>
-            <!-- 私聊好友管理菜单 -->
+            <!-- 私聊设置面板(仿微信) -->
             <template v-if="activeChat?.type==='private' && chatFriend">
+              <div class="cs-members">
+                <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :name="chatFriend?.nickname||''" size="md" clickable /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
+                <div class="cs-member cs-add-btn" @click="showToast('邀请好友加入群聊')"><span class="cs-add-icon">＋</span><span class="cs-mname">添加</span></div>
+              </div>
+              <!-- 功能菜单区 -->
               <div class="cs-section">
-                <div class="cs-row clickable" @click="openChatFriendRemarkEdit"><span>✈️ 编辑备注</span><span class="cs-val">{{ chatFriend.remark || '未设置' }}</span><span class="cs-arrow">›</span></div>
+                <div class="cs-row clickable" @click="handleSearchChatHistory"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
+              </div>
+              <div class="cs-section">
+                <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox" :checked="chatFriend.is_muted" @change="toggleChatMute('private',chatFriend.spark_id)"><span class="cs-slider"></span></label></div>
+                <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox" :checked="chatFriend.is_chat_pinned" @change="toggleChatPin('private',chatFriend.spark_id)"><span class="cs-slider"></span></label></div>
+              </div>
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="openChatFriendRemarkEdit"><span>✏️ 编辑备注</span><span class="cs-val">{{ chatFriend.remark || '未设置' }}</span><span class="cs-arrow">›</span></div>
                 <div class="cs-row clickable" @click="handleChatStarToggle"><span>{{ chatFriend.is_starred ? '☆ 取消星标' : '⭐ 设为星标' }}</span><span class="cs-arrow">›</span></div>
                 <div class="cs-row clickable" @click="openChatFriendPermissions"><span>🔒 好友权限</span><span class="cs-arrow">›</span></div>
+              </div>
+              <div class="cs-section">
+                <button class="cs-clear" @click="handleClearChatHistory">清空聊天记录</button>
               </div>
               <div class="cs-section">
                 <div class="cs-row clickable warn" @click="handleChatBlockFriend">🚫 拉黑</div>
                 <div class="cs-row clickable danger" @click="handleChatDeleteFriend">🗑️ 删除好友</div>
               </div>
             </template>
-            <!-- 群聊设置 -->
+            <!-- 群聊设置面板(仿微信) -->
             <template v-if="activeChat?.type==='group' && activeGroup">
               <div class="cs-members">
                 <div v-for="m in activeGroup.members.slice(0,8)" :key="m.spark_id" class="cs-member">
@@ -180,6 +192,15 @@
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                   <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                 </div>
+                <div class="cs-member cs-add-btn" @click="showToast('邀请成员')"><span class="cs-add-icon">＋</span><span class="cs-mname">添加</span></div>
+              </div>
+              <!-- 功能菜单区 -->
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="handleSearchChatHistory"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
+              </div>
+              <div class="cs-section">
+                <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox" :checked="activeGroup.is_muted" @change="toggleChatMute('group',activeGroup.id)"><span class="cs-slider"></span></label></div>
+                <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox" :checked="activeGroup.is_chat_pinned" @change="toggleChatPin('group',activeGroup.id)"><span class="cs-slider"></span></label></div>
               </div>
               <!-- 群公告 -->
               <div v-if="activeGroup.announcement" class="cs-section">
@@ -221,13 +242,10 @@
                   <button class="cs-clear" @click="handleDisbandGroup">🗑️ 解散群聊</button>
                 </div>
               </template>
+              <div class="cs-section">
+                <button class="cs-clear" @click="handleClearChatHistory">清空聊天记录</button>
+              </div>
             </template>
-            <div class="cs-section"><div class="cs-row clickable" @click="showToast('查找聊天内容开发中')"><span>查找聊天内容</span><span class="cs-arrow">›</span></div></div>
-            <div class="cs-section">
-              <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox"><span class="cs-slider"></span></label></div>
-              <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox"><span class="cs-slider"></span></label></div>
-            </div>
-            <button class="cs-clear" @click="showToast('清空聊天记录开发中')">清空聊天记录</button>
           </div>
         </Transition>
       </div>
@@ -504,7 +522,7 @@ import QRCode from 'qrcode'
 
 const {
   myProfile, friends, groups, moments, isAiTyping, getQRData,
-  addFriend, addFriendByQR, removeFriend, getPrivateChat, sendPrivateMsg,
+  addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
   commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
   updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
@@ -601,10 +619,17 @@ const chatMessages = computed(()=>{
   return getPrivateChat(activeChat.value.id)
 })
 const sortedFriends = computed(()=>[...friends.value].sort((a,b)=>{
+  // 置顶优先
+  if(a.is_chat_pinned&&!b.is_chat_pinned)return-1;if(!a.is_chat_pinned&&b.is_chat_pinned)return 1
   if(a.unread&&!b.unread)return-1;if(!a.unread&&b.unread)return 1
   const ta=a.last_msg_time?new Date(a.last_msg_time).getTime():0
   const tb=b.last_msg_time?new Date(b.last_msg_time).getTime():0
   return tb-ta
+}))
+// 群聊列表排序（置顶优先）
+const sortedGroups = computed(()=>[...groups.value].sort((a,b)=>{
+  if(a.is_chat_pinned&&!b.is_chat_pinned)return-1;if(!a.is_chat_pinned&&b.is_chat_pinned)return 1
+  return 0
 }))
 
 function showToast(msg:string){toast.msg=msg;toast.show=true;setTimeout(()=>{toast.show=false},2000)}
@@ -663,7 +688,68 @@ function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;
 function msgCtxAction(action:string){msgCtx.show=false;if(action==='copy'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)navigator.clipboard.writeText(msg.content);showToast('已复制')}else if(action==='recall'){if(!activeChat.value)return;const chatType=activeChat.value.type==='group'?'group':activeChat.value.type==='ai'?'ai':'private';const ok=recallMessage(activeChat.value.id,msgCtx.msgId,chatType);if(ok)showToast('消息已撤回');else showToast('撤回失败，可能已超过2分钟')}else if(action==='delete'){showToast('已删除(仅自己可见)')}else if(action==='forward'){showToast('转发功能开发中')}else if(action==='favorite'){showToast('已收藏');const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)addFavorite({type:'message',title:'聊天消息',content:msg.content,source:`来自${msg.sender_name}`})}else if(action==='quote'){showToast('引用功能开发中')}else if(action==='select'){showToast('多选功能开发中')}}
 // 查看联系人的星火域
 function contactMoments(sparkId:string){return moments.value.filter(m=>m.author_id===sparkId)}
-function ctxMenuAction(action:string){ctxMenu.show=false;if(action==='delete'){confirmDialog.show=true;confirmDialog.title='删除聊天';confirmDialog.text='确定删除该聊天吗？';confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{showToast('已删除')}}else if(action==='pin')showToast('已置顶');else if(action==='unread'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);if(f)f.unread=1;showToast('已标记未读')}else if(action==='mute')showToast('已设置免打扰')}
+function ctxMenuAction(action:string){
+  ctxMenu.show=false
+  if(action==='delete'){
+    confirmDialog.show=true;confirmDialog.title='删除聊天';confirmDialog.text='确定删除该聊天吗？';confirmDialog.btnText='删除'
+    confirmDialog.onConfirm=()=>{showToast('已删除')}
+  } else if(action==='pin'){
+    toggleChatPin(ctxMenu.type as 'private'|'group', ctxMenu.id)
+  } else if(action==='unread'){
+    const f=friends.value.find(f=>f.spark_id===ctxMenu.id);if(f)f.unread=1;showToast('已标记未读')
+  } else if(action==='mute'){
+    toggleChatMute(ctxMenu.type as 'private'|'group', ctxMenu.id)
+  }
+}
+// 会话置顶切换
+function toggleChatPin(type:string, id:string){
+  if(type==='private'){
+    const f=friends.value.find(f=>f.spark_id===id)
+    if(f){f.is_chat_pinned=!f.is_chat_pinned;showToast(f.is_chat_pinned?'已置顶':'已取消置顶')}
+  } else if(type==='group'){
+    const g=groups.value.find(g=>g.id===id)
+    if(g){g.is_chat_pinned=!g.is_chat_pinned;showToast(g.is_chat_pinned?'已置顶':'已取消置顶')}
+  }
+}
+// 免打扰切换
+function toggleChatMute(type:string, id:string){
+  if(type==='private'){
+    const f=friends.value.find(f=>f.spark_id===id)
+    if(f){f.is_muted=!f.is_muted;showToast(f.is_muted?'已开启免打扰':'已关闭免打扰')}
+  } else if(type==='group'){
+    const g=groups.value.find(g=>g.id===id)
+    if(g){g.is_muted=!g.is_muted;showToast(g.is_muted?'已开启免打扰':'已关闭免打扰')}
+  }
+}
+// 清空聊天记录
+function handleClearChatHistory(){
+  if(!activeChat.value)return
+  confirmDialog.show=true;confirmDialog.title='清空聊天记录';confirmDialog.text='确定要清空所有聊天记录吗？此操作不可撤销。';confirmDialog.btnText='清空'
+  confirmDialog.onConfirm=()=>{
+    if(activeChat.value?.type==='group'){
+      const g=groups.value.find(g=>g.id===activeChat.value!.id)
+      if(g)g.messages=[]
+    } else if(activeChat.value?.type==='private'){
+      clearPrivateChat(activeChat.value.id)
+    } else if(activeChat.value?.type==='ai'){
+      aiChatHistory.value=[]
+    }
+    showToast('聊天记录已清空')
+  }
+}
+// 查找聊天内容
+function handleSearchChatHistory(){showToast('查找聊天内容功能开发中')}
+// 右键菜单动态标签
+function getCtxPinLabel():string{
+  if(ctxMenu.type==='private'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);return f?.is_chat_pinned?'📌 取消置顶':'📌 置顶'}
+  if(ctxMenu.type==='group'){const g=groups.value.find(g=>g.id===ctxMenu.id);return g?.is_chat_pinned?'📌 取消置顶':'📌 置顶'}
+  return'📌 置顶'
+}
+function getCtxMuteLabel():string{
+  if(ctxMenu.type==='private'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);return f?.is_muted?'🔔 取消免打扰':'🔕 消息免打扰'}
+  if(ctxMenu.type==='group'){const g=groups.value.find(g=>g.id===ctxMenu.id);return g?.is_muted?'🔔 取消免打扰':'🔕 消息免打扰'}
+  return'🔕 消息免打扰'
+}
 function handleRemoveFriend(sparkId:string){const f=friends.value.find(f=>f.spark_id===sparkId);confirmDialog.show=true;confirmDialog.title='⚠️ 删除联系人';confirmDialog.text=`确定要删除「${f?.nickname||sparkId}」吗？`;confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{removeFriend(sparkId);selectedContact.value=null;rightPanel.value='none';showToast('已删除')}}
 
 // ====== 好友管理功能 ======
@@ -1149,6 +1235,10 @@ function handlePublish() {
 .cs-slider{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,.06);border-radius:20px;transition:.2s}.cs-slider::before{content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;background:rgba(255,255,255,.3);border-radius:50%;transition:.2s}
 .cs-toggle input:checked+.cs-slider{background:rgba(139,92,246,.3)}.cs-toggle input:checked+.cs-slider::before{transform:translateX(16px);background:rgba(139,92,246,.8)}
 .cs-clear{display:block;width:100%;text-align:center;padding:10px;border:none;background:none;color:rgba(239,68,68,.5);font-size:12px;cursor:pointer;margin-top:12px;border-radius:8px;transition:all .15s}.cs-clear:hover{background:rgba(239,68,68,.04);color:rgba(239,68,68,.7)}
+/* 添加按钮(仿微信) */
+.cs-add-btn{cursor:pointer}.cs-add-icon{width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.03);border:1.5px dashed rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:18px;color:rgba(255,255,255,.2);transition:all .15s}.cs-add-btn:hover .cs-add-icon{border-color:rgba(139,92,246,.3);color:rgba(139,92,246,.5);background:rgba(139,92,246,.04)}
+/* 会话列表置顶标识 */
+.cp-conv.is-pinned{background:rgba(139,92,246,.03)!important}
 /* 拖拽遮罩 */
 .cp-drop-overlay{position:absolute;inset:0;z-index:20;background:rgba(139,92,246,.04);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;border:2px dashed rgba(139,92,246,.2);border-radius:12px}
 .cp-drop-box{padding:16px 32px;border-radius:12px;background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);font-size:14px;font-weight:600}
