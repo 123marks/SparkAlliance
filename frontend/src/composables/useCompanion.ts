@@ -104,17 +104,21 @@ export interface ChatMsg {
   sender_id: string      // spark_id
   sender_name: string
   sender_avatar: string
+  sender_avatar_url?: string  // 发送者头像URL（上传的真实头像）
   sender_type: 'user' | 'ai'
   receiver_id?: string   // 私聊接收者
   content: string
   type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video' | 'poke'
   media_url?: string
+  voice_duration?: number      // 语音时长（秒）
+  voice_blob_url?: string      // 语音文件Blob URL
   share_data?: { type: string; title: string; route: string }
   is_read: boolean       // 已读状态
   read_at?: string       // 读取时间
   created_at: string
   synced?: boolean       // 是否已同步到数据库
   mentions?: string[]    // @提及的 spark_id 列表
+  quote_msg?: { sender_name: string; content: string }  // 引用消息
 }
 
 /** 群聊 */
@@ -765,7 +769,8 @@ export function useCompanion() {
     if (!all[friendId]) all[friendId] = []
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
+      sender_type: 'user',
       receiver_id: friendId,
       content, type, share_data: shareData, is_read: false, created_at: now(),
     }
@@ -909,7 +914,8 @@ export function useCompanion() {
     if (!g) return
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
+      sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
     }
     g.messages.push(msg)
@@ -1289,7 +1295,8 @@ export function useCompanion() {
     if (!g) return
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
+      sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
       mentions: mentionIds.length > 0 ? mentionIds : undefined,
     }
