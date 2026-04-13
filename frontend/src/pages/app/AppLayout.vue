@@ -65,7 +65,9 @@
 
         <!-- 用户头像 — click-outside 关闭 -->
         <div class="user-dropdown" ref="dropdownRef">
-          <div class="u-avatar" @click.stop="showDropdown = !showDropdown">{{ avatarInitial }}</div>
+          <div class="u-avatar-wrap" @click.stop="showDropdown = !showDropdown">
+            <SparkAvatar :avatar-url="userAvatarUrl" :name="userName" size="sm" />
+          </div>
           <Transition name="dd">
             <div class="dd-menu" v-if="showDropdown" @click.stop>
               <div class="dd-header">
@@ -209,6 +211,7 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
 import CosmicBackground from '../../components/CosmicBackground.vue'
+import SparkAvatar from '../../components/SparkAvatar.vue'
 import { useSettings } from '../../composables/useSettings'
 
 const { appearance } = useSettings()
@@ -320,6 +323,11 @@ const userEmail = computed(() => user.value?.email || '')
 const avatarInitial = computed(() => {
   const name = userName.value
   return name ? name.charAt(0).toUpperCase() : '?'
+})
+
+// 用户头像URL — 从 user_metadata 读取，全局唯一头像源
+const userAvatarUrl = computed(() => {
+  return user.value?.user_metadata?.avatar_url || ''
 })
 
 // 退出登录
@@ -507,15 +515,12 @@ const handleLogout = async () => {
 
 /* ====== 头像下拉 ====== */
 .user-dropdown { position: relative; cursor: pointer; }
-.u-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  background: var(--gradient-brand);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 13px; color: white;
+.u-avatar-wrap {
+  cursor: pointer;
   transition: box-shadow 0.2s;
-  user-select: none;
+  border-radius: 50%;
 }
-.u-avatar:hover { box-shadow: 0 0 0 2px var(--theme-color, rgba(79,142,247,0.3)); }
+.u-avatar-wrap:hover { box-shadow: 0 0 0 2px var(--theme-color, rgba(79,142,247,0.3)); border-radius: 8px; }
 
 .dd-menu {
   position: absolute; top: 44px; right: 0;
