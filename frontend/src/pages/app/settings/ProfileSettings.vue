@@ -282,13 +282,22 @@ async function handleAvatarUpload(e: Event) {
   const file = input.files?.[0]
   if (!file) return
   if (file.size > 5 * 1024 * 1024) { showToast('error', '图片大小不能超过 5MB'); return }
+  if (!user.value) { showToast('error', '请先登录'); return }
 
   const ext = file.name.split('.').pop() || 'jpg'
-  const filePath = `avatars/${Date.now()}.${ext}`
-  const { error } = await supabase.storage.from('public').upload(filePath, file, { upsert: true })
-  if (error) { showToast('error', '头像上传失败'); return }
+  // 路径以 user_id 开头，匹配 Storage RLS 策略
+  const filePath = `${user.value.id}/avatar_${Date.now()}.${ext}`
 
-  const { data: urlData } = supabase.storage.from('public').getPublicUrl(filePath)
+  // 上传到 avatars bucket
+  const { error } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true })
+  if (error) {
+    console.error('头像上传错误:', error)
+    showToast('error', '头像上传失败：' + error.message)
+    return
+  }
+
+  // 获取公开URL并更新数据库
+  const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(filePath)
   const success = await updateProfile({ avatarUrl: urlData.publicUrl })
   showToast(success ? 'success' : 'error', success ? '头像已更新' : '头像更新失败')
 }

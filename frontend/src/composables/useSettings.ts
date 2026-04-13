@@ -256,7 +256,25 @@ export function useSettings() {
     if (data.location !== undefined) metadata.location = data.location
     if (data.avatarUrl !== undefined) metadata.avatar_url = data.avatarUrl
 
+    // 同步更新 auth.user_metadata
     const { error: authError } = await supabase.auth.updateUser({ data: metadata })
+
+    // 同步更新 spark_profiles 表（聊天界面从这里读取头像）
+    if (!authError && user.value) {
+      const profileUpdate: Record<string, unknown> = {}
+      if (data.nickname !== undefined) profileUpdate.nickname = data.nickname
+      if (data.bio !== undefined) profileUpdate.bio = data.bio
+      if (data.gender !== undefined) profileUpdate.gender = data.gender
+      if (data.avatarUrl !== undefined) profileUpdate.avatar_url = data.avatarUrl
+
+      if (Object.keys(profileUpdate).length > 0) {
+        await supabase
+          .from('spark_profiles')
+          .update(profileUpdate)
+          .eq('user_id', user.value.id)
+      }
+    }
+
     isSaving.value = false
 
     if (authError) {
