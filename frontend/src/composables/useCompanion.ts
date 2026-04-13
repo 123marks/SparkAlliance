@@ -121,6 +121,15 @@ export interface ChatMsg {
   quote_msg?: { sender_name: string; content: string }  // 引用消息
 }
 
+/** 群公告历史记录 */
+export interface GroupAnnouncementRecord {
+  id: string
+  content: string
+  author_id: string
+  author_name: string
+  created_at: string
+}
+
 /** 群聊 */
 export interface GroupChat {
   id: string
@@ -128,13 +137,22 @@ export interface GroupChat {
   avatar: string        // emoji
   owner_id: string      // spark_id
   ai_enabled: boolean
-  members: { spark_id: string; nickname: string; avatar: string; role: 'owner' | 'admin' | 'member' }[]
+  members: {
+    spark_id: string
+    nickname: string       // 用户名
+    avatar: string
+    role: 'owner' | 'admin' | 'member'
+    group_nickname?: string // 群昵称（覆盖显示名）
+  }[]
   messages: ChatMsg[]
   created_at: string
   unread: number
-  announcement?: string // 群公告
-  is_chat_pinned?: boolean // 会话置顶
-  is_muted?: boolean       // 消息免打扰
+  announcement?: string          // 当前群公告
+  announcement_history?: GroupAnnouncementRecord[] // 公告历史
+  is_chat_pinned?: boolean       // 会话置顶
+  is_muted?: boolean             // 消息免打扰
+  group_remark?: string          // 群备注（仅自己可见）
+  show_member_nickname?: boolean // 是否显示群成员昵称
 }
 
 /** 动态可见时间范围设置 */
@@ -912,8 +930,11 @@ export function useCompanion() {
   function sendGroupMsg(groupId: string, content: string) {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return
+    // 使用群昵称（如果设置了的话）
+    const me = g.members.find(m => m.spark_id === myProfile.value?.spark_id)
+    const displayName = me?.group_nickname || myProfile.value!.nickname
     const msg: ChatMsg = {
-      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: displayName,
       sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
       sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
@@ -1263,13 +1284,50 @@ export function useCompanion() {
     const myRole = getMemberRole(groupId, myProfile.value?.spark_id || '')
     if (myRole !== 'owner' && myRole !== 'admin') return { ok: false, msg: '仅群主或管理员可设置公告' }
     g.announcement = content
+    // 保存到公告历史
+    if (!g.announcement_history) g.announcement_history = []
+    g.announcement_history.unshift({
+      id: uid(),
+      content,
+      author_id: myProfile.value!.spark_id,
+      author_name: myProfile.value!.nickname,
+      created_at: now(),
+    })
     g.messages.push({
       id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
-      sender_type: 'user', content: `群公告已更新：${content}`,
+      sender_type: 'user', content: `📢 群公告已更新：${content}`,
       type: 'system', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.groups, groups.value)
     return { ok: true, msg: '群公告已更新' }
+  }
+
+  /** 设置群备注（仅自己可见） */
+  function setGroupRemark(groupId: string, remark: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    g.group_remark = remark
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /** 设置我在群里的昵称 */
+  function setMyGroupNickname(groupId: string, nickname: string) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || !myProfile.value) return
+    const me = g.members.find(m => m.spark_id === myProfile.value!.spark_id)
+    if (me) {
+      me.group_nickname = nickname || undefined
+      saveData(STORAGE_KEYS.groups, groups.value)
+    }
+  }
+
+  /** 获取群成员显示名（优先群昵称） */
+  function getGroupDisplayName(groupId: string, sparkId: string): string {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return sparkId
+    const m = g.members.find(m => m.spark_id === sparkId)
+    if (!m) return sparkId
+    return m.group_nickname || m.nickname
   }
 
   /** 修改群名称（群主/管理员） */
@@ -1370,6 +1428,7 @@ export function useCompanion() {
     createGroup, sendGroupMsg, sendGroupMsgWithMentions, fetchMomentComments,
     // 群管理
     getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
+    setGroupRemark, setMyGroupNickname, getGroupDisplayName,
     // 动态
     postMoment, toggleLike, commentMoment, deleteMoment, togglePinMoment,
     // 动态可见性设置

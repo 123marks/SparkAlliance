@@ -66,27 +66,33 @@
 
       <!-- 消息列表 -->
       <div v-if="sideTab==='chat'" class="cp-list">
+        <!-- 星火AI伙伴（永远第一位） -->
         <div class="cp-conv" :class="{active:activeChat?.type==='ai'}" @click="openAIChat" @contextmenu.prevent="e=>showCtxMenu(e,'ai','ai')">
           <span class="cp-av">🌟</span>
           <div class="cp-conv-info"><span class="cp-conv-name">星火AI伙伴</span><span class="cp-conv-last">智能助手，随时待命</span></div>
         </div>
-        <div v-for="g in sortedGroups" :key="g.id" class="cp-conv" :class="{active:activeChat?.id===g.id,'is-pinned':g.is_chat_pinned}" @click="openGroupChat(g.id)" @contextmenu.prevent="e=>showCtxMenu(e,'group',g.id)">
-          <div class="cp-group-av" :class="getGridClass(g.members.length)">
-            <span v-for="(emoji,gi) in getGroupAvatarGrid(g)" :key="gi" class="cp-gav-item">{{ emoji }}</span>
-          </div>
+        <!-- v6.9：统一聊天列表（群聊+私聊混合排序） -->
+        <div v-for="item in unifiedChatList" :key="item.type+item.id"
+          class="cp-conv"
+          :class="{active:(item.type==='private'?activeChat?.id===item.id&&activeChat?.type==='private':activeChat?.id===item.id&&activeChat?.type==='group'),'is-pinned':item.pinned}"
+          @click="item.type==='group'?openGroupChat(item.id):openPrivateChat(item.id)"
+          @contextmenu.prevent="e=>showCtxMenu(e,item.type,item.id)">
+          <!-- 群聊头像：九宫格 -->
+          <template v-if="item.type==='group'">
+            <div class="cp-group-av" :class="getGridClass(item.raw.members.length)">
+              <span v-for="(emoji,gi) in getGroupAvatarGrid(item.raw)" :key="gi" class="cp-gav-item">{{ emoji }}</span>
+            </div>
+          </template>
+          <!-- 私聊头像 -->
+          <SparkAvatar v-else :avatar="item.avatar" :name="item.name" size="sm" />
           <div class="cp-conv-info">
-            <span class="cp-conv-name">{{ g.name }}<small>({{ g.members.length }})</small></span>
-            <span class="cp-conv-last">{{ g.messages[g.messages.length-1]?.content?.slice(0,20)||'暂无消息' }}</span>
+            <span class="cp-conv-name">{{ item.name }}<small v-if="item.type==='group'">({{ item.raw.members.length }})</small></span>
+            <span class="cp-conv-last">{{ item.lastMsg }}</span>
           </div>
-          <span v-if="g.unread" class="cp-badge">{{ g.unread }}</span>
-        </div>
-        <div v-for="f in sortedFriends" :key="f.id" class="cp-conv" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private','is-pinned':f.is_chat_pinned}" @click="openPrivateChat(f.spark_id)" @contextmenu.prevent="e=>showCtxMenu(e,'private',f.spark_id)">
-          <SparkAvatar :avatar="f.avatar" :name="f.remark||f.nickname" size="sm" />
-          <div class="cp-conv-info">
-            <span class="cp-conv-name">{{ f.remark||f.nickname }}</span>
-            <span class="cp-conv-last">{{ f.last_msg||f.bio?.slice(0,20)||'' }}</span>
+          <div class="cp-conv-right">
+            <span v-if="item.muted" class="cp-mute-icon">🔕</span>
+            <span v-if="item.unread" class="cp-badge">{{ item.unread }}</span>
           </div>
-          <span v-if="f.unread" class="cp-badge">{{ f.unread }}</span>
         </div>
       </div>
 
@@ -128,6 +134,12 @@
         <h3>{{ chatTitle }}</h3>
         <span v-if="activeChat?.type==='group'" class="cp-hdr-sub">{{ activeGroup?.members.length }}人</span>
         <button v-if="activeChat?.type==='private'||activeChat?.type==='group'" class="cp-hdr-btn cs-btn" :class="{active:showChatSettings}" @click="showChatSettings=!showChatSettings" title="聊天设置">☰</button>
+      </div>
+      <!-- v6.9: 群公告横幅（聊天区域顶部，可关闭） -->
+      <div v-if="activeChat?.type==='group' && activeGroup?.announcement && showAnnouncementBanner" class="cp-ann-banner">
+        <span class="cp-ann-icon">📢</span>
+        <span class="cp-ann-text" @click="showAnnouncementHistory=true;showChatSettings=true">{{ activeGroup.announcement }}</span>
+        <button class="cp-ann-close" @click="showAnnouncementBanner=false">✕</button>
       </div>
       <div class="cp-chat-body">
         <div class="cp-messages" ref="chatScrollRef">
@@ -212,67 +224,133 @@
                 <button class="cs-clear" @click="handleClearChatHistory">清空聊天记录</button>
               </div>
             </template>
-            <!-- 群聊设置面板(仿微信) -->
+            <!-- ====== 群聊设置面板 v6.9（星火原创设计） ====== -->
             <template v-if="activeChat?.type==='group' && activeGroup">
+              <!-- 搜索群成员 -->
+              <div class="cs-search-bar">
+                <input v-model="groupMemberSearch" placeholder="🔍 搜索群成员" class="cs-search-input">
+              </div>
+              <!-- 群成员列表 -->
               <div class="cs-members">
-                <div v-for="m in activeGroup.members.slice(0,8)" :key="m.spark_id" class="cs-member">
-                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="md" />
-                  <span class="cs-mname">{{ m.nickname }}</span>
+                <div v-for="m in filteredGroupMembers" :key="m.spark_id" class="cs-member" @click="handleViewGroupMember(m)">
+                  <SparkAvatar :avatar="m.avatar" :name="m.group_nickname||m.nickname" size="md" />
+                  <span class="cs-mname">{{ m.group_nickname||m.nickname }}</span>
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
-                  <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
+                  <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理</span>
                 </div>
+                <!-- 添加/移出按钮 -->
                 <div class="cs-member cs-add-btn" @click="showToast('邀请成员')"><span class="cs-add-icon">＋</span><span class="cs-mname">添加</span></div>
+                <div v-if="myGroupRole==='owner'||myGroupRole==='admin'" class="cs-member cs-add-btn" @click="showToast('移出成员')"><span class="cs-add-icon cs-remove">－</span><span class="cs-mname">移出</span></div>
               </div>
-              <!-- 功能菜单区 -->
+              <div v-if="activeGroup.members.length>8 && !showAllMembers" class="cs-show-more" @click="showAllMembers=true">查看更多 ∨</div>
+              <div v-if="showAllMembers" class="cs-show-more" @click="showAllMembers=false">收起 ∧</div>
+
+              <!-- 群聊名称 -->
               <div class="cs-section">
-                <div class="cs-row clickable" @click="handleSearchChatHistory"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
+                <div class="cs-row clickable" @click="myGroupRole==='owner'||myGroupRole==='admin'?showGroupMgmt=!showGroupMgmt:null">
+                  <span>群聊名称</span>
+                  <span class="cs-val">{{ activeGroup.name }}</span>
+                  <span v-if="myGroupRole==='owner'||myGroupRole==='admin'" class="cs-arrow">›</span>
+                </div>
               </div>
+
+              <!-- 群公告 -->
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="showAnnouncementHistory=!showAnnouncementHistory">
+                  <span>群公告</span>
+                  <span class="cs-val cs-val-truncate">{{ activeGroup.announcement||'未设置' }}</span>
+                  <span class="cs-arrow">›</span>
+                </div>
+                <!-- 公告详情/历史 -->
+                <template v-if="showAnnouncementHistory">
+                  <div class="cs-announcement-detail">
+                    <p v-if="activeGroup.announcement" class="cs-ann-content">{{ activeGroup.announcement }}</p>
+                    <p v-else class="cs-ann-empty">暂无群公告</p>
+                    <!-- 群主/管理员可编辑 -->
+                    <div v-if="myGroupRole==='owner'||myGroupRole==='admin'" class="cs-ann-edit">
+                      <textarea v-model="groupAnnouncementInput" placeholder="输入新的群公告..." rows="2" class="cs-ann-textarea"></textarea>
+                      <button class="cs-ann-publish" @click="handleSetAnnouncement" :disabled="!groupAnnouncementInput.trim()">发布公告</button>
+                    </div>
+                    <!-- 历史公告 -->
+                    <div v-if="activeGroup.announcement_history?.length" class="cs-ann-history">
+                      <div class="cs-ann-history-title">历史公告</div>
+                      <div v-for="h in activeGroup.announcement_history" :key="h.id" class="cs-ann-history-item">
+                        <div class="cs-ann-h-meta">{{ h.author_name }} · {{ formatTimeAgo(h.created_at) }}</div>
+                        <div class="cs-ann-h-text">{{ h.content }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 备注（仅自己可见） -->
+              <div class="cs-section">
+                <div class="cs-row">
+                  <span>备注</span>
+                  <input v-model="groupRemarkInput" :placeholder="activeGroup.group_remark||'群聊的备注仅自己可见'" class="cs-inline-input" @blur="handleSaveGroupRemark">
+                </div>
+              </div>
+
+              <!-- 我在本群的昵称 -->
+              <div class="cs-section">
+                <div class="cs-row">
+                  <span>我在本群的昵称</span>
+                  <input v-model="myGroupNicknameInput" :placeholder="getMyGroupNickname()" class="cs-inline-input" @blur="handleSaveMyGroupNickname">
+                </div>
+              </div>
+
+              <!-- 查找聊天内容 -->
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="showChatHistorySearch=true"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
+              </div>
+
+              <!-- 开关设置区 -->
               <div class="cs-section">
                 <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox" :checked="activeGroup.is_muted" @change="toggleChatMute('group',activeGroup.id)"><span class="cs-slider"></span></label></div>
                 <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox" :checked="activeGroup.is_chat_pinned" @change="toggleChatPin('group',activeGroup.id)"><span class="cs-slider"></span></label></div>
+                <div class="cs-row"><span>显示群成员昵称</span><label class="cs-toggle"><input type="checkbox" :checked="activeGroup.show_member_nickname!==false" @change="handleToggleShowNickname"><span class="cs-slider"></span></label></div>
               </div>
-              <!-- 群公告 -->
-              <div v-if="activeGroup.announcement" class="cs-section">
-                <div class="cs-row"><span>📢 群公告</span></div>
-                <p class="cs-announcement">{{ activeGroup.announcement }}</p>
-              </div>
-              <!-- 群管理入口 -->
-              <div class="cs-section" v-if="myGroupRole==='owner'||myGroupRole==='admin'">
-                <div class="cs-row clickable" @click="showGroupMgmt=!showGroupMgmt"><span>⚙️ 群管理</span><span class="cs-arrow">›</span></div>
-              </div>
-              <template v-if="showGroupMgmt">
-                <!-- 修改群名 -->
+
+              <!-- 群管理（群主/管理员专属） -->
+              <template v-if="myGroupRole==='owner'||myGroupRole==='admin'">
                 <div class="cs-section">
-                  <div class="cs-row"><span>修改群名</span></div>
-                  <div class="cs-mgmt-input"><input v-model="groupRenameInput" :placeholder="activeGroup.name" maxlength="30"><button @click="handleRenameGroup">确定</button></div>
+                  <div class="cs-row clickable" @click="showGroupMgmt=!showGroupMgmt"><span>⚙️ 群管理</span><span class="cs-arrow" :class="{open:showGroupMgmt}">›</span></div>
                 </div>
-                <!-- 群公告 -->
-                <div class="cs-section">
-                  <div class="cs-row"><span>群公告</span></div>
-                  <div class="cs-mgmt-input"><input v-model="groupAnnouncementInput" placeholder="输入群公告..."><button @click="handleSetAnnouncement">发布</button></div>
-                </div>
-                <!-- 成员管理 -->
-                <div class="cs-section">
-                  <div class="cs-row"><span>成员管理</span></div>
-                  <div v-for="m in activeGroup.members" :key="m.spark_id" class="cs-member-row">
-                    <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="xs" />
-                    <span class="cs-member-name">{{ m.nickname }}</span>
-                    <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
-                    <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
-                    <div v-if="m.spark_id!==myProfile?.spark_id && m.spark_id!==activeGroup.owner_id" class="cs-member-acts">
-                      <button v-if="myGroupRole==='owner'" @click="handleSetAdmin(m.spark_id, m.role!=='admin')" class="cs-act-btn">{{ m.role==='admin'?'取消管理':'设为管理' }}</button>
-                      <button v-if="myGroupRole==='owner'" @click="handleTransferOwner(m.spark_id)" class="cs-act-btn warn">转让群主</button>
-                      <button v-if="myGroupRole==='owner'||(myGroupRole==='admin'&&m.role==='member')" @click="handleKickMember(m.spark_id)" class="cs-act-btn danger">移出</button>
+                <template v-if="showGroupMgmt">
+                  <!-- 修改群名 -->
+                  <div class="cs-section">
+                    <div class="cs-row"><span>修改群名</span></div>
+                    <div class="cs-mgmt-input"><input v-model="groupRenameInput" :placeholder="activeGroup.name" maxlength="30"><button @click="handleRenameGroup">确定</button></div>
+                  </div>
+                  <!-- 成员管理 -->
+                  <div class="cs-section">
+                    <div class="cs-row"><span>成员管理</span></div>
+                    <div v-for="m in activeGroup.members" :key="m.spark_id" class="cs-member-row">
+                      <SparkAvatar :avatar="m.avatar" :name="m.group_nickname||m.nickname" size="xs" />
+                      <span class="cs-member-name">{{ m.group_nickname||m.nickname }}</span>
+                      <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
+                      <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理</span>
+                      <div v-if="canManageMember(m)" class="cs-member-acts">
+                        <button v-if="myGroupRole==='owner'" @click="handleSetAdmin(m.spark_id, m.role!=='admin')" class="cs-act-btn">{{ m.role==='admin'?'取消管理':'设为管理' }}</button>
+                        <button v-if="myGroupRole==='owner'" @click="handleTransferOwner(m.spark_id)" class="cs-act-btn warn">转让群主</button>
+                        <button v-if="myGroupRole==='owner'||(myGroupRole==='admin'&&m.role==='member')" @click="handleKickMember(m.spark_id)" class="cs-act-btn danger">移出</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <!-- 解散群聊 -->
-                <div v-if="myGroupRole==='owner'" class="cs-section">
-                  <button class="cs-clear" @click="handleDisbandGroup">🗑️ 解散群聊</button>
-                </div>
+                  <!-- 解散群聊（仅群主） -->
+                  <div v-if="myGroupRole==='owner'" class="cs-section">
+                    <button class="cs-clear danger-text" @click="handleDisbandGroup">🗑️ 解散群聊</button>
+                  </div>
+                </template>
               </template>
+
+              <!-- 清空聊天记录 -->
               <div class="cs-section">
                 <button class="cs-clear" @click="handleClearChatHistory">清空聊天记录</button>
+              </div>
+              <!-- 退出群聊（非群主） -->
+              <div v-if="myGroupRole!=='owner'" class="cs-section">
+                <button class="cs-clear danger-text" @click="handleLeaveGroup">退出群聊</button>
               </div>
             </template>
           </div>
@@ -681,6 +759,7 @@ const {
   commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
   updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
+  setGroupRemark, setMyGroupNickname, getGroupDisplayName,
   friendTags, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
   momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
   persistFriends, persistGroups,
@@ -745,6 +824,13 @@ const mentionIds = ref<string[]>([])
 const showGroupMgmt = ref(false)
 const groupRenameInput = ref('')
 const groupAnnouncementInput = ref('')
+// v6.9 群设置新增
+const groupRemarkInput = ref('')
+const myGroupNicknameInput = ref('')
+const showAnnouncementBanner = ref(true) // 顶部公告横幅
+const showAnnouncementHistory = ref(false)
+const groupMemberSearch = ref('')
+const showAllMembers = ref(false)
 // 发布编辑器弹窗
 const showPublishModal = ref(false)
 const publishContent = ref('')
@@ -824,19 +910,40 @@ const chatMessages = computed(()=>{
   if(activeChat.value.type==='group')return activeGroup.value?.messages||[]
   return getPrivateChat(activeChat.value.id)
 })
-const sortedFriends = computed(()=>[...friends.value].sort((a,b)=>{
-  // 置顶优先
-  if(a.is_chat_pinned&&!b.is_chat_pinned)return-1;if(!a.is_chat_pinned&&b.is_chat_pinned)return 1
-  if(a.unread&&!b.unread)return-1;if(!a.unread&&b.unread)return 1
-  const ta=a.last_msg_time?new Date(a.last_msg_time).getTime():0
-  const tb=b.last_msg_time?new Date(b.last_msg_time).getTime():0
-  return tb-ta
-}))
-// 群聊列表排序（置顶优先）
-const sortedGroups = computed(()=>[...groups.value].sort((a,b)=>{
-  if(a.is_chat_pinned&&!b.is_chat_pinned)return-1;if(!a.is_chat_pinned&&b.is_chat_pinned)return 1
-  return 0
-}))
+// v6.9: 统一聊天列表（群聊+私聊混合排序，置顶的永远在前）
+type ChatListItem = { id: string; type: 'private'|'group'; name: string; avatar: string; lastMsg: string; lastMsgTime: number; unread: number; pinned: boolean; muted: boolean; raw: any }
+const unifiedChatList = computed<ChatListItem[]>(() => {
+  const items: ChatListItem[] = []
+  // 私聊
+  friends.value.forEach(f => {
+    items.push({
+      id: f.spark_id, type: 'private', name: f.remark || f.nickname, avatar: f.avatar,
+      lastMsg: f.last_msg || f.bio?.slice(0,20) || '', lastMsgTime: f.last_msg_time ? new Date(f.last_msg_time).getTime() : 0,
+      unread: f.unread || 0, pinned: !!f.is_chat_pinned, muted: !!f.is_muted, raw: f,
+    })
+  })
+  // 群聊
+  groups.value.forEach(g => {
+    const lastMsg = g.messages[g.messages.length - 1]
+    items.push({
+      id: g.id, type: 'group', name: g.group_remark || g.name, avatar: g.avatar,
+      lastMsg: lastMsg?.content?.slice(0, 20) || '暂无消息',
+      lastMsgTime: lastMsg ? new Date(lastMsg.created_at).getTime() : new Date(g.created_at).getTime(),
+      unread: g.unread || 0, pinned: !!g.is_chat_pinned, muted: !!g.is_muted, raw: g,
+    })
+  })
+  // 排序：置顶在前 → 未读在前 → 按最后消息时间倒序
+  return items.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1
+    if (!a.pinned && b.pinned) return 1
+    if (a.unread && !b.unread) return -1
+    if (!a.unread && b.unread) return 1
+    return b.lastMsgTime - a.lastMsgTime
+  })
+})
+// 保留原有computed兼容其他模块
+const sortedFriends = computed(() => friends.value)
+const sortedGroups = computed(() => groups.value)
 
 function showToast(msg:string){toast.msg=msg;toast.show=true;setTimeout(()=>{toast.show=false},2000)}
 function switchTab(tab:'chat'|'contacts'|'moments'){sideTab.value=tab;if(tab==='contacts'){rightPanel.value='none';selectedContact.value=null}else if(tab==='moments'){rightPanel.value='none'}}
@@ -1070,7 +1177,13 @@ function formatVoiceDuration(sec: number): string {
   return `${m}:${s.toString().padStart(2,'0')}`
 }
 
-// 开始录音（纯录音，不做任何识别）
+// ====== v6.9: 语音系统核心重写 ======
+// 核心思路：录音时同步开启SpeechRecognition并行收集文字
+// 用户点"转文字"时直接使用已收集的文本
+let parallelRecognition: any = null     // 录音期间同步运行的识别器
+let collectedTranscript = ''            // 录音期间收集到的完整文本
+
+// 开始录音（同步启动语音识别）
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -1081,13 +1194,64 @@ async function startRecording() {
     isRecording.value = true
     voiceDuration.value = 0
     voiceTimer = setInterval(() => { voiceDuration.value++ }, 1000)
+
+    // 同步启动语音识别（录音期间并行收集文字）
+    collectedTranscript = ''
+    realtimeTranscript.value = ''
+    startParallelRecognition()
   } catch {
     showToast('无法访问麦克风，请检查权限设置')
   }
 }
 
+// 并行语音识别（录音时同步运行）
+function startParallelRecognition() {
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SR) return
+  try {
+    parallelRecognition = new SR()
+    parallelRecognition.lang = 'zh-CN'
+    parallelRecognition.continuous = true        // 持续识别
+    parallelRecognition.interimResults = true     // 中间结果
+    parallelRecognition.maxAlternatives = 1
+
+    parallelRecognition.onresult = (event: any) => {
+      let finalText = ''
+      let interimText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalText += event.results[i][0].transcript
+        } else {
+          interimText += event.results[i][0].transcript
+        }
+      }
+      collectedTranscript = finalText
+      realtimeTranscript.value = finalText + interimText
+    }
+
+    parallelRecognition.onerror = () => { /* 静默处理，不影响录音 */ }
+    parallelRecognition.onend = () => {
+      // 如果还在录音中，自动重启识别（避免识别超时断开）
+      if (isRecording.value) {
+        try { parallelRecognition?.start() } catch { /* */ }
+      }
+    }
+    parallelRecognition.start()
+  } catch { /* 浏览器不支持也不影响录音 */ }
+}
+
+// 停止并行识别
+function stopParallelRecognition() {
+  if (parallelRecognition) {
+    try { parallelRecognition.stop() } catch { /* */ }
+    parallelRecognition = null
+  }
+  realtimeTranscript.value = ''
+}
+
 // 取消录音
 function cancelRecording() {
+  stopParallelRecognition()
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
     mediaRecorder.stream.getTracks().forEach(t => t.stop())
@@ -1095,6 +1259,7 @@ function cancelRecording() {
   isRecording.value = false
   if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
   audioChunks = []
+  collectedTranscript = ''
   resetVoiceState()
   showToast('已取消录音')
 }
@@ -1102,6 +1267,7 @@ function cancelRecording() {
 // 完成录音 → 直接发送语音消息
 function stopRecording() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
+  stopParallelRecognition()
   mediaRecorder.onstop = () => {
     const blob = new Blob(audioChunks, { type: 'audio/webm' })
     const duration = voiceDuration.value
@@ -1115,67 +1281,24 @@ function stopRecording() {
   mediaRecorder.stop()
 }
 
-// 完成录音 → 进入转文字流程（先暂存Blob，不发送）
+// 完成录音 → 进入转文字流程（使用录音期间收集的文本）
 function stopAndConvertToText() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
+  // 先收集最终结果再停止识别
+  const finalText = collectedTranscript || realtimeTranscript.value
+  stopParallelRecognition()
   mediaRecorder.onstop = () => {
     voicePreviewBlob.value = new Blob(audioChunks, { type: 'audio/webm' })
     voicePreviewDuration.value = voiceDuration.value
     mediaRecorder!.stream.getTracks().forEach(t => t.stop())
     isRecording.value = false
     if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-    // 开始语音识别（用麦克风API，不播放音频）
-    doVoiceToTextRecognition()
+    // 直接使用录音期间收集的文本
+    voiceShowTextPreview.value = true
+    voiceTextConverting.value = false
+    voiceTextPreview.value = finalText || '(未识别到语音内容，请确保说话时靠近麦克风)'
   }
   mediaRecorder.stop()
-}
-
-// 用Web Speech API识别已录制的内容（不播放音频）
-function doVoiceToTextRecognition() {
-  voiceTextConverting.value = true
-  voiceShowTextPreview.value = true
-  voiceTextPreview.value = ''
-
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    voiceTextConverting.value = false
-    voiceTextPreview.value = '(浏览器不支持语音识别)'
-    return
-  }
-  // 用Blob重新播放到AudioContext并用recognition监听
-  // 注意：Web Speech API只能监听麦克风，无法直接识别Blob
-  // 所以改用备选方案：通过AudioContext回放到扬声器，同时开recognition
-  // 但用户反馈不想播放音频，所以改用更可靠的方案
-  // 最终方案：直接用SpeechRecognition短暂监听（因为刚才录的音还在缓冲中）
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  const recognition = new SR()
-  recognition.lang = 'zh-CN'
-  recognition.continuous = false
-  recognition.interimResults = true
-  recognition.maxAlternatives = 3
-  let finalText = ''
-  recognition.onresult = (event: any) => {
-    let interim = ''
-    for (let i = 0; i < event.results.length; i++) {
-      if (event.results[i].isFinal) finalText += event.results[i][0].transcript
-      else interim += event.results[i][0].transcript
-    }
-    voiceTextPreview.value = finalText + interim
-  }
-  recognition.onerror = (e: any) => {
-    voiceTextConverting.value = false
-    if (e.error === 'no-speech') {
-      voiceTextPreview.value = '(未检测到语音内容，请重试)'
-    } else {
-      voiceTextPreview.value = `(识别失败: ${e.error})`
-    }
-  }
-  recognition.onend = () => {
-    voiceTextConverting.value = false
-    if (!voiceTextPreview.value) voiceTextPreview.value = '(未识别到内容)'
-  }
-  try { recognition.start() } catch { voiceTextConverting.value = false; voiceTextPreview.value = '(识别服务不可用)' }
-  // 超时自动停止
-  setTimeout(() => { try { recognition.stop() } catch {/* */} }, 8000)
 }
 
 // 转文字预览 - 确认发送（发送文本消息）
@@ -1256,35 +1379,87 @@ function playVoice(msg: ChatMsg) {
 }
 
 // 已发送的语音消息→转文字（v6.8: 不播放音频，纯识别）
+// v6.9: 已发送语音的转文字（通过AudioContext回放+SpeechRecognition同步识别）
 async function convertVoiceToText(msg: ChatMsg) {
   if (voiceConvertedTexts[msg.id]) { delete voiceConvertedTexts[msg.id]; return }
   if (!msg.voice_blob_url) { showToast('语音文件不可用'); return }
   voiceConverting[msg.id] = true
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    showToast('浏览器不支持语音识别')
+
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SR) {
+    voiceConvertedTexts[msg.id] = '(浏览器不支持语音识别)'
     voiceConverting[msg.id] = false
     return
   }
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  const recognition = new SR()
-  recognition.lang = 'zh-CN'
-  recognition.interimResults = false
-  recognition.maxAlternatives = 1
-  recognition.onresult = (event: any) => {
-    voiceConvertedTexts[msg.id] = event.results[0][0].transcript
+
+  try {
+    // 获取音频Blob数据
+    const response = await fetch(msg.voice_blob_url)
+    const audioBlob = await response.blob()
+    const audioCtx = new AudioContext()
+    const arrayBuffer = await audioBlob.arrayBuffer()
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+
+    // 创建MediaStreamDestination（虚拟输出，用户听不到）
+    const dest = audioCtx.createMediaStreamDestination()
+    const source = audioCtx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(dest) // 连接到虚拟输出（不连接speakers所以用户听不到）
+
+    // 启动SpeechRecognition监听虚拟流
+    // 注意：SpeechRecognition无法直接接受MediaStream
+    // 只能监听默认麦克风，所以改用备选方案：
+    // 静音播放到扬声器同时启动识别（音量设为极小）
+    const gainNode = audioCtx.createGain()
+    gainNode.gain.value = 0.01 // 极低音量，几乎听不到
+    source.connect(gainNode)
+    gainNode.connect(audioCtx.destination)
+
+    const recognition = new SR()
+    recognition.lang = 'zh-CN'
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+
+    let finalText = ''
+    recognition.onresult = (event: any) => {
+      let interim = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript
+        else interim += event.results[i][0].transcript
+      }
+      voiceConvertedTexts[msg.id] = finalText + interim || '(识别中...)'
+    }
+
+    recognition.onerror = () => {
+      if (!voiceConvertedTexts[msg.id] || voiceConvertedTexts[msg.id] === '(识别中...)') {
+        voiceConvertedTexts[msg.id] = '(识别失败，建议发送前使用转文字功能)'
+      }
+      voiceConverting[msg.id] = false
+    }
+
+    recognition.onend = () => {
+      voiceConverting[msg.id] = false
+      if (!finalText) {
+        voiceConvertedTexts[msg.id] = '(未识别到内容，建议下次发送前使用转文字)'
+      }
+    }
+
+    // 同时启动播放和识别
+    source.start()
+    try { recognition.start() } catch { voiceConverting[msg.id] = false; return }
+
+    // 播放结束后延时停止识别
+    source.onended = () => {
+      setTimeout(() => {
+        try { recognition.stop() } catch { /* */ }
+        audioCtx.close()
+      }, 1500)
+    }
+  } catch {
+    voiceConvertedTexts[msg.id] = '(音频处理失败)'
     voiceConverting[msg.id] = false
   }
-  recognition.onerror = () => {
-    voiceConvertedTexts[msg.id] = '(识别失败，请重试)'
-    voiceConverting[msg.id] = false
-  }
-  recognition.onend = () => {
-    if (!voiceConvertedTexts[msg.id]) voiceConvertedTexts[msg.id] = '(未识别到内容)'
-    voiceConverting[msg.id] = false
-  }
-  // 不播放音频！直接启动识别监听麦克风环境音
-  try { recognition.start() } catch { voiceConverting[msg.id] = false }
-  setTimeout(() => { try { recognition.stop() } catch {/* */} }, Math.max((msg.voice_duration || 5) * 1000 + 2000, 8000))
 }
 
 // ===== 聊天记录搜索（微信风格分类Tab） =====
@@ -1365,14 +1540,14 @@ function toggleChatMute(type:string, id:string){
     if(g){g.is_muted=!g.is_muted;persistGroups();showToast(g.is_muted?'已开启免打扰':'已关闭免打扰')}
   }
 }
-// 清空聊天记录
+// 清空聊天记录（v6.9: 群聊也持久化）
 function handleClearChatHistory(){
   if(!activeChat.value)return
   confirmDialog.show=true;confirmDialog.title='清空聊天记录';confirmDialog.text='确定要清空所有聊天记录吗？此操作不可撤销。';confirmDialog.btnText='清空'
   confirmDialog.onConfirm=()=>{
     if(activeChat.value?.type==='group'){
       const g=groups.value.find(g=>g.id===activeChat.value!.id)
-      if(g)g.messages=[]
+      if(g){ g.messages=[]; persistGroups() }
     } else if(activeChat.value?.type==='private'){
       clearPrivateChat(activeChat.value.id)
     } else if(activeChat.value?.type==='ai'){
@@ -1608,13 +1783,132 @@ const myGroupRole = computed(() => {
   if (!activeGroup.value || !myProfile.value) return null
   return getMemberRole(activeGroup.value.id, myProfile.value.spark_id)
 })
+
+// v6.9: 群成员过滤（搜索+人数限制）
+const filteredGroupMembers = computed(() => {
+  if (!activeGroup.value) return []
+  let members = activeGroup.value.members
+  // 搜索过滤
+  const q = groupMemberSearch.value.toLowerCase()
+  if (q) {
+    members = members.filter(m =>
+      (m.group_nickname || m.nickname).toLowerCase().includes(q) ||
+      m.nickname.toLowerCase().includes(q)
+    )
+  }
+  // 默认只显示8个，展开后全部
+  if (!showAllMembers.value && !q) {
+    return members.slice(0, 8)
+  }
+  return members
+})
+
+// v6.9: 点击群成员查看资料
+function handleViewGroupMember(m: { spark_id: string; nickname: string; avatar: string; group_nickname?: string }) {
+  if (m.spark_id === myProfile.value?.spark_id) { showSelfProfile(); return }
+  const f = friends.value.find(f => f.spark_id === m.spark_id)
+  if (f) showProfilePopup(f)
+  else showToast(`${m.group_nickname || m.nickname}`)
+}
+
+// v6.9: 判断当前用户是否能管理某成员
+function canManageMember(m: { spark_id: string; role: string }): boolean {
+  if (!myProfile.value) return false
+  if (m.spark_id === myProfile.value.spark_id) return false
+  if (m.spark_id === activeGroup.value?.owner_id) return false
+  if (myGroupRole.value === 'owner') return true
+  if (myGroupRole.value === 'admin' && m.role === 'member') return true
+  return false
+}
+
+// v6.9: 获取我在群里的昵称
+function getMyGroupNickname(): string {
+  if (!activeGroup.value || !myProfile.value) return ''
+  const me = activeGroup.value.members.find(m => m.spark_id === myProfile.value!.spark_id)
+  return me?.group_nickname || myProfile.value.nickname
+}
+
+// v6.9: 保存群备注
+function handleSaveGroupRemark() {
+  if (!activeGroup.value) return
+  const val = groupRemarkInput.value.trim()
+  if (val !== (activeGroup.value.group_remark || '')) {
+    setGroupRemark(activeGroup.value.id, val)
+    showToast('群备注已保存')
+  }
+}
+
+// v6.9: 保存我的群昵称
+function handleSaveMyGroupNickname() {
+  if (!activeGroup.value) return
+  const val = myGroupNicknameInput.value.trim()
+  setMyGroupNickname(activeGroup.value.id, val)
+  if (val) showToast(`群昵称已设为「${val}」`)
+  else showToast('已恢复默认昵称')
+}
+
+// v6.9: 切换显示群成员昵称
+function handleToggleShowNickname() {
+  if (!activeGroup.value) return
+  activeGroup.value.show_member_nickname = !activeGroup.value.show_member_nickname
+  persistGroups()
+}
+
+// v6.9: 退出群聊
+function handleLeaveGroup() {
+  if (!activeGroup.value || !myProfile.value) return
+  confirmDialog.show = true; confirmDialog.title = '退出群聊'
+  confirmDialog.text = `确定要退出「${activeGroup.value.name}」吗？`; confirmDialog.btnText = '退出'
+  confirmDialog.onConfirm = () => {
+    const gIdx = groups.value.findIndex(g => g.id === activeGroup.value!.id)
+    if (gIdx >= 0) {
+      // 移除自己
+      const g = groups.value[gIdx]
+      g.members = g.members.filter(m => m.spark_id !== myProfile.value!.spark_id)
+      g.messages.push({
+        id: Date.now().toString(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+        sender_type: 'user', content: `${myProfile.value!.nickname} 退出了群聊`,
+        type: 'system', is_read: true, created_at: new Date().toISOString(),
+      })
+      // 从列表移除
+      groups.value.splice(gIdx, 1)
+      persistGroups()
+    }
+    activeChat.value = null
+    rightPanel.value = 'none'
+    showChatSettings.value = false
+    showToast('已退出群聊')
+  }
+}
+
+// v6.9: openGroupChat时重置公告横幅
+const _origOpenGroupChat = openGroupChat
+// @ts-ignore
+// 已通过watch替代实现
+watch(activeChat, (newVal) => {
+  if (newVal?.type === 'group') {
+    showAnnouncementBanner.value = true
+    showAnnouncementHistory.value = false
+    showGroupMgmt.value = false
+    showAllMembers.value = false
+    groupMemberSearch.value = ''
+    // 初始化群备注和昵称输入框
+    const g = groups.value.find(g => g.id === newVal.id)
+    if (g) {
+      groupRemarkInput.value = g.group_remark || ''
+      const me = g.members.find(m => m.spark_id === myProfile.value?.spark_id)
+      myGroupNicknameInput.value = me?.group_nickname || ''
+    }
+  }
+})
+
 // 检查消息是否包含@当前用户
 function isMentionedInMsg(msg: ChatMsg): boolean {
   if (!myProfile.value) return false
   if (msg.mentions?.includes(myProfile.value.spark_id)) return true
   return msg.content.includes(`@${myProfile.value.nickname}`)
 }
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat
 // 渲染消息内容（@提及高亮）
 function renderMsgContent(content: string): string {
   // 转义HTML
@@ -2040,6 +2334,66 @@ function handlePublish() {
 .cp-read-status{font-size:10px;color:#94a3b8;flex-shrink:0;line-height:1;letter-spacing:-1px}.cp-read-status.read{color:#a855f7}
 /* 群管理样式 */
 .cs-announcement{font-size:11px;color:rgba(255,255,255,.35);padding:4px 8px;margin:0;line-height:1.5;background:rgba(255,255,255,.015);border-radius:6px}
+
+/* ====== v6.9 新增CSS ====== */
+
+/* 群公告横幅 */
+.cp-ann-banner{display:flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(139,92,246,.04);border-bottom:1px solid rgba(139,92,246,.06);font-size:11px;flex-shrink:0}
+.cp-ann-icon{font-size:12px}
+.cp-ann-text{flex:1;color:rgba(255,255,255,.5);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-ann-text:hover{color:rgba(139,92,246,.6)}
+.cp-ann-close{background:none;border:none;color:rgba(255,255,255,.15);font-size:10px;cursor:pointer;padding:2px 4px;border-radius:4px}
+.cp-ann-close:hover{color:rgba(255,255,255,.3);background:rgba(255,255,255,.02)}
+
+/* 搜索群成员 */
+.cs-search-bar{padding:8px}
+.cs-search-input{width:100%;padding:6px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:8px;color:rgba(255,255,255,.6);font-size:11px;outline:none}
+.cs-search-input:focus{border-color:rgba(139,92,246,.15)}
+
+/* 查看更多/收起 */
+.cs-show-more{text-align:center;font-size:10px;color:rgba(139,92,246,.4);cursor:pointer;padding:6px 0}
+.cs-show-more:hover{color:rgba(139,92,246,.6)}
+
+/* 行内值显示 */
+.cs-val{font-size:11px;color:rgba(255,255,255,.25);margin-left:auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-val-truncate{max-width:100px}
+
+/* 内联输入框 */
+.cs-inline-input{background:none;border:none;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.5);font-size:11px;padding:2px 4px;width:100px;text-align:right;outline:none;margin-left:auto}
+.cs-inline-input:focus{border-color:rgba(139,92,246,.2);color:rgba(255,255,255,.7)}
+
+/* 群公告详情面板 */
+.cs-announcement-detail{padding:8px;background:rgba(255,255,255,.01);border-radius:6px;margin:0 8px 8px}
+.cs-ann-content{font-size:12px;color:rgba(255,255,255,.5);line-height:1.6;margin:0 0 8px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px}
+.cs-ann-empty{font-size:11px;color:rgba(255,255,255,.15);margin:0 0 8px;text-align:center;padding:12px}
+.cs-ann-edit{display:flex;flex-direction:column;gap:6px}
+.cs-ann-textarea{width:100%;padding:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:6px;color:rgba(255,255,255,.6);font-size:11px;resize:vertical;min-height:40px;outline:none}
+.cs-ann-textarea:focus{border-color:rgba(139,92,246,.15)}
+.cs-ann-publish{align-self:flex-end;padding:4px 14px;font-size:10px;background:rgba(139,92,246,.1);color:rgba(139,92,246,.8);border:1px solid rgba(139,92,246,.08);border-radius:6px;cursor:pointer;transition:all .15s}
+.cs-ann-publish:hover:not(:disabled){background:rgba(139,92,246,.18)}
+.cs-ann-publish:disabled{opacity:.4;cursor:not-allowed}
+
+/* 公告历史 */
+.cs-ann-history{margin-top:10px;border-top:1px solid rgba(255,255,255,.03);padding-top:8px}
+.cs-ann-history-title{font-size:10px;color:rgba(255,255,255,.2);margin-bottom:6px;letter-spacing:.5px}
+.cs-ann-history-item{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.015);font-size:11px}
+.cs-ann-history-item:last-child{border-bottom:none}
+.cs-ann-h-meta{font-size:9px;color:rgba(255,255,255,.15);margin-bottom:2px}
+.cs-ann-h-text{color:rgba(255,255,255,.35);line-height:1.5}
+
+/* 移出按钮红色 */
+.cs-add-icon.cs-remove{color:rgba(239,68,68,.6)}
+
+/* 箭头旋转 */
+.cs-arrow.open{transform:rotate(90deg)}
+
+/* 红色文字按钮 */
+.cs-clear.danger-text{color:rgba(239,68,68,.6)}
+.cs-clear.danger-text:hover{background:rgba(239,68,68,.04)}
+
+/* 统一聊天列表右侧 */
+.cp-conv-right{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}
+.cp-mute-icon{font-size:10px;opacity:.3}
 .cs-mgmt-input{display:flex;gap:4px;padding:4px 0}
 .cs-mgmt-input input{flex:1;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:10px;outline:none}
 .cs-mgmt-input input:focus{border-color:rgba(139,92,246,.15)}
