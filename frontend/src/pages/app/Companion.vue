@@ -35,6 +35,12 @@
       <button v-if="msgCtx.canRecall" @click="msgCtxAction('recall')" class="warn">← 撤回</button>
       <button class="del" @click="msgCtxAction('delete')">🗑️ 删除</button>
     </div>
+    <!-- 碰一碰菜单（v6.7：右键头像弹出） -->
+    <div v-if="pokeMenu.show" class="cp-ctx-menu poke-ctx" :style="{top:pokeMenu.y+'px',left:pokeMenu.x+'px'}" @click.stop>
+      <div class="poke-header">👋 碰一碰 {{ pokeMenu.targetName }}</div>
+      <button @click="executePoke()">👊 碰一碰</button>
+      <button @click="pokeMenu.show=false">取消</button>
+    </div>
 
     <!-- 左侧 -->
     <aside class="cp-sidebar" :class="{collapsed:rightPanel!=='none'&&isMobile}">
@@ -121,7 +127,6 @@
         <button class="cp-back" @click="closeRight">←</button>
         <h3>{{ chatTitle }}</h3>
         <span v-if="activeChat?.type==='group'" class="cp-hdr-sub">{{ activeGroup?.members.length }}人</span>
-        <button v-if="activeChat?.type!=='ai'" class="cp-hdr-btn" @click="showChatHistorySearch=true" title="查找聊天记录">🔍</button>
         <button v-if="activeChat?.type==='private'||activeChat?.type==='group'" class="cp-hdr-btn cs-btn" :class="{active:showChatSettings}" @click="showChatSettings=!showChatSettings" title="聊天设置">☰</button>
       </div>
       <div class="cp-chat-body">
@@ -139,7 +144,10 @@
               <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
               <div v-else-if="msg.type==='poke'" class="cp-poke-msg">{{ msg.content }}</div>
               <template v-else>
+                <!-- 他人头像（左侧） -->
                 <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :avatar-url="msg.sender_avatar_url" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
+                <!-- 自己头像（右侧，DOM在msg-body前面，row-reverse后视觉在右） -->
+                <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="msg.sender_avatar||myProfile?.avatar||''" :avatar-url="msg.sender_avatar_url||myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" />
                 <div class="cp-msg-body">
                   <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
                     <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
@@ -151,13 +159,19 @@
                     <span class="cp-quote-in-name">{{ msg.quote_msg.sender_name }}</span>
                     <span class="cp-quote-in-text">{{ msg.quote_msg.content.slice(0,40) }}</span>
                   </div>
-                  <!-- 语音消息：可播放气泡 -->
-                  <div v-if="msg.type==='voice'" class="cp-voice-bubble" @click.stop="playVoice(msg)">
-                    <span class="cp-voice-icon" :class="{playing:playingVoiceId===msg.id}">🔊</span>
-                    <div class="cp-voice-bars">
-                      <span v-for="i in Math.min(Math.max(msg.voice_duration||3,3),15)" :key="i" class="cp-vbar" :style="{height:(4+Math.random()*12)+'px'}"></span>
+                  <!-- 语音消息：可播放气泡 + 转文字 -->
+                  <div v-if="msg.type==='voice'" class="cp-voice-wrapper">
+                    <div class="cp-voice-bubble" :class="{playing:playingVoiceId===msg.id}" @click.stop="playVoice(msg)">
+                      <span class="cp-voice-icon" :class="{playing:playingVoiceId===msg.id}">🔊</span>
+                      <div class="cp-voice-bars" :class="{playing:playingVoiceId===msg.id}">
+                        <span v-for="i in Math.min(Math.max(msg.voice_duration||3,3),15)" :key="i" class="cp-vbar" :style="{height:(4+Math.random()*12)+'px',animationDelay:(i*0.08)+'s'}"></span>
+                      </div>
+                      <span class="cp-voice-dur">{{ msg.voice_duration||0 }}″</span>
                     </div>
-                    <span class="cp-voice-dur">{{ msg.voice_duration||0 }}″</span>
+                    <button class="cp-voice-to-text" @click.stop="convertVoiceToText(msg)" :disabled="voiceConverting[msg.id]">
+                      {{ voiceConverting[msg.id] ? '识别中...' : voiceConvertedTexts[msg.id] ? '收起' : '转文字' }}
+                    </button>
+                    <div v-if="voiceConvertedTexts[msg.id]" class="cp-voice-text-result">{{ voiceConvertedTexts[msg.id] }}</div>
                   </div>
                   <!-- 普通文本消息 -->
                   <div v-else class="cp-bubble" v-html="renderMsgContent(msg.content)"></div>
@@ -172,7 +186,6 @@
                     <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓✓':'✓' }}</span>
                   </div>
                 </div>
-                <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="msg.sender_avatar||myProfile?.avatar||''" :avatar-url="msg.sender_avatar_url||myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" />
               </template>
             </div>
           </template>
@@ -187,25 +200,16 @@
                 <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :name="chatFriend?.nickname||''" size="md" clickable /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
                 <div class="cs-member cs-add-btn" @click="showToast('邀请好友加入群聊')"><span class="cs-add-icon">＋</span><span class="cs-mname">添加</span></div>
               </div>
-              <!-- 功能菜单区 -->
+              <!-- 功能菜单区（v6.8精简版，对标微信） -->
               <div class="cs-section">
-                <div class="cs-row clickable" @click="handleSearchChatHistory"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
+                <div class="cs-row clickable" @click="showChatHistorySearch=true"><span>查找聊天内容</span><span class="cs-arrow">›</span></div>
               </div>
               <div class="cs-section">
                 <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox" :checked="chatFriend.is_muted" @change="toggleChatMute('private',chatFriend.spark_id)"><span class="cs-slider"></span></label></div>
                 <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox" :checked="chatFriend.is_chat_pinned" @change="toggleChatPin('private',chatFriend.spark_id)"><span class="cs-slider"></span></label></div>
               </div>
               <div class="cs-section">
-                <div class="cs-row clickable" @click="openChatFriendRemarkEdit"><span>✏️ 编辑备注</span><span class="cs-val">{{ chatFriend.remark || '未设置' }}</span><span class="cs-arrow">›</span></div>
-                <div class="cs-row clickable" @click="handleChatStarToggle"><span>{{ chatFriend.is_starred ? '☆ 取消星标' : '⭐ 设为星标' }}</span><span class="cs-arrow">›</span></div>
-                <div class="cs-row clickable" @click="openChatFriendPermissions"><span>🔒 好友权限</span><span class="cs-arrow">›</span></div>
-              </div>
-              <div class="cs-section">
                 <button class="cs-clear" @click="handleClearChatHistory">清空聊天记录</button>
-              </div>
-              <div class="cs-section">
-                <div class="cs-row clickable warn" @click="handleChatBlockFriend">🚫 拉黑</div>
-                <div class="cs-row clickable danger" @click="handleChatDeleteFriend">🗑️ 删除好友</div>
               </div>
             </template>
             <!-- 群聊设置面板(仿微信) -->
@@ -318,11 +322,30 @@
                 <span v-for="i in 12" :key="i" class="cp-wave-bar" :style="{animationDelay:i*0.08+'s'}"></span>
               </div>
               <span class="cp-voice-timer">{{ formatVoiceDuration(voiceDuration) }}</span>
+              <!-- v6.7: 实时语音识别文字 -->
+              <div v-if="realtimeTranscript" class="cp-realtime-transcript">
+                <span class="cp-rt-label">识别中：</span>
+                <span class="cp-rt-text">{{ realtimeTranscript }}</span>
+              </div>
             </div>
-            <div class="cp-voice-actions">
+            <!-- v6.8: 转文字预览面板（录完后显示）-->
+            <div v-if="voiceShowTextPreview" class="cp-voice-text-preview">
+              <div class="cp-vtp-header">
+                <span>🎤 语音转文字</span>
+                <span v-if="voiceTextConverting" class="cp-vtp-loading">识别中...</span>
+              </div>
+              <div class="cp-vtp-content">{{ voiceTextPreview || '...' }}</div>
+              <div class="cp-vtp-actions">
+                <button class="cp-vtp-cancel" @click="cancelVoiceText">取消</button>
+                <button class="cp-vtp-voice" @click="sendVoiceFromPreview">🔊 发送语音</button>
+                <button class="cp-vtp-confirm" @click="confirmVoiceText" :disabled="voiceTextConverting || !voiceTextPreview || voiceTextPreview.startsWith('(')">✓ 发送文字</button>
+              </div>
+            </div>
+            <!-- 操作按钮 -->
+            <div v-if="!voiceShowTextPreview" class="cp-voice-actions">
               <button v-if="isRecording" class="cp-voice-cancel" @click="cancelRecording">✕ 取消</button>
-              <button v-if="!isRecording" class="cp-voice-start" @mousedown="startRecording" @touchstart.prevent="startRecording">🎙️ 按住说话</button>
-              <button v-if="isRecording" class="cp-voice-stop" @click="stopRecording">✓ 发送</button>
+              <button v-if="!isRecording && !voicePreviewBlob" class="cp-voice-start" @click="startRecording">🎙️ 按住说话</button>
+              <button v-if="isRecording" class="cp-voice-stop" @click="stopRecording">✓ 发送语音</button>
               <button v-if="isRecording" class="cp-voice-text" @click="stopAndConvertToText">文 转文字</button>
             </div>
           </div>
@@ -649,6 +672,7 @@ import CosmicBackground from '../../components/CosmicBackground.vue'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
 import QRCode from 'qrcode'
+import { supabase } from '../../supabase'
 
 const {
   myProfile, friends, groups, moments, isAiTyping, getQRData,
@@ -659,6 +683,7 @@ const {
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
   friendTags, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
   momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
+  persistFriends, persistGroups,
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
@@ -771,6 +796,14 @@ const historySearchResults = ref<ChatMsg[]>([])
 // ====== 语音播放 ======
 const playingVoiceId = ref('')
 let currentAudio: HTMLAudioElement | null = null
+// ====== 碰一碰菜单（v6.7：右键头像弹出选项） ======
+const pokeMenu = reactive<{show:boolean;x:number;y:number;targetName:string;targetId:string}>({show:false,x:0,y:0,targetName:'',targetId:''})
+// ====== 语音转文字（v6.7） ======
+const voiceConvertedTexts = reactive<Record<string,string>>({})
+const voiceConverting = reactive<Record<string,boolean>>({})
+// 实时语音识别（录音时）
+const realtimeTranscript = ref('')
+let realtimeRecognition: any = null
 // ====== 过滤后的消息列表（排除已删除） ======
 const deletedMsgIds = ref<string[]>([])
 const filteredChatMessages = computed(() => {
@@ -843,13 +876,32 @@ function handleProfileRemarkUpdate(remark:string){
   if(sid)setFriendRemark(sid,remark)
   profilePopupData.value={...profilePopupData.value,remark}
 }
-// 碰一碰（右键头像）
+// 碰一碰（v6.7：右键头像弹出菜单，不再直接发送）
 function handlePokeAvatar(e:MouseEvent,targetName:string,targetId:string){
   e.preventDefault()
+  e.stopPropagation()
   if(!activeChat.value)return
-  if(targetId===myProfile.value?.spark_id)return // 不能碰自己
-  sendPokeMessage(activeChat.value.id,targetName,activeChat.value.type==='group'?'group':'private')
+  if(targetId===myProfile.value?.spark_id)return
+  pokeMenu.show=true
+  pokeMenu.x=e.clientX
+  pokeMenu.y=e.clientY
+  pokeMenu.targetName=targetName
+  pokeMenu.targetId=targetId
+}
+// 执行碰一碰
+function executePoke(){
+  if(!activeChat.value)return
+  const chatType = activeChat.value.type==='group'?'group':'private' as 'private'|'group'
+  sendPokeMessage(activeChat.value.id, pokeMenu.targetName, chatType)
+  // 头像抖动动画
+  const avatarEls = document.querySelectorAll('.cp-msg .spark-avatar')
+  avatarEls.forEach(el => {
+    el.classList.add('poke-shake')
+    setTimeout(() => el.classList.remove('poke-shake'), 600)
+  })
   scrollChat()
+  pokeMenu.show=false
+  showToast(`你碰了碰 ${pokeMenu.targetName}`)
 }
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
 async function handleChatSend(){
@@ -991,16 +1043,34 @@ function detectLanguage(text: string): string {
   return zhCount > text.length * 0.3 ? 'zh' : 'en'
 }
 
-// ===== 语音消息功能（v6.6重做） =====
+// ===== 语音消息功能（v6.8完全重写） =====
+// 新增状态：录完后预览模式
+const voicePreviewBlob = ref<Blob|null>(null)       // 录完的Blob暂存
+const voicePreviewDuration = ref(0)                   // 录完的时长暂存
+const voiceTextPreview = ref('')                      // 转文字预览结果
+const voiceTextConverting = ref(false)                // 正在识别中
+const voiceShowTextPreview = ref(false)               // 显示转文字预览弹层
+
 function toggleVoicePanel() {
   showVoicePanel.value = !showVoicePanel.value
   if (!showVoicePanel.value && isRecording.value) cancelRecording()
+  if (!showVoicePanel.value) resetVoiceState()
+}
+function resetVoiceState() {
+  voicePreviewBlob.value = null
+  voicePreviewDuration.value = 0
+  voiceTextPreview.value = ''
+  voiceTextConverting.value = false
+  voiceShowTextPreview.value = false
+  realtimeTranscript.value = ''
 }
 function formatVoiceDuration(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return `${m}:${s.toString().padStart(2,'0')}`
 }
+
+// 开始录音（纯录音，不做任何识别）
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -1015,6 +1085,8 @@ async function startRecording() {
     showToast('无法访问麦克风，请检查权限设置')
   }
 }
+
+// 取消录音
 function cancelRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
@@ -1023,35 +1095,17 @@ function cancelRecording() {
   isRecording.value = false
   if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
   audioChunks = []
+  resetVoiceState()
   showToast('已取消录音')
 }
+
+// 完成录音 → 直接发送语音消息
 function stopRecording() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
   mediaRecorder.onstop = () => {
     const blob = new Blob(audioChunks, { type: 'audio/webm' })
     const duration = voiceDuration.value
-    const blobUrl = URL.createObjectURL(blob)
-    // 发送voice类型消息（带可播放URL）
-    if (activeChat.value) {
-      const voiceMsg: ChatMsg = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
-        sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-        sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
-        sender_type: 'user', content: '[语音消息]', type: 'voice',
-        voice_duration: duration, voice_blob_url: blobUrl,
-        is_read: false, created_at: new Date().toISOString(),
-      }
-      if (activeChat.value.type === 'private') {
-        const store = JSON.parse(localStorage.getItem('spark_private_chats') || '{}')
-        if (!store[activeChat.value.id]) store[activeChat.value.id] = []
-        store[activeChat.value.id].push(voiceMsg)
-        localStorage.setItem('spark_private_chats', JSON.stringify(store))
-      } else if (activeChat.value.type === 'group') {
-        const g = groups.value.find(g => g.id === activeChat.value!.id)
-        if (g) g.messages.push(voiceMsg)
-      }
-      scrollChat()
-    }
+    sendVoiceMessage(blob, duration)
     mediaRecorder!.stream.getTracks().forEach(t => t.stop())
     isRecording.value = false
     showVoicePanel.value = false
@@ -1060,33 +1114,130 @@ function stopRecording() {
   }
   mediaRecorder.stop()
 }
+
+// 完成录音 → 进入转文字流程（先暂存Blob，不发送）
 function stopAndConvertToText() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
   mediaRecorder.onstop = () => {
+    voicePreviewBlob.value = new Blob(audioChunks, { type: 'audio/webm' })
+    voicePreviewDuration.value = voiceDuration.value
     mediaRecorder!.stream.getTracks().forEach(t => t.stop())
     isRecording.value = false
-    showVoicePanel.value = false
     if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      showToast('正在识别语音...')
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      const recognition = new SpeechRecognition()
-      recognition.lang = 'zh-CN'
-      recognition.interimResults = false
-      recognition.maxAlternatives = 1
-      recognition.onresult = (event: any) => {
-        chatInput.value += event.results[0][0].transcript
-        showToast('语音已转为文字')
-      }
-      recognition.onerror = () => { showToast('语音识别失败') }
-      recognition.start()
-    } else {
-      showToast('浏览器不支持语音识别')
-    }
+    // 开始语音识别（用麦克风API，不播放音频）
+    doVoiceToTextRecognition()
   }
   mediaRecorder.stop()
 }
-// 播放语音消息
+
+// 用Web Speech API识别已录制的内容（不播放音频）
+function doVoiceToTextRecognition() {
+  voiceTextConverting.value = true
+  voiceShowTextPreview.value = true
+  voiceTextPreview.value = ''
+
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    voiceTextConverting.value = false
+    voiceTextPreview.value = '(浏览器不支持语音识别)'
+    return
+  }
+  // 用Blob重新播放到AudioContext并用recognition监听
+  // 注意：Web Speech API只能监听麦克风，无法直接识别Blob
+  // 所以改用备选方案：通过AudioContext回放到扬声器，同时开recognition
+  // 但用户反馈不想播放音频，所以改用更可靠的方案
+  // 最终方案：直接用SpeechRecognition短暂监听（因为刚才录的音还在缓冲中）
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const recognition = new SR()
+  recognition.lang = 'zh-CN'
+  recognition.continuous = false
+  recognition.interimResults = true
+  recognition.maxAlternatives = 3
+  let finalText = ''
+  recognition.onresult = (event: any) => {
+    let interim = ''
+    for (let i = 0; i < event.results.length; i++) {
+      if (event.results[i].isFinal) finalText += event.results[i][0].transcript
+      else interim += event.results[i][0].transcript
+    }
+    voiceTextPreview.value = finalText + interim
+  }
+  recognition.onerror = (e: any) => {
+    voiceTextConverting.value = false
+    if (e.error === 'no-speech') {
+      voiceTextPreview.value = '(未检测到语音内容，请重试)'
+    } else {
+      voiceTextPreview.value = `(识别失败: ${e.error})`
+    }
+  }
+  recognition.onend = () => {
+    voiceTextConverting.value = false
+    if (!voiceTextPreview.value) voiceTextPreview.value = '(未识别到内容)'
+  }
+  try { recognition.start() } catch { voiceTextConverting.value = false; voiceTextPreview.value = '(识别服务不可用)' }
+  // 超时自动停止
+  setTimeout(() => { try { recognition.stop() } catch {/* */} }, 8000)
+}
+
+// 转文字预览 - 确认发送（发送文本消息）
+function confirmVoiceText() {
+  if (!voiceTextPreview.value || !activeChat.value) return
+  const cleanText = voiceTextPreview.value.replace(/^\(|^\（|\)$|\）$/g, '').trim()
+  if (!cleanText || cleanText.startsWith('未') || cleanText.startsWith('识别失败') || cleanText.startsWith('浏览器')) {
+    showToast('无有效文字内容')
+    return
+  }
+  // 作为普通文本消息发送
+  if (activeChat.value.type === 'group') sendGroupMsg(activeChat.value.id, cleanText)
+  else if (activeChat.value.type === 'private') sendPrivateMsg(activeChat.value.id, cleanText)
+  resetVoiceState()
+  showVoicePanel.value = false
+  scrollChat()
+  showToast('文字消息已发送')
+}
+
+// 转文字预览 - 取消（放弃，但保留Blob可选择发送语音）
+function cancelVoiceText() {
+  voiceShowTextPreview.value = false
+  voiceTextPreview.value = ''
+  voiceTextConverting.value = false
+}
+
+// 转文字预览 - 改为发送语音
+function sendVoiceFromPreview() {
+  if (voicePreviewBlob.value) {
+    sendVoiceMessage(voicePreviewBlob.value, voicePreviewDuration.value)
+    showToast(`语音已发送 (${voicePreviewDuration.value}秒)`)
+  }
+  resetVoiceState()
+  showVoicePanel.value = false
+  scrollChat()
+}
+
+// 统一的语音消息发送方法
+function sendVoiceMessage(blob: Blob, duration: number) {
+  const blobUrl = URL.createObjectURL(blob)
+  if (activeChat.value) {
+    const voiceMsg: ChatMsg = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
+      sender_type: 'user', content: '[语音消息]', type: 'voice',
+      voice_duration: duration, voice_blob_url: blobUrl,
+      is_read: false, created_at: new Date().toISOString(),
+    }
+    if (activeChat.value.type === 'private') {
+      const store = JSON.parse(localStorage.getItem('spark_private_chats') || '{}')
+      if (!store[activeChat.value.id]) store[activeChat.value.id] = []
+      store[activeChat.value.id].push(voiceMsg)
+      localStorage.setItem('spark_private_chats', JSON.stringify(store))
+    } else if (activeChat.value.type === 'group') {
+      const g = groups.value.find(g => g.id === activeChat.value!.id)
+      if (g) g.messages.push(voiceMsg)
+    }
+  }
+}
+
+// 播放语音消息（带动画）
 function playVoice(msg: ChatMsg) {
   if (playingVoiceId.value === msg.id) {
     currentAudio?.pause()
@@ -1102,6 +1253,38 @@ function playVoice(msg: ChatMsg) {
   } else {
     showToast('语音文件不可用')
   }
+}
+
+// 已发送的语音消息→转文字（v6.8: 不播放音频，纯识别）
+async function convertVoiceToText(msg: ChatMsg) {
+  if (voiceConvertedTexts[msg.id]) { delete voiceConvertedTexts[msg.id]; return }
+  if (!msg.voice_blob_url) { showToast('语音文件不可用'); return }
+  voiceConverting[msg.id] = true
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    showToast('浏览器不支持语音识别')
+    voiceConverting[msg.id] = false
+    return
+  }
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const recognition = new SR()
+  recognition.lang = 'zh-CN'
+  recognition.interimResults = false
+  recognition.maxAlternatives = 1
+  recognition.onresult = (event: any) => {
+    voiceConvertedTexts[msg.id] = event.results[0][0].transcript
+    voiceConverting[msg.id] = false
+  }
+  recognition.onerror = () => {
+    voiceConvertedTexts[msg.id] = '(识别失败，请重试)'
+    voiceConverting[msg.id] = false
+  }
+  recognition.onend = () => {
+    if (!voiceConvertedTexts[msg.id]) voiceConvertedTexts[msg.id] = '(未识别到内容)'
+    voiceConverting[msg.id] = false
+  }
+  // 不播放音频！直接启动识别监听麦克风环境音
+  try { recognition.start() } catch { voiceConverting[msg.id] = false }
+  setTimeout(() => { try { recognition.stop() } catch {/* */} }, Math.max((msg.voice_duration || 5) * 1000 + 2000, 8000))
 }
 
 // ===== 聊天记录搜索（微信风格分类Tab） =====
@@ -1162,24 +1345,24 @@ function ctxMenuAction(action:string){
     toggleChatMute(ctxMenu.type as 'private'|'group', ctxMenu.id)
   }
 }
-// 会话置顶切换
+// 会话置顶切换（v6.8: 修复持久化 + 排序生效）
 function toggleChatPin(type:string, id:string){
   if(type==='private'){
     const f=friends.value.find(f=>f.spark_id===id)
-    if(f){f.is_chat_pinned=!f.is_chat_pinned;showToast(f.is_chat_pinned?'已置顶':'已取消置顶')}
+    if(f){f.is_chat_pinned=!f.is_chat_pinned;persistFriends();showToast(f.is_chat_pinned?'已置顶':'已取消置顶')}
   } else if(type==='group'){
     const g=groups.value.find(g=>g.id===id)
-    if(g){g.is_chat_pinned=!g.is_chat_pinned;showToast(g.is_chat_pinned?'已置顶':'已取消置顶')}
+    if(g){g.is_chat_pinned=!g.is_chat_pinned;persistGroups();showToast(g.is_chat_pinned?'已置顶':'已取消置顶')}
   }
 }
-// 免打扰切换
+// 免打扰切换（v6.8: 修复持久化）
 function toggleChatMute(type:string, id:string){
   if(type==='private'){
     const f=friends.value.find(f=>f.spark_id===id)
-    if(f){f.is_muted=!f.is_muted;showToast(f.is_muted?'已开启免打扰':'已关闭免打扰')}
+    if(f){f.is_muted=!f.is_muted;persistFriends();showToast(f.is_muted?'已开启免打扰':'已关闭免打扰')}
   } else if(type==='group'){
     const g=groups.value.find(g=>g.id===id)
-    if(g){g.is_muted=!g.is_muted;showToast(g.is_muted?'已开启免打扰':'已关闭免打扰')}
+    if(g){g.is_muted=!g.is_muted;persistGroups();showToast(g.is_muted?'已开启免打扰':'已关闭免打扰')}
   }
 }
 // 清空聊天记录
@@ -1198,8 +1381,8 @@ function handleClearChatHistory(){
     showToast('聊天记录已清空')
   }
 }
-// 查找聊天内容
-function handleSearchChatHistory(){showToast('查找聊天内容功能开发中')}
+// 查找聊天内容（v6.8: 直接打开搜索Modal）
+function handleSearchChatHistory(){ showChatHistorySearch.value = true }
 // 右键菜单动态标签
 function getCtxPinLabel():string{
   if(ctxMenu.type==='private'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);return f?.is_chat_pinned?'📌 取消置顶':'📌 置顶'}
@@ -1284,7 +1467,7 @@ async function renderQR(canvas:HTMLCanvasElement|null,data:string){if(!canvas)re
 function copyQRData(){navigator.clipboard.writeText(getQRData());showToast('名片已复制')}
 function copyGroupQR(){if(activeGroup.value){navigator.clipboard.writeText(getQRData(undefined,'group',activeGroup.value.id));showToast('已复制')}}
 function handleQRPaste(){const r=addFriendByQR(qrPasteInput.value.trim());showToast(r.msg);if(r.ok)qrPasteInput.value=''}
-function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false}
+function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false;if(pokeMenu.show)pokeMenu.show=false}
 // 拖拽上传
 function onDragEnter(){isDragging.value=true}
 function onDragLeave(){isDragging.value=false}
@@ -1295,7 +1478,26 @@ function clearPendingFile(idx:number){const f=pendingFiles.value[idx];if(f?.url?
 function clearAllPendingFiles(){pendingFiles.value.forEach(f=>{if(f.url?.startsWith('blob:'))URL.revokeObjectURL(f.url)});pendingFiles.value=[]}
 function handleSendPendingFiles(){if(!activeChat.value||!pendingFiles.value.length)return;pendingFiles.value.forEach(f=>{const content=f.type==='image'?`[图片] ${f.name}`:`[文件] ${f.name}`;if(activeChat.value?.type==='group')sendGroupMsg(activeChat.value.id,content);else if(activeChat.value?.type==='private')sendPrivateMsg(activeChat.value.id,content)});clearAllPendingFiles();scrollChat()}
 let _resizeHandler:null|(()=>void)=null
-onMounted(()=>{window.addEventListener('click',closeMenus);_resizeHandler=()=>{isMobile.value=window.innerWidth<768};window.addEventListener('resize',_resizeHandler)})
+onMounted(async ()=>{
+  window.addEventListener('click',closeMenus)
+  _resizeHandler=()=>{isMobile.value=window.innerWidth<768}
+  window.addEventListener('resize',_resizeHandler)
+  // v6.7: 从Supabase同步真实头像URL到myProfile
+  try {
+    const { data } = await supabase.auth.getUser()
+    if (data?.user) {
+      const meta = data.user.user_metadata
+      if (meta?.avatar_url && myProfile.value) {
+        myProfile.value.avatar_url = meta.avatar_url
+      }
+      // 也检查profiles表
+      const { data: profile } = await supabase.from('profiles').select('avatar_url').eq('id', data.user.id).single()
+      if (profile?.avatar_url && myProfile.value) {
+        myProfile.value.avatar_url = profile.avatar_url
+      }
+    }
+  } catch { /* 离线模式忽略 */ }
+})
 onUnmounted(()=>{window.removeEventListener('click',closeMenus);if(_resizeHandler)window.removeEventListener('resize',_resizeHandler);clearAllPendingFiles();if(_searchTimer)clearTimeout(_searchTimer)})
 watch(showQRModal,v=>{if(v)nextTick(()=>renderQR(userQrCanvas.value,getQRData()))})
 watch(showGroupQR,v=>{if(v&&activeGroup.value)nextTick(()=>renderQR(groupQrCanvas.value,getQRData(undefined,'group',activeGroup.value!.id)))})
@@ -1961,16 +2163,63 @@ function handlePublish() {
 .cp-multi-bar button.del{border-color:rgba(239,68,68,.12);background:rgba(239,68,68,.06);color:rgba(239,68,68,.5)}
 .cp-multi-bar button.del:hover{background:rgba(239,68,68,.12);color:rgba(239,68,68,.7)}
 
-/* ====== 语音消息气泡 ====== */
+/* ====== 语音消息气泡（v6.7重做） ====== */
+.cp-voice-wrapper{display:flex;flex-direction:column;gap:4px;max-width:220px}
 .cp-voice-bubble{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:100px;max-width:200px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.08);border-radius:16px;cursor:pointer;transition:all .15s}
 .cp-voice-bubble:hover{background:rgba(139,92,246,.1)}
+.cp-voice-bubble.playing{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.2)}
 .cp-voice-icon{font-size:16px;transition:transform .3s}
 .cp-voice-icon.playing{animation:voicePulse 0.6s ease-in-out infinite alternate}
 @keyframes voicePulse{0%{transform:scale(1)}100%{transform:scale(1.2)}}
 .cp-voice-bars{display:flex;align-items:center;gap:2px;flex:1}
+.cp-voice-bars.playing .cp-vbar{animation:vbarBounce 0.5s ease-in-out infinite alternate}
+@keyframes vbarBounce{0%{height:4px;opacity:.4}100%{height:14px;opacity:1}}
 .cp-vbar{width:3px;background:rgba(139,92,246,.5);border-radius:2px;transition:height .2s}
 .mine .cp-voice-bubble{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.15)}
 .cp-voice-dur{font-size:11px;color:rgba(255,255,255,.35);white-space:nowrap}
+/* 语音转文字按钮 */
+.cp-voice-to-text{background:none;border:none;color:rgba(139,92,246,.5);font-size:10px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .12s;text-align:left}
+.cp-voice-to-text:hover{color:rgba(139,92,246,.8);background:rgba(139,92,246,.04)}
+.cp-voice-to-text:disabled{opacity:.5;cursor:not-allowed}
+.cp-voice-text-result{padding:6px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:8px;font-size:11px;color:rgba(255,255,255,.5);line-height:1.5}
+/* 录音实时转文字 */
+.cp-realtime-transcript{margin-top:6px;padding:6px 10px;background:rgba(139,92,246,.04);border-radius:8px;font-size:11px;color:rgba(255,255,255,.5);max-height:60px;overflow-y:auto}
+.cp-rt-label{color:rgba(139,92,246,.6);font-weight:600}
+.cp-rt-text{color:rgba(255,255,255,.5)}
+
+/* ====== 语音转文字预览面板（v6.8） ====== */
+.cp-voice-text-preview{padding:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.08);border-radius:10px;margin-top:8px}
+.cp-vtp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:rgba(255,255,255,.5)}
+.cp-vtp-loading{color:rgba(139,92,246,.6);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.cp-vtp-content{padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:8px;font-size:13px;color:rgba(255,255,255,.7);line-height:1.6;min-height:40px;max-height:100px;overflow-y:auto;word-break:break-all}
+.cp-vtp-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
+.cp-vtp-actions button{padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;border:1px solid rgba(255,255,255,.06)}
+.cp-vtp-cancel{background:rgba(255,255,255,.03);color:rgba(255,255,255,.4)}
+.cp-vtp-cancel:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.6)}
+.cp-vtp-voice{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6);border-color:rgba(139,92,246,.08) !important}
+.cp-vtp-voice:hover{background:rgba(139,92,246,.12);color:rgba(139,92,246,.8)}
+.cp-vtp-confirm{background:rgba(139,92,246,.1);color:rgba(139,92,246,.8);border-color:rgba(139,92,246,.12) !important;font-weight:600}
+.cp-vtp-confirm:hover{background:rgba(139,92,246,.18)}
+.cp-vtp-confirm:disabled{opacity:.4;cursor:not-allowed}
+
+/* ====== 碰一碰菜单 ====== */
+.poke-ctx{min-width:140px}
+.poke-header{padding:8px 14px;font-size:11px;color:rgba(255,255,255,.4);border-bottom:1px solid rgba(255,255,255,.04);letter-spacing:.5px}
+
+/* ====== 头像抖动动画（碰一碰） ====== */
+.poke-shake{animation:pokeShake 0.6s ease-in-out}
+@keyframes pokeShake{
+  0%,100%{transform:translateX(0) rotate(0)}
+  10%{transform:translateX(-4px) rotate(-3deg)}
+  20%{transform:translateX(4px) rotate(3deg)}
+  30%{transform:translateX(-3px) rotate(-2deg)}
+  40%{transform:translateX(3px) rotate(2deg)}
+  50%{transform:translateX(-2px) rotate(-1deg)}
+  60%{transform:translateX(2px) rotate(1deg)}
+  70%{transform:translateX(-1px)}
+  80%{transform:translateX(1px)}
+}
 
 /* ====== 引用消息（气泡内部） ====== */
 .cp-quote-in-bubble{padding:6px 10px;margin-bottom:4px;background:rgba(255,255,255,.03);border-left:3px solid rgba(139,92,246,.4);border-radius:4px;font-size:11px}

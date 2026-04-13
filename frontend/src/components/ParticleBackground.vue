@@ -65,12 +65,12 @@ const initParticles = (canvas: HTMLCanvasElement) => {
   }
 
   // 2. Initialize Twinkling Stars
-  const starCount = Math.floor((canvas.width * canvas.height) / 8000);
+  const starCount = Math.floor((canvas.width * canvas.height) / 4000); // Increased density
   for (let i = 0; i < starCount; i++) {
     const size = Math.random() * 1.5 + 0.5;
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
-    const twinkleSpeed = Math.random() * 0.03 + 0.005;
+    const twinkleSpeed = Math.random() * 0.05 + 0.01; // Faster twinkle
     const phase = Math.random() * Math.PI * 2;
     const color = starColors[Math.floor(Math.random() * starColors.length)];
 
@@ -87,23 +87,24 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
   for (let i = 0; i < stars.length; i++) {
     let s = stars[i];
     s.phase += s.twinkleSpeed;
-    // Opacity pulses between 0.1 and 1
-    const alpha = Math.abs(Math.sin(s.phase)) * 0.9 + 0.1;
+    // Opacity pulses between 0.0 and 1
+    const alpha = Math.abs(Math.sin(s.phase));
+    const isGlowing = alpha > 0.85;
     
     // Very subtle slow drift for stars
-    s.y -= 0.1;
+    s.y -= 0.15;
     if (s.y < 0) {
       s.y = canvas.height;
       s.x = Math.random() * canvas.width;
     }
 
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, isGlowing ? s.size * 1.8 : s.size, 0, Math.PI * 2);
     ctx.fillStyle = s.color;
     ctx.globalAlpha = alpha;
     
     // Glowing effect
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = isGlowing ? 20 : 5;
     ctx.shadowColor = s.color;
     ctx.fill();
     ctx.shadowBlur = 0;

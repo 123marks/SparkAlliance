@@ -1340,6 +1340,10 @@ export function useCompanion() {
     return new Date(moment.live_expires_at).getTime() > Date.now()
   }
 
+  // ====== 持久化工具（供前端侧边栏操作使用） ======
+  function persistFriends() { saveData(STORAGE_KEYS.friends, friends.value) }
+  function persistGroups() { saveData(STORAGE_KEYS.groups, groups.value) }
+
   init()
 
   void loadProfileFromSupabase
@@ -1376,5 +1380,7 @@ export function useCompanion() {
     sendToAI, clearAIChat,
     // 工具
     formatTimeAgo,
+    // 持久化
+    persistFriends, persistGroups,
   }
 }
