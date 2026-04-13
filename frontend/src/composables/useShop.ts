@@ -911,7 +911,7 @@ export function useShop() {
     return !error
   }
 
-  /** 分享商品到伴侣朋友圈 */
+  /** 分享商品到星火域 */
   async function shareProductToMoment(product: ShopProduct): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false

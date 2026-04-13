@@ -53,12 +53,12 @@ interface ModuleInfo {
 
 const moduleMap: Record<string, ModuleInfo> = {
   AppCompanion: {
-    name: '星火伴侣', icon: '💬', desc: '人格化AI助手 + 好友社交 + 动态朋友圈',
+    name: '星火伴侣', icon: '💬', desc: '人格化AI助手 + 好友社交 + 星火域动态',
     features: [
       { icon: '🤖', name: 'AI 星火助手', desc: '人格化对话伙伴' },
       { icon: '👥', name: '好友系统', desc: 'ID/二维码添加好友' },
       { icon: '💬', name: '混合群聊', desc: '真人+AI 多人互动' },
-      { icon: '📸', name: '动态分享', desc: '类朋友圈动态发布' },
+      { icon: '📸', name: '动态分享', desc: '星火域动态发布' },
     ]
   },
   AppPlanner: {

@@ -478,7 +478,7 @@ const openDetail = (msg: SparkMessage) => {
   activeMessage.value = msg
   // 模拟加载评论
   detailComments.value = [
-    { id: 'c1', authorName: '小李', content: '太有感触了，转发到朋友圈', createdAt: '2026-03-28T12:00:00Z' },
+    { id: 'c1', authorName: '小李', content: '太有感触了，转发到星火域', createdAt: '2026-03-28T12:00:00Z' },
     { id: 'c2', authorName: '阿华', content: '句句说到心坎里', createdAt: '2026-03-28T13:00:00Z' },
     { id: 'c3', authorName: '星火少年', content: '保存了，给自己看', createdAt: '2026-03-28T14:30:00Z' },
   ]

@@ -38,7 +38,7 @@
     <!-- 左侧 -->
     <aside class="cp-sidebar" :class="{collapsed:rightPanel!=='none'&&isMobile}">
       <div class="cp-sb-top">
-        <h2 class="cp-logo">✨ 星火</h2>
+        <h2 class="cp-logo">💬 伴侣</h2>
         <div class="cp-sb-actions">
           <button @click="showSearchModal=true" class="cp-sb-btn" title="搜索">🔍</button>
           <button @click="showAddMenu=!showAddMenu" class="cp-sb-btn" title="添加">➕</button>
@@ -54,17 +54,19 @@
       <div class="cp-tabs">
         <button :class="{active:sideTab==='chat'}" @click="switchTab('chat')">💬 消息</button>
         <button :class="{active:sideTab==='contacts'}" @click="switchTab('contacts')">👥 通讯录</button>
-        <button :class="{active:sideTab==='moments'}" @click="switchTab('moments')">🌟 星火域</button>
+        <button :class="{active:sideTab==='moments'}" @click="switchTab('moments')">📸 动态</button>
       </div>
 
       <!-- 消息列表 -->
       <div v-if="sideTab==='chat'" class="cp-list">
         <div class="cp-conv" :class="{active:activeChat?.type==='ai'}" @click="openAIChat" @contextmenu.prevent="e=>showCtxMenu(e,'ai','ai')">
-          <SparkAvatar avatar="🌟" name="星火AI" size="sm" />
+          <span class="cp-av">🌟</span>
           <div class="cp-conv-info"><span class="cp-conv-name">星火AI伙伴</span><span class="cp-conv-last">智能助手，随时待命</span></div>
         </div>
         <div v-for="g in groups" :key="g.id" class="cp-conv" :class="{active:activeChat?.id===g.id}" @click="openGroupChat(g.id)" @contextmenu.prevent="e=>showCtxMenu(e,'group',g.id)">
-          <SparkAvatar :avatar="g.avatar" :name="g.name" size="sm" />
+          <div class="cp-group-av" :class="getGridClass(g.members.length)">
+            <span v-for="(emoji,gi) in getGroupAvatarGrid(g)" :key="gi" class="cp-gav-item">{{ emoji }}</span>
+          </div>
           <div class="cp-conv-info">
             <span class="cp-conv-name">{{ g.name }}<small>({{ g.members.length }})</small></span>
             <span class="cp-conv-last">{{ g.messages[g.messages.length-1]?.content?.slice(0,20)||'暂无消息' }}</span>
@@ -72,9 +74,9 @@
           <span v-if="g.unread" class="cp-badge">{{ g.unread }}</span>
         </div>
         <div v-for="f in sortedFriends" :key="f.id" class="cp-conv" :class="{active:activeChat?.id===f.spark_id&&activeChat?.type==='private'}" @click="openPrivateChat(f.spark_id)" @contextmenu.prevent="e=>showCtxMenu(e,'private',f.spark_id)">
-          <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" />
+          <span class="cp-av">{{ f.avatar }}</span>
           <div class="cp-conv-info">
-            <span class="cp-conv-name">{{ f.remark ? `${f.nickname}（${f.remark}）` : f.nickname }}</span>
+            <span class="cp-conv-name">{{ f.remark||f.nickname }}</span>
             <span class="cp-conv-last">{{ f.last_msg||f.bio?.slice(0,20)||'' }}</span>
           </div>
           <span v-if="f.unread" class="cp-badge">{{ f.unread }}</span>
@@ -83,22 +85,7 @@
 
       <!-- 通讯录(仿微信分组) -->
       <div v-if="sideTab==='contacts'" class="cp-list">
-        <div class="cp-contact-group" @click="showFriendRequests=!showFriendRequests"><span class="cp-cg-icon nr">👤</span><span class="cp-cg-text">新的朋友</span><span v-if="friendRequests.filter(r=>r.status==='pending').length" class="cp-badge sm">{{ friendRequests.filter(r=>r.status==='pending').length }}</span><span class="cp-cg-arrow" :class="{open:showFriendRequests}">›</span></div>
-        <!-- 好友申请列表 -->
-        <template v-if="showFriendRequests">
-          <div v-for="req in friendRequests" :key="req.id" class="cp-friend-req">
-            <SparkAvatar :avatar="req.from.avatar" :name="req.from.nickname" size="sm" />
-            <div class="cp-req-info">
-              <span class="cp-req-name">{{ req.from.nickname }}</span>
-              <span class="cp-req-msg">{{ req.message || '请求加为好友' }}</span>
-            </div>
-            <div v-if="req.status==='pending'" class="cp-req-acts">
-              <button class="cp-req-accept" @click="addFriend({spark_id:req.from.spark_id,nickname:req.from.nickname,avatar:req.from.avatar,bio:req.from.bio});req.status='accepted';showToast('已添加')">+接受</button>
-            </div>
-            <span v-else class="cp-req-status">{{ req.status==='accepted'?'✓ 已添加':'× 已拒绝' }}</span>
-          </div>
-          <p v-if="!friendRequests.length" class="cp-empty">暂无好友申请</p>
-        </template>
+        <div class="cp-contact-group" @click="showAddFriendModal=true"><span class="cp-cg-icon nr">👤</span><span class="cp-cg-text">新的朋友</span><span class="cp-cg-arrow">›</span></div>
         <div class="cp-contact-group" @click="contactGroupExpand.groups=!contactGroupExpand.groups"><span class="cp-cg-icon grp">👥</span><span class="cp-cg-text">群聊</span><span class="cp-cg-count">{{ groups.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.groups}">›</span></div>
         <template v-if="contactGroupExpand.groups">
           <div v-for="g in groups" :key="g.id" class="cp-contact" @click="openGroupChat(g.id)">
@@ -108,9 +95,9 @@
         </template>
         <div class="cp-contact-group" @click="contactGroupExpand.friends=!contactGroupExpand.friends"><span class="cp-cg-icon fri">📖</span><span class="cp-cg-text">联系人</span><span class="cp-cg-count">{{ friends.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.friends}">›</span></div>
         <template v-if="contactGroupExpand.friends">
-          <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="openProfilePopup(f.spark_id)">
-            <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" clickable />
-            <div class="cp-contact-info"><span class="cp-contact-name">{{ f.remark ? `${f.nickname}（${f.remark}）` : f.nickname }}</span></div>
+          <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="selectContact(f)">
+            <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" clickable @click.stop="showProfilePopup(f)" />
+            <div class="cp-contact-info"><span class="cp-contact-name">{{ f.remark||f.nickname }}</span></div>
           </div>
         </template>
         <p v-if="!friends.length&&!groups.length" class="cp-empty">还没有联系人</p>
@@ -118,11 +105,8 @@
 
       <!-- 动态tab：左侧只显示标签和快速发布，右侧显示完整feed -->
       <div v-if="sideTab==='moments'" class="cp-list moments-tab">
-        <div class="cp-post-box">
-          <textarea v-model="postContent" placeholder="分享你的想法..." rows="2" maxlength="500"></textarea>
-          <div class="cp-post-acts"><select v-model="postVis"><option value="public">🌐 公开</option><option value="friends">👥 好友</option><option value="private">🔒 私密</option></select><button :disabled="!postContent.trim()" @click="handlePost">发布</button></div>
-        </div>
-        <p class="cp-sb-hint">→ 右侧查看完整星火域</p>
+        <p class="cp-sb-hint">→ 右侧查看星火域</p>
+        <button class="cp-sb-publish-btn" @click="showPublishModal=true">✨ 发布动态</button>
       </div>
     </aside>
 
@@ -131,7 +115,7 @@
     <!-- 聊天面板 -->
     <main v-if="rightPanel==='chat'" class="cp-main" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
       <!-- 拖拽遮罩 -->
-      <div v-if="isDragging" class="cp-drop-overlay"><div class="cp-drop-box">📁 松开发送文件/图片</div></div>
+      <div v-if="isDragging" class="cp-drop-overlay"><div class="cp-drop-box">📁 释放以添加文件</div></div>
       <div class="cp-chat-hdr">
         <button class="cp-back" @click="closeRight">←</button>
         <h3>{{ chatTitle }}</h3>
@@ -140,144 +124,152 @@
       </div>
       <div class="cp-chat-body">
         <div class="cp-messages" ref="chatScrollRef">
-          <div v-for="msg in chatMessages" :key="msg.id" class="cp-msg" :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system'}" @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)">
-            <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
-            <template v-else>
-              <!-- 对方头像(左侧) -->
-              <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="handleAvatarContextMenu($event, msg.sender_name)" />
-              <div class="cp-msg-body">
-                <!-- 对方消息头部：角色标签 + 昵称 -->
-                <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
-                  <span v-if="getMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
-                  <span v-else-if="getMsgRole(msg)==='admin'" class="cp-role-tag admin">管理</span>
-                  <span class="cp-msg-name">{{ getGroupNickname(msg) }}</span>
+          <template v-for="(msg, idx) in chatMessages" :key="msg.id">
+            <!-- 时间分隔线 -->
+            <div v-if="shouldShowTimeSeparator(idx > 0 ? chatMessages[idx-1] : null, msg)" class="cp-time-sep">{{ formatMsgTime(msg.created_at) }}</div>
+            <!-- 被@提醒 -->
+            <div v-if="isMentionedInMsg(msg) && msg.sender_id !== myProfile?.spark_id" class="cp-mention-alert">有人@了你</div>
+            <div class="cp-msg" :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system',poke:msg.type==='poke'}" @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)">
+              <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
+              <div v-else-if="msg.type==='poke'" class="cp-poke-msg">{{ msg.content }}</div>
+              <template v-else>
+                <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
+                <div class="cp-msg-body">
+                  <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
+                    <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
+                    <span v-else-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='admin'" class="cp-role-tag admin">管理员</span>
+                    <span class="cp-msg-name">{{ msg.sender_name }}</span>
+                  </div>
+                  <div class="cp-bubble" v-html="renderMsgContent(msg.content)"></div>
+                  <!-- 时间+已读状态放在消息下方 -->
+                  <div class="cp-msg-footer" :class="{reverse:msg.sender_id===myProfile?.spark_id}">
+                    <span class="cp-msg-time2">{{ formatMsgTime(msg.created_at) }}</span>
+                    <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓✓':'✓' }}</span>
+                  </div>
                 </div>
-                <div class="cp-bubble">
-                  <img v-if="msg.type==='image'&&msg.media_url" :src="msg.media_url" class="cp-bubble-img">
-                  <template v-else>{{ msg.content }}</template>
-                </div>
-                <!-- 时间+已读状态 -->
-                <div class="cp-msg-footer" :class="{reverse:msg.sender_id===myProfile?.spark_id}">
-                  <span class="cp-msg-time2">{{ formatMsgTime(msg.created_at) }}</span>
-                  <span v-if="msg.sender_id===myProfile?.spark_id" class="cp-read-status" :class="{read:msg.is_read}">{{ msg.is_read?'✓✓':'✓' }}</span>
-                </div>
-              </div>
-              <!-- 我的头像(右侧) -->
-              <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar" :name="myProfile?.nickname" size="sm" class="my" @contextmenu.prevent="handleAvatarContextMenu($event, myProfile?.nickname||'')" />
-            </template>
-          </div>
+                <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" />
+              </template>
+            </div>
+          </template>
           <div v-if="isAiTyping" class="cp-msg ai"><span class="cp-msg-av">🌟</span><div class="cp-msg-body"><div class="cp-msg-meta"><span class="cp-msg-name">星火AI</span></div><div class="cp-bubble"><span class="typing-dots"><span></span><span></span><span></span></span></div></div></div>
         </div>
         <!-- 右侧聊天设置面板(仿微信) -->
         <Transition name="fade">
           <div v-if="showChatSettings" class="cp-chat-settings">
-            <!-- 私聊设置 -->
-            <template v-if="activeChat?.type==='private'">
-              <div class="cs-members">
-                <div class="cs-member" @click="handleViewChatFriend">
-                  <SparkAvatar :avatar="chatFriend?.avatar" :name="chatFriend?.nickname" size="sm" />
-                  <span class="cs-mname">{{ chatFriend?.remark||chatFriend?.nickname }}</span>
-                </div>
+            <div class="cs-members" v-if="activeChat?.type==='private'">
+              <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :name="chatFriend?.nickname||''" size="md" clickable /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
+            </div>
+            <!-- 私聊好友管理菜单 -->
+            <template v-if="activeChat?.type==='private' && chatFriend">
+              <div class="cs-section">
+                <div class="cs-row clickable" @click="openChatFriendRemarkEdit"><span>✈️ 编辑备注</span><span class="cs-val">{{ chatFriend.remark || '未设置' }}</span><span class="cs-arrow">›</span></div>
+                <div class="cs-row clickable" @click="handleChatStarToggle"><span>{{ chatFriend.is_starred ? '☆ 取消星标' : '⭐ 设为星标' }}</span><span class="cs-arrow">›</span></div>
+                <div class="cs-row clickable" @click="openChatFriendPermissions"><span>🔒 好友权限</span><span class="cs-arrow">›</span></div>
+              </div>
+              <div class="cs-section">
+                <div class="cs-row clickable warn" @click="handleChatBlockFriend">🚫 拉黑</div>
+                <div class="cs-row clickable danger" @click="handleChatDeleteFriend">🗑️ 删除好友</div>
               </div>
             </template>
-            <!-- 群聊设置(微信级) -->
+            <!-- 群聊设置 -->
             <template v-if="activeChat?.type==='group' && activeGroup">
-              <!-- 成员九宫格 -->
-              <div class="cs-members-grid">
-                <div v-for="m in sortedGroupMembers.slice(0,9)" :key="m.spark_id" class="cs-gm" @click="openProfilePopup(m.spark_id)">
-                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="sm" />
-                  <span class="cs-gmname">{{ m.nickname }}</span>
-                  <span v-if="m.role==='owner'" class="cs-role owner">群主</span>
-                  <span v-else-if="m.role==='admin'" class="cs-role admin">管理</span>
-                </div>
-                <div v-if="isGroupOwnerOrAdmin" class="cs-gm cs-gm-add" @click="showInviteModal=true">
-                  <div class="cs-gm-icon">+</div><span class="cs-gmname">添加</span>
-                </div>
-                <div v-if="isGroupOwner" class="cs-gm cs-gm-add" @click="showKickPanel=!showKickPanel">
-                  <div class="cs-gm-icon">−</div><span class="cs-gmname">移出</span>
-                </div>
-              </div>
-              <div class="cs-hint">查看更多 ({{ activeGroup.members.length }}人) ▾</div>
-              <!-- 踢人面板 -->
-              <div v-if="showKickPanel" class="cs-kick-panel">
-                <div v-for="m in sortedGroupMembers.filter(m=>m.spark_id!==myProfile?.spark_id && (isGroupOwner || m.role==='member'))" :key="m.spark_id" class="cs-kick-row">
-                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="xs" />
-                  <span>{{ m.nickname }}</span>
-                  <button class="cs-kick-btn" @click="handleKickMember(m)">移出</button>
-                </div>
-              </div>
-              <!-- 群名称 -->
-              <div class="cs-section">
-                <div class="cs-row clickable" @click="startRenameGroup">
-                  <span>群聊名称</span>
-                  <span class="cs-val">{{ activeGroup.name }}<span class="cs-arrow">›</span></span>
+              <div class="cs-members">
+                <div v-for="m in activeGroup.members.slice(0,8)" :key="m.spark_id" class="cs-member">
+                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="md" />
+                  <span class="cs-mname">{{ m.nickname }}</span>
+                  <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
+                  <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                 </div>
               </div>
               <!-- 群公告 -->
-              <div class="cs-section">
-                <div class="cs-row clickable" @click="startEditAnnouncement">
-                  <span>群公告</span>
-                  <span class="cs-val">{{ activeGroup.announcement || '未设置' }}<span class="cs-arrow">›</span></span>
-                </div>
+              <div v-if="activeGroup.announcement" class="cs-section">
+                <div class="cs-row"><span>📢 群公告</span></div>
+                <p class="cs-announcement">{{ activeGroup.announcement }}</p>
               </div>
+              <!-- 群管理入口 -->
+              <div class="cs-section" v-if="myGroupRole==='owner'||myGroupRole==='admin'">
+                <div class="cs-row clickable" @click="showGroupMgmt=!showGroupMgmt"><span>⚙️ 群管理</span><span class="cs-arrow">›</span></div>
+              </div>
+              <template v-if="showGroupMgmt">
+                <!-- 修改群名 -->
+                <div class="cs-section">
+                  <div class="cs-row"><span>修改群名</span></div>
+                  <div class="cs-mgmt-input"><input v-model="groupRenameInput" :placeholder="activeGroup.name" maxlength="30"><button @click="handleRenameGroup">确定</button></div>
+                </div>
+                <!-- 群公告 -->
+                <div class="cs-section">
+                  <div class="cs-row"><span>群公告</span></div>
+                  <div class="cs-mgmt-input"><input v-model="groupAnnouncementInput" placeholder="输入群公告..."><button @click="handleSetAnnouncement">发布</button></div>
+                </div>
+                <!-- 成员管理 -->
+                <div class="cs-section">
+                  <div class="cs-row"><span>成员管理</span></div>
+                  <div v-for="m in activeGroup.members" :key="m.spark_id" class="cs-member-row">
+                    <span class="cp-av sm">{{ m.avatar }}</span>
+                    <span class="cs-member-name">{{ m.nickname }}</span>
+                    <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
+                    <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
+                    <div v-if="m.spark_id!==myProfile?.spark_id && m.spark_id!==activeGroup.owner_id" class="cs-member-acts">
+                      <button v-if="myGroupRole==='owner'" @click="handleSetAdmin(m.spark_id, m.role!=='admin')" class="cs-act-btn">{{ m.role==='admin'?'取消管理':'设为管理' }}</button>
+                      <button v-if="myGroupRole==='owner'" @click="handleTransferOwner(m.spark_id)" class="cs-act-btn warn">转让群主</button>
+                      <button v-if="myGroupRole==='owner'||(myGroupRole==='admin'&&m.role==='member')" @click="handleKickMember(m.spark_id)" class="cs-act-btn danger">移出</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- 解散群聊 -->
+                <div v-if="myGroupRole==='owner'" class="cs-section">
+                  <button class="cs-clear" @click="handleDisbandGroup">🗑️ 解散群聊</button>
+                </div>
+              </template>
             </template>
-            <!-- 通用设置 -->
-            <div class="cs-section"><div class="cs-row clickable" @click="openChatSearch"><span>🔍 查找聊天内容</span><span class="cs-arrow">›</span></div></div>
-            <div v-if="chatSearchMode" class="cs-search-bar">
-              <input v-model="chatSearchQuery" placeholder="输入关键词搜索..." autofocus />
-              <span class="cs-search-count">{{ chatSearchHits.size }} 条结果</span>
-            </div>
+            <div class="cs-section"><div class="cs-row clickable" @click="showToast('查找聊天内容开发中')"><span>查找聊天内容</span><span class="cs-arrow">›</span></div></div>
             <div class="cs-section">
               <div class="cs-row"><span>消息免打扰</span><label class="cs-toggle"><input type="checkbox"><span class="cs-slider"></span></label></div>
               <div class="cs-row"><span>置顶聊天</span><label class="cs-toggle"><input type="checkbox"><span class="cs-slider"></span></label></div>
             </div>
-            <button class="cs-clear" @click="clearChatHistory">🗑️ 清空聊天记录</button>
-            <!-- 群聊解散/退出 -->
-            <template v-if="activeChat?.type==='group' && activeGroup">
-              <button v-if="isGroupOwner" class="cs-clear cs-danger" @click="handleDissolveGroup">解散群聊</button>
-              <button v-else class="cs-clear cs-warn" @click="handleQuitGroup">退出群聊</button>
-            </template>
+            <button class="cs-clear" @click="showToast('清空聊天记录开发中')">清空聊天记录</button>
           </div>
         </Transition>
       </div>
       <div class="cp-input-area">
         <Transition name="fade"><div v-if="showEmoji" class="cp-emoji-panel"><button v-for="e in EMOJIS" :key="e" @click="chatInput+=e;showEmoji=false">{{ e }}</button></div></Transition>
+        <!-- @提及选择器 -->
+        <Transition name="fade">
+          <div v-if="showMentionPicker && activeChat?.type==='group'" class="cp-mention-picker">
+            <div class="cp-mention-header">选择提及成员</div>
+            <div v-for="m in filteredMentionMembers" :key="m.spark_id" class="cp-mention-item" @click="selectMention(m)">
+              <span class="cp-av sm">{{ m.avatar }}</span>
+              <span class="cp-mention-name">{{ m.nickname }}</span>
+              <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
+              <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
+            </div>
+            <p v-if="!filteredMentionMembers.length" class="cp-empty">无匹配成员</p>
+          </div>
+        </Transition>
         <!-- 待发送文件预览 -->
         <div v-if="pendingFiles.length" class="cp-pending-files">
           <div v-for="(f,i) in pendingFiles" :key="i" class="cp-pf-chip">
             <img v-if="f.type==='image'" :src="f.url" class="cp-pf-thumb">
             <span v-else>📄</span>
             <span class="cp-pf-name">{{ f.name }}</span>
-            <button @click="pendingFiles.splice(i,1)">×</button>
+            <button @click="clearPendingFile(i)">×</button>
+          </div>
+          <div class="cp-pf-actions">
+            <button class="cp-pf-cancel" @click="clearAllPendingFiles">取消</button>
+            <button class="cp-pf-send" @click="handleSendPendingFiles">发送</button>
           </div>
         </div>
         <div class="cp-tools">
           <button @click="showEmoji=!showEmoji" :class="{active:showEmoji}">😊</button>
           <button @click="fileInput?.click()">🖼️</button>
           <button @click="fileInput?.click()">📎</button>
-          <button @click="startVoiceInput" :class="{active:isRecording}">🎙️</button>
+          <button @click="showToast('语音功能开发中')">🎙️</button>
           <div class="cp-tools-r"><button @click="showToast('语音通话开发中')">📞</button><button @click="showToast('视频通话开发中')">📹</button></div>
         </div>
         <input ref="fileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip" @change="onFileInput" style="display:none">
-        <!-- @提及下拉(仅群聊) -->
-        <Transition name="fade">
-          <div v-if="showMention && mentionList.length" class="cp-mention-panel">
-            <div v-for="m in mentionList" :key="m.spark_id" class="cp-mention-item" @click="selectMention(m)">
-              <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="xs" />
-              <span>{{ m.nickname }}</span>
-              <span v-if="m.role==='owner'" class="cp-role-tag owner" style="margin-left:auto">群主</span>
-              <span v-else-if="m.role==='admin'" class="cp-role-tag admin" style="margin-left:auto">管理</span>
-            </div>
-          </div>
-        </Transition>
-        <!-- 消息引用预览 -->
-        <div v-if="quoteMsg" class="cp-quote-bar">
-          <span class="cp-quote-text">回复 {{ quoteMsg.sender_name }}：{{ quoteMsg.content?.slice(0,30) }}</span>
-          <button class="cp-quote-close" @click="quoteMsg=null">×</button>
-        </div>
         <div class="cp-input-row">
-          <textarea v-model="chatInput" :placeholder="activeChat?.type==='group'?'@星火 唤AI · 输入消息...':'输入消息...'" rows="1" @keydown.enter.exact.prevent="handleChatSend" @input="handleMentionInput" @focus="showEmoji=false"></textarea>
-          <button class="cp-send" :disabled="!chatInput.trim()&&!pendingFiles.length||isAiTyping" @click="handleChatSend"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+          <textarea v-model="chatInput" :placeholder="activeChat?.type==='group'?'@星火 唤AI · 输入消息...':'输入消息...'" rows="1" @keydown.enter.exact.prevent="handleChatSend" @input="onChatInputForMention" @focus="showEmoji=false"></textarea>
+          <button class="cp-send" :disabled="!chatInput.trim()||isAiTyping" @click="handleChatSend"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
         </div>
       </div>
     </main>
@@ -285,24 +277,31 @@
     <!-- 通讯录资料卡(仿微信) -->
     <main v-else-if="rightPanel==='contact'" class="cp-main cp-profile-card">
       <div class="pf-header">
-        <span class="pf-avatar">{{ selectedContact?.avatar }}</span>
+        <SparkAvatar :avatar="selectedContact?.avatar||''" :name="selectedContact?.nickname||''" size="lg" clickable @click="selectedContact&&showProfilePopup(selectedContact)" />
         <div class="pf-info">
-          <h2>{{ selectedContact?.remark||selectedContact?.nickname }}</h2>
-          <p class="pf-sub">昵称：{{ selectedContact?.nickname }}</p>
+          <h2>
+            <span v-if="selectedContact?.is_starred" class="pf-star">⭐</span>
+            {{ selectedContact?.remark ? selectedContact.nickname + '（' + selectedContact.remark + '）' : selectedContact?.nickname }}
+          </h2>
           <p class="pf-sub">星火ID：{{ selectedContact?.spark_id }}</p>
+          <p v-if="getContactMeta(selectedContact)" class="pf-sub pf-meta">{{ getContactMeta(selectedContact) }}</p>
         </div>
       </div>
       <div class="pf-section">
-        <div class="pf-row"><span class="pf-label">备注</span><span class="pf-val">{{ selectedContact?.remark||selectedContact?.nickname }}</span></div>
+        <div class="pf-row clickable" @click="openContactRemarkEdit"><span class="pf-label">备注</span><span class="pf-val">{{ selectedContact?.remark||'未设置' }}</span><span class="pf-arrow">›</span></div>
       </div>
       <div class="pf-section">
-        <div class="pf-row clickable" @click="showToast('查看朋友圈')"><span class="pf-label">朋友圈</span><div class="pf-moments-preview"><span v-for="m in contactMoments(selectedContact?.spark_id||'').slice(0,3)" :key="m.id" class="pf-moment-thumb">📝</span></div><span class="pf-arrow">›</span></div>
+        <div class="pf-row clickable" @click="handleContactStarToggle"><span class="pf-label">星标好友</span><span class="pf-val">{{ selectedContact?.is_starred ? '⭐ 已星标' : '☆ 未星标' }}</span><span class="pf-arrow">›</span></div>
+      </div>
+      <div class="pf-section">
+        <div class="pf-row clickable" @click="showToast('查看星火域')"><span class="pf-label">星火域</span><div class="pf-moments-preview"><span v-for="m in contactMoments(selectedContact?.spark_id||'').slice(0,3)" :key="m.id" class="pf-moment-thumb">📝</span></div><span class="pf-arrow">›</span></div>
       </div>
       <div class="pf-section">
         <div class="pf-row"><span class="pf-label">来源</span><span class="pf-val">通过星火ID添加</span></div>
       </div>
-      <div class="pf-section">
-        <button class="pf-delete-link" @click="handleRemoveFriend(selectedContact!.spark_id)">删除联系人</button>
+      <div class="pf-section pf-danger-zone">
+        <button class="pf-action-link warn" @click="handleContactBlock">🚫 拉黑</button>
+        <button class="pf-action-link danger" @click="handleRemoveFriend(selectedContact!.spark_id)">🗑️ 删除联系人</button>
       </div>
       <div class="pf-actions">
         <button class="pf-btn primary" @click="openPrivateChat(selectedContact!.spark_id)"><span>💬</span>发消息</button>
@@ -311,54 +310,107 @@
       </div>
     </main>
 
-    <!-- 动态朋友圈(完整feed) / 默认欢迎页 -->
+    <!-- 动态星火域(双栏布局) / 默认欢迎页 -->
     <main v-else class="cp-main cp-main-feed">
-      <div v-if="sideTab==='moments'" class="cp-feed-full">
-        <div class="cp-feed-header">
-          <div class="cp-feed-cover">
-            <div class="cp-feed-cover-inner" :style="feedCoverStyle"></div>
+      <div v-if="sideTab==='moments'" class="cp-moments-dual" :class="{'is-dragging':isDraggingDivider}">
+        <!-- 左栏：我的专区 -->
+        <div class="cp-ml" :style="{width: momentLeftWidth+'%', minWidth:'200px'}">
+          <!-- 背景图/视频区域 -->
+          <div class="cp-ml-bg" :class="{expanded:bgExpanded}" @click="bgExpanded=!bgExpanded">
+            <div v-if="customBgUrl" class="cp-ml-bg-img" :style="{backgroundImage:'url('+customBgUrl+')'}"></div>
+            <div v-else class="cp-ml-bg-default"></div>
+            <button class="cp-ml-bg-upload" @click.stop="bgFileInput?.click()" title="更换背景">📷</button>
+            <input ref="bgFileInput" type="file" accept="image/*" @change="onBgFileSelect" style="display:none">
           </div>
-          <div class="cp-feed-me">
-            <SparkAvatar :avatar="myProfile?.avatar" :name="myProfile?.nickname" size="lg" />
-            <div class="cp-feed-myinfo">
-              <span class="cp-feed-myname">{{ myProfile?.nickname }}</span>
-              <span class="cp-feed-motto">{{ myProfile?.bio || '点击设置座右铭...' }}</span>
+          <!-- 用户信息 -->
+          <div class="cp-ml-profile">
+            <span class="cp-av lg">{{ myProfile?.avatar }}</span>
+            <div class="cp-ml-pinfo">
+              <b>{{ myProfile?.nickname }}</b>
+              <p>{{ myProfile?.bio || '这个人很懒，什么都没留下' }}</p>
             </div>
+            <button class="cp-ml-gear" @click.stop="showVisibilitySettings=!showVisibilitySettings" title="动态可见范围设置">⚙️</button>
           </div>
-        </div>
-        <div class="cp-post-box feed-post">
-          <textarea v-model="postContent" placeholder="✨ 这一刻的想法..." rows="2" maxlength="500"></textarea>
-          <div class="cp-post-acts">
-            <div class="cp-vis-select" :class="{open:showVisMenu}" @click="showVisMenu=!showVisMenu">
-              <span class="cp-vis-icon">{{ postVis==='public'?'🌐':postVis==='friends'?'👥':'🔒' }}</span>
-              <span>{{ postVis==='public'?'公开':postVis==='friends'?'好友':'私密' }}</span>
-              <span class="cp-vis-arrow">▾</span>
-              <div v-if="showVisMenu" class="cp-vis-menu">
-                <button @click.stop="postVis='public';showVisMenu=false"><span>🌐</span>公开<small>所有人可见</small></button>
-                <button @click.stop="postVis='friends';showVisMenu=false"><span>👥</span>好友<small>仅好友可见</small></button>
-                <button @click.stop="postVis='private';showVisMenu=false"><span>🔒</span>私密<small>仅自己可见</small></button>
+          <!-- 可见性设置面板 -->
+          <Transition name="fade">
+            <div v-if="showVisibilitySettings" class="cp-vis-panel">
+              <h4>动态可见范围</h4>
+              <div class="cp-vis-opts">
+                <label v-for="opt in visibilityOptions" :key="opt.value" class="cp-vis-opt" :class="{active:momentVisibilitySettings.timeRange===opt.value}">
+                  <input type="radio" name="vis-range" :value="opt.value" :checked="momentVisibilitySettings.timeRange===opt.value" @change="handleVisibilityChange(opt.value as any)">
+                  <span>{{ opt.label }}</span>
+                </label>
+              </div>
+              <div class="cp-vis-toggle">
+                <span>允许陌生人查看</span>
+                <label class="cs-toggle"><input type="checkbox" :checked="momentVisibilitySettings.allowStrangers" @change="updateMomentVisibility({allowStrangers:!momentVisibilitySettings.allowStrangers})"><span class="cs-slider"></span></label>
               </div>
             </div>
-            <button :disabled="!postContent.trim()" @click="handlePost" class="cp-post-btn">✨ 发布</button>
+          </Transition>
+          <!-- 发布动态按钮 -->
+          <div class="cp-ml-publish">
+            <button class="cp-publish-btn" @click="showPublishModal=true">✨ 发布动态</button>
+          </div>
+          <!-- 我的动态列表 -->
+          <div class="cp-ml-list">
+            <h4 class="cp-ml-title">我的动态</h4>
+            <div v-for="m in myMoments" :key="m.id" class="cp-feed-card" :class="{'is-pinned':m.is_pinned}">
+              <div class="cp-feed-head">
+                <span v-if="m.is_pinned" class="cp-pin-badge">📌 置顶</span>
+                <span v-if="isMomentLive(m)" class="cp-live-badge"><span class="cp-live-dot-sm"></span>LIVE</span>
+                <small>{{ formatTimeAgo(m.created_at) }}</small>
+                <div class="cp-feed-menu-wrap">
+                  <button class="cp-feed-dots" @click.stop="toggleMomentMenu(m.id)">⋯</button>
+                  <div v-if="momentMenuId===m.id" class="cp-feed-dropdown">
+                    <button @click.stop="handleTogglePin(m.id)">{{ m.is_pinned ? '取消置顶' : '📌 置顶' }}</button>
+                    <button class="del" @click.stop="handleDeleteMoment(m.id)">🗑️ 删除</button>
+                  </div>
+                </div>
+              </div>
+              <p class="cp-feed-text">{{ m.content }}</p>
+              <div class="cp-feed-acts">
+                <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
+                <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
+              </div>
+              <div v-if="expandedComments[m.id]" class="cp-comments">
+                <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
+                <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
+              </div>
+            </div>
+            <p v-if="!myMoments.length" class="cp-empty">你还没有发布动态 🌟</p>
           </div>
         </div>
-        <div v-for="m in moments" :key="m.id" class="cp-feed-card">
-          <div class="cp-feed-head">
-            <SparkAvatar :avatar="m.author_avatar" :name="m.author_name" size="sm" clickable @click="openProfilePopup(m.author_id)" />
-            <div class="cp-feed-info"><b>{{ m.author_name }}</b><small>{{ formatTimeAgo(m.created_at) }}</small></div>
-            <button v-if="m.author_id===myProfile?.spark_id" class="cp-x" @click="deleteMoment(m.id)">✕</button>
+        <!-- 拖拽分隔条 -->
+        <div class="cp-divider" :class="{active:isDraggingDivider}" @mousedown="onDividerMouseDown"></div>
+        <!-- 右栏：所有好友动态 -->
+        <div class="cp-mr">
+          <h3 class="cp-mr-title">星火域</h3>
+          <div v-for="m in allMoments" :key="m.id" class="cp-feed-card">
+            <div class="cp-feed-head">
+              <span class="cp-av sm">{{ m.author_avatar }}</span>
+              <div class="cp-feed-info"><b>{{ m.author_name }}</b><small>{{ formatTimeAgo(m.created_at) }}</small></div>
+              <span v-if="isMomentLive(m)" class="cp-live-badge"><span class="cp-live-dot-sm"></span>LIVE</span>
+              <div v-if="m.author_id===myProfile?.spark_id" class="cp-feed-menu-wrap">
+                <button class="cp-feed-dots" @click.stop="toggleMomentMenu(m.id)">⋯</button>
+                <div v-if="momentMenuId===m.id" class="cp-feed-dropdown">
+                  <button @click.stop="handleTogglePin(m.id)">{{ m.is_pinned ? '取消置顶' : '📌 置顶' }}</button>
+                  <button class="del" @click.stop="handleDeleteMoment(m.id)">🗑️ 删除</button>
+                </div>
+              </div>
+            </div>
+            <p class="cp-feed-text">{{ m.content }}</p>
+            <div class="cp-feed-acts">
+              <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
+              <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
+              <button @click="showToast('分享功能开发中')">🚀 分享</button>
+            </div>
+            <div v-if="expandedComments[m.id]" class="cp-comments">
+              <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
+              <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
+            </div>
           </div>
-          <p class="cp-feed-text">{{ m.content }}</p>
-          <div class="cp-feed-acts">
-            <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
-            <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
-          </div>
-          <div v-if="expandedComments[m.id]" class="cp-comments">
-            <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
-            <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
-          </div>
+          <p v-if="!allMoments.length" class="cp-empty">还没有动态，发一条吧 🌟</p>
         </div>
-        <p v-if="!moments.length" class="cp-empty">还没有星火域动态，发一条吧 🌟</p>
       </div>
       <div v-else class="cp-welcome">
         <div class="cp-welcome-icon">💬</div>
@@ -369,55 +421,96 @@
     </main>
 
     <!-- 弹窗们 -->
-    <Transition name="fade"><div v-if="showSearchModal" class="cp-overlay" @click.self="showSearchModal=false"><div class="cp-modal"><h3>🔍 搜索</h3><div class="cp-field"><input v-model="globalSearch" placeholder="搜索好友、群聊..." @input="handleGlobalSearch"></div><div v-if="globalSearchResults.length" class="cp-search-results"><div v-for="r in globalSearchResults" :key="r.id" class="cp-search-item" @click="r.action();showSearchModal=false"><span class="cp-av sm">{{ r.avatar }}</span><div class="cp-contact-info"><span class="cp-contact-name">{{ r.name }}</span><span class="cp-contact-id">{{ r.desc }}</span></div></div></div><p v-else-if="globalSearch.trim()" class="cp-empty">无结果</p><button class="cp-close-btn" @click="showSearchModal=false">关闭</button></div></div></Transition>
-    <Transition name="fade"><div v-if="showAddFriendModal" class="cp-overlay" @click.self="showAddFriendModal=false"><div class="cp-modal sm">
-      <h3>👤 添加好友</h3>
-      <div class="cp-field"><label>星火ID 或昵称</label><input v-model="addFriendQuery" placeholder="输入星火ID..." @keydown.enter="handleSearchFriend"></div>
-      <button class="cp-save-btn" @click="handleSearchFriend">🔍 搜索</button>
-      <div v-if="addFriendResult" class="cp-af-result">
-        <div class="cp-af-user">
-          <SparkAvatar :avatar="addFriendResult.avatar" :name="addFriendResult.nickname" size="sm" />
-          <div class="cp-af-info"><b>{{ addFriendResult.nickname }}</b><small>{{ addFriendResult.spark_id }}</small></div>
-        </div>
-        <div class="cp-field"><label>预设备注</label><input v-model="addFriendRemark" placeholder="给好友设置备注(可选)"></div>
-        <div class="cp-field"><label>来意说明</label><textarea v-model="addFriendMessage" rows="2" placeholder="介绍一下自己吧，让对方知道你是谁..."></textarea></div>
-        <div class="cp-field"><label>来源</label><input :value="addFriendSource" disabled class="cp-af-source"></div>
-        <button class="cp-add-btn full" @click="handleAddFriendResult">✔ 发送好友申请</button>
-      </div>
-      <div class="cp-modal-btns"><button @click="showAddFriendModal=false">关闭</button></div>
-    </div></div></Transition>
+    <Transition name="fade"><div v-if="showSearchModal" class="cp-overlay" @click.self="showSearchModal=false"><div class="cp-modal"><h3>🔍 搜索</h3><div class="cp-field"><input v-model="globalSearch" placeholder="搜索好友、群聊..." @input="debouncedSearch"></div><div v-if="globalSearchResults.length" class="cp-search-results"><div v-for="r in globalSearchResults" :key="r.id" class="cp-search-item" @click="r.action();showSearchModal=false"><span class="cp-av sm">{{ r.avatar }}</span><div class="cp-contact-info"><span class="cp-contact-name">{{ r.name }}</span><span class="cp-contact-id">{{ r.desc }}</span></div></div></div><p v-else-if="globalSearch.trim()" class="cp-empty">无结果</p><button class="cp-close-btn" @click="showSearchModal=false">关闭</button></div></div></Transition>
+    <Transition name="fade"><div v-if="showAddFriendModal" class="cp-overlay" @click.self="showAddFriendModal=false"><div class="cp-modal sm"><h3>👤 添加好友</h3><div class="cp-field"><label>星火ID 或昵称</label><input v-model="addFriendQuery" placeholder="输入星火ID..." @keydown.enter="handleSearchFriend"></div><button class="cp-save-btn" @click="handleSearchFriend">🔍 搜索</button><p v-if="addFriendResult" class="cp-search-result">找到：{{ addFriendResult.nickname }}<button class="cp-add-btn" @click="handleAddFriendResult">✓ 添加</button></p><div class="cp-modal-btns"><button @click="showAddFriendModal=false">关闭</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false"><div class="cp-modal sm"><h3>📱 星火名片</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div><canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-qr-paste"><p>📋 粘贴二维码数据</p><div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴..."><button @click="handleQRPaste">添加</button></div></div><div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button><button class="primary" @click="copyQRData">📋 复制名片</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showGroupQR" class="cp-overlay" @click.self="showGroupQR=false"><div class="cp-modal sm"><h3>📱 群二维码</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ activeGroup?.avatar }}</span><div><div class="cp-qr-name">{{ activeGroup?.name }}</div></div></div><canvas ref="groupQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-modal-btns"><button @click="showGroupQR=false">关闭</button><button class="primary" @click="copyGroupQR">📋 复制</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showCreateModal" class="cp-overlay" @click.self="showCreateModal=false"><div class="cp-modal"><h3>👥 创建群聊</h3><div class="cp-field"><label>群聊名称</label><input v-model="newGroupName" maxlength="30" placeholder="名字"></div><label class="cp-check"><input type="checkbox" v-model="newGroupAI"> 🌟 星火AI参与群聊</label><div v-if="friends.length" class="cp-member-sel"><p class="cp-field-label">选择成员</p><label v-for="f in friends" :key="f.id" class="cp-member-opt"><input type="checkbox" :value="f.spark_id" v-model="newGroupMembers"> {{ f.avatar }} {{ f.nickname }}</label></div><div class="cp-modal-btns"><button @click="showCreateModal=false">取消</button><button class="primary" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button></div></div></div></Transition>
-    <!-- ProfilePopup资料卡弹窗 -->
+
+    <!-- 发布动态编辑器弹窗 -->
+    <Transition name="fade">
+      <div v-if="showPublishModal" class="cp-overlay" @click.self="showPublishModal=false">
+        <div class="cp-modal cp-publish-modal">
+          <h3>✨ 发布动态</h3>
+          <textarea v-model="publishContent" placeholder="分享你的想法..." rows="4" maxlength="500" class="cp-pub-text"></textarea>
+          <!-- 图片/视频预览网格 -->
+          <div v-if="publishImages.length||publishVideos.length" class="cp-pub-grid">
+            <div v-for="(img,i) in publishImages" :key="'pi'+i" class="cp-pub-item" draggable="true" @dragstart="dragIdx=i" @dragover.prevent @drop.prevent="onPublishDrop(i)">
+              <img :src="img.url" class="cp-pub-thumb">
+              <button class="cp-pub-remove" @click="removePublishImage(i)">×</button>
+              <span class="cp-pub-idx">{{ i+1 }}</span>
+            </div>
+            <div v-for="(vid,i) in publishVideos" :key="'pv'+i" class="cp-pub-item video">
+              <video :src="vid.url" class="cp-pub-thumb"></video>
+              <span class="cp-pub-vid-tag">▶ 视频</span>
+              <button class="cp-pub-remove" @click="removePublishVideo(i)">×</button>
+            </div>
+          </div>
+          <div class="cp-pub-media-count" v-if="publishImages.length||publishVideos.length">
+            图片 {{ publishImages.length }}/{{ maxImagesAllowed }} · 视频 {{ publishVideos.length }}/1
+          </div>
+          <!-- 文件附件预览 -->
+          <div v-if="publishFiles.length" class="cp-pub-files">
+            <div v-for="(f,i) in publishFiles" :key="'pf'+i" class="cp-pub-file-chip">
+              <span>📄</span>
+              <span class="cp-pub-file-name">{{ f.name }}</span>
+              <span class="cp-pub-file-size">{{ formatPublishFileSize(f.size) }}</span>
+              <button @click="publishFiles.splice(i,1)">×</button>
+            </div>
+          </div>
+          <!-- 工具栏 -->
+          <div class="cp-pub-tools">
+            <button @click="publishFileInput?.click()" title="添加图片/视频">🖼️</button>
+            <button @click="onPublishFileAttach" title="添加文件">📎</button>
+            <label class="cp-pub-live-toggle" :class="{active:publishIsLive}">
+              <input type="checkbox" v-model="publishIsLive">
+              <span class="cp-pub-live-dot"></span>LIVE
+            </label>
+            <select v-model="publishVis" class="cp-pub-vis-sel">
+              <option value="public">🌐 公开</option>
+              <option value="friends">👥 好友</option>
+              <option value="private">🔒 私密</option>
+            </select>
+          </div>
+          <input ref="publishFileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx" @change="onPublishFileSelect" style="display:none">
+          <div class="cp-modal-btns">
+            <button @click="showPublishModal=false">取消</button>
+            <button class="primary" :disabled="!publishContent.trim()" @click="handlePublish">🚀 发布</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 个人名片弹窗 -->
     <ProfilePopup
-      :visible="showPopup"
-      :profile="popupProfile"
-      :moment-count="popupMomentCount"
-      @close="showPopup=false"
-      @action="handlePopupAction"
-      @update-remark="handlePopupUpdateRemark"
+      :visible="profilePopupVisible"
+      :profile="profilePopupData"
+      :moment-count="profilePopupMomentCount"
+      position="center"
+      @close="profilePopupVisible=false"
+      @action="handleProfileAction"
+      @update-remark="handleProfileRemarkUpdate"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, reactive, onMounted, onUnmounted } from 'vue'
-import { useCompanion, formatTimeAgo, type Friend, type ChatMsg, type GroupMember } from '../../composables/useCompanion'
+import { useCompanion, formatTimeAgo, formatMsgTime as formatMsgTimeUtil, shouldShowTimeSeparator, type Friend, type ChatMsg, type GroupChat } from '../../composables/useCompanion'
 import CosmicBackground from '../../components/CosmicBackground.vue'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
 import QRCode from 'qrcode'
 
 const {
-  myProfile, friends, friendRequests, groups, moments, isAiTyping, getQRData,
+  myProfile, friends, groups, moments, isAiTyping, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, sendPrivateMsg,
-  markMessagesAsRead, createGroup, sendGroupMsg, postMoment, toggleLike,
-  commentMoment, deleteMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
-  updateProfile, favorites, setFriendRemark, sendFriendRequest,
-  // v6.0 群管理
-  sortGroupMembers, setGroupAdmin, removeGroupAdmin, setGroupAnnouncement,
-  renameGroup, kickMember, dissolveGroup, quitGroup, inviteToGroup,
+  markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
+  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
+  updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
+  getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
+  friendTags, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
+  momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
@@ -436,16 +529,15 @@ const isDragging = ref(false)
 const pendingFiles = ref<{type:string;name:string;url?:string}[]>([])
 const fileInput = ref<HTMLInputElement|null>(null)
 const viewProfile = ref<Friend|null>(null)
-// ProfilePopup弹窗(统一资料卡入口)
-const showPopup = ref(false)
-const popupProfile = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string}>({spark_id:'',nickname:'',avatar:'',remark:''})
-const popupMomentCount = ref(0)
+// 个人名片弹窗
+const profilePopupVisible = ref(false)
+const profilePopupData = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string}>({ spark_id: '', nickname: '', avatar: '' })
+const profilePopupMomentCount = ref(0)
+const profilePopupIsSelf = ref(false)
 // 消息右键菜单
 const msgCtx = reactive<{show:boolean;x:number;y:number;msgId:string;canRecall:boolean}>({show:false,x:0,y:0,msgId:'',canRecall:false})
 // 通讯录分组折叠
 const contactGroupExpand = reactive({friends:true,groups:true})
-// 好友申请面板
-const showFriendRequests = ref(false)
 const showSearchModal = ref(false)
 const showAddFriendModal = ref(false)
 const showQRModal = ref(false)
@@ -460,53 +552,39 @@ const addFriendQuery = ref('')
 const addFriendResult = ref<ReturnType<typeof searchUser>>(null)
 const newGroupName = ref(''); const newGroupAI = ref(true); const newGroupMembers = ref<string[]>([])
 const postContent = ref(''); const postVis = ref<'public'|'friends'|'private'>('public')
+// 星火域双栏状态
+const momentLeftWidth = ref(32) // 左栏宽度百分比
+const isDraggingDivider = ref(false)
+const bgExpanded = ref(false) // 背景图放大状态
+const customBgUrl = ref('') // 自定义背景图
+const bgFileInput = ref<HTMLInputElement|null>(null)
+const momentMenuId = ref<string|null>(null) // 当前显礼菜单的动态ID
 const expandedComments = reactive<Record<string,boolean>>({})
 const commentInputs = reactive<Record<string,string>>({})
 const userQrCanvas = ref<HTMLCanvasElement|null>(null)
 const groupQrCanvas = ref<HTMLCanvasElement|null>(null)
 const qrPasteInput = ref('')
-// ===== v6.0 新增状态 =====
-const showVisMenu = ref(false)
-const isRecording = ref(false)
-const chatSearchMode = ref(false)
-const chatSearchQuery = ref('')
-const feedCoverStyle = computed(() => ({
-  background: 'linear-gradient(135deg, rgba(139,92,246,.15) 0%, rgba(59,130,246,.1) 50%, rgba(16,185,129,.08) 100%)',
-  backgroundSize: '200% 200%',
-  animation: 'gradientShift 8s ease infinite',
-}))
-// 查找聊天结果 — 匹配的消息ID列表
-const chatSearchHits = computed(() => {
-  if (!chatSearchQuery.value.trim()) return new Set<string>()
-  const q = chatSearchQuery.value.toLowerCase()
-  const hits = chatMessages.value.filter(m => m.content?.toLowerCase().includes(q)).map(m => m.id)
-  return new Set(hits)
-})
-// ===== v6.0 群聊管理 =====
-const showKickPanel = ref(false)
-const showInviteModal = ref(false)
-const addFriendRemark = ref('')
-const addFriendMessage = ref('')
-const addFriendSource = ref('通过搜索添加')
-// @提及状态
-const showMention = ref(false)
-const mentionList = ref<GroupMember[]>([])
-// 消息引用
-const quoteMsg = ref<ChatMsg|null>(null)
-// 排序后的群成员(群主→管理员→普通按首字母)
-const sortedGroupMembers = computed(() => {
-  if (!activeGroup.value) return []
-  return sortGroupMembers(activeGroup.value)
-})
-// 当前用户是否群主
-const isGroupOwner = computed(() => {
-  return activeGroup.value?.owner_id === myProfile.value?.spark_id
-})
-// 当前用户是否群主或管理员
-const isGroupOwnerOrAdmin = computed(() => {
-  if (!activeGroup.value || !myProfile.value) return false
-  return activeGroup.value.owner_id === myProfile.value.spark_id || activeGroup.value.admins.includes(myProfile.value.spark_id)
-})
+// @提及功能
+const showMentionPicker = ref(false)
+const mentionSearch = ref('')
+const mentionIds = ref<string[]>([])
+// 群管理状态
+const showGroupMgmt = ref(false)
+const groupRenameInput = ref('')
+const groupAnnouncementInput = ref('')
+// 发布编辑器弹窗
+const showPublishModal = ref(false)
+const publishContent = ref('')
+const publishVis = ref<'public'|'friends'|'private'>('public')
+const publishIsLive = ref(false)
+const publishImages = ref<{url:string;name:string;blob?:boolean}[]>([])
+const publishVideos = ref<{url:string;name:string}[]>([])
+const publishFiles = ref<{url:string;name:string;size:number}[]>([])
+const publishFileInput = ref<HTMLInputElement|null>(null)
+// 拖拽排序
+const dragIdx = ref<number|null>(null)
+// 可见性设置面板
+const showVisibilitySettings = ref(false)
 
 const activeGroup = computed(()=>activeChat.value?.type==='group'?groups.value.find(g=>g.id===activeChat.value!.id):null)
 const chatTitle = computed(()=>{
@@ -537,186 +615,121 @@ function openPrivateChat(sparkId:string){activeChat.value={id:sparkId,type:'priv
 function closeRight(){rightPanel.value='none';activeChat.value=null;selectedContact.value=null}
 function scrollChat(){nextTick(()=>{if(chatScrollRef.value)chatScrollRef.value.scrollTop=chatScrollRef.value.scrollHeight})}
 function selectContact(f:Friend){selectedContact.value=f;rightPanel.value='contact'}
-// 统一资料卡弹窗入口
-function openProfilePopup(sparkId:string){
-  const f=friends.value.find(f=>f.spark_id===sparkId)
-  if(!f)return
-  popupProfile.value={spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,avatar_url:f.profile?.avatar_url,remark:f.remark,bio:f.bio}
-  popupMomentCount.value=moments.value.filter(m=>m.author_id===sparkId).length
-  showPopup.value=true
+// 聊天中点击⋯→弹出侧面板，showChatFriendCard改为打开资料弹窗
+function showChatFriendCard(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)showProfilePopup(f)}
+function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)showProfilePopup(f)}
+function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;if(msg.sender_id===myProfile.value?.spark_id){showSelfProfile();return};const f=friends.value.find(f=>f.spark_id===msg.sender_id);if(f)showProfilePopup(f)}
+// 显示他人资料卡
+function showProfilePopup(f:Friend){
+  profilePopupData.value={spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,avatar_url:f.profile?.avatar_url,remark:f.remark,bio:f.bio}
+  profilePopupMomentCount.value=moments.value.filter(m=>m.author_id===f.spark_id).length
+  profilePopupIsSelf.value=false
+  profilePopupVisible.value=true
 }
-function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;openProfilePopup(msg.sender_id)}
-function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='private')return;openProfilePopup(activeChat.value.id)}
-function handlePopupAction(action:string){
-  const sid=popupProfile.value.spark_id
-  showPopup.value=false
-  if(action==='chat'){openPrivateChat(sid)}
-  else if(action==='moments'){sideTab.value='moments';rightPanel.value='none'}
-  else if(action==='voice')showToast('语音通话开发中')
-  else if(action==='video')showToast('视频通话开发中')
-  else if(action==='permissions')showToast('权限设置开发中')
-  else if(action==='recommend')showToast('推荐给朋友开发中')
-  else if(action==='star')showToast('已设为星标朋友')
-  else if(action==='block'){confirmDialog.show=true;confirmDialog.title='⚠️ 拉黑';confirmDialog.text=`确定拉黑「${popupProfile.value.nickname}」吗？`;confirmDialog.btnText='拉黑';confirmDialog.onConfirm=()=>{removeFriend(sid);showToast('已拉黑')}}
+// 显示自己资料卡
+function showSelfProfile(){
+  if(!myProfile.value)return
+  profilePopupData.value={spark_id:myProfile.value.spark_id,nickname:myProfile.value.nickname,avatar:myProfile.value.avatar,avatar_url:myProfile.value.avatar_url,remark:undefined,bio:myProfile.value.bio}
+  profilePopupMomentCount.value=moments.value.filter(m=>m.author_id===myProfile.value?.spark_id).length
+  profilePopupIsSelf.value=true
+  profilePopupVisible.value=true
 }
-function handlePopupUpdateRemark(remark:string){setFriendRemark(popupProfile.value.spark_id,remark);popupProfile.value.remark=remark;showToast('备注已更新')}
-// ===== v6.0 核心功能 =====
-// 语音输入(Web Speech API)
-function startVoiceInput() {
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) { showToast('当前浏览器不支持语音识别'); return }
-  if (isRecording.value) { isRecording.value = false; return }
-  const recognition = new SR()
-  recognition.lang = 'zh-CN'
-  recognition.interimResults = true
-  recognition.continuous = false
-  isRecording.value = true
-  recognition.onresult = (e: any) => {
-    let transcript = ''
-    for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
-    chatInput.value = transcript
-  }
-  recognition.onend = () => { isRecording.value = false }
-  recognition.onerror = () => { isRecording.value = false; showToast('语音识别失败') }
-  recognition.start()
+function handleProfileAction(action:string){
+  profilePopupVisible.value=false
+  if(action==='chat'){const sid=profilePopupData.value.spark_id;if(sid&&sid!==myProfile.value?.spark_id)openPrivateChat(sid)}
+  else if(action==='moments'){switchTab('moments')}
+  else showToast(`${action}功能开发中`)
 }
-// 拍一拍(右键头像触发)
-function handlePoke(targetName: string) {
-  if (!activeChat.value || activeChat.value.type === 'ai') return
-  const myName = myProfile.value?.nickname || '你'
-  // 使用自定义拍一拍文案
-  const suffix = myProfile.value?.poke_suffix || ''
-  const pokeMsg = suffix 
-    ? `「${myName}」拍了拍「${targetName}」${suffix}`
-    : `「${myName}」拍了拍「${targetName}」`
-  const sysMsg: ChatMsg = {
-    id: Date.now().toString() + '_poke',
-    content: pokeMsg,
-    type: 'system',
-    sender_id: 'system',
-    sender_name: 'system',
-    sender_avatar: '',
-    sender_type: 'user',
-    created_at: new Date().toISOString(),
-    is_read: true,
-  }
-  if (activeChat.value.type === 'private') {
-    getPrivateChat(activeChat.value.id).push(sysMsg)
-  } else if (activeChat.value.type === 'group') {
-    const g = groups.value.find(g => g.id === activeChat.value!.id)
-    if (g) g.messages.push(sysMsg as any)
-  }
-  showToast(pokeMsg)
+function handleProfileRemarkUpdate(remark:string){
+  const sid=profilePopupData.value.spark_id
+  if(sid)setFriendRemark(sid,remark)
+  profilePopupData.value={...profilePopupData.value,remark}
+}
+// 碰一碰（右键头像）
+function handlePokeAvatar(e:MouseEvent,targetName:string,targetId:string){
+  e.preventDefault()
+  if(!activeChat.value)return
+  if(targetId===myProfile.value?.spark_id)return // 不能碰自己
+  sendPokeMessage(activeChat.value.id,targetName,activeChat.value.type==='group'?'group':'private')
   scrollChat()
 }
-// 清空聊天记录
-function clearChatHistory() {
-  if (!activeChat.value) return
-  confirmDialog.show = true
-  confirmDialog.title = '🗑️ 清空聊天记录'
-  confirmDialog.text = '确定要清空所有聊天记录吗？此操作不可恢复。'
-  confirmDialog.btnText = '清空'
-  confirmDialog.onConfirm = () => {
-    if (activeChat.value?.type === 'private') {
-      const chat = getPrivateChat(activeChat.value.id)
-      chat.length = 0
-    } else if (activeChat.value?.type === 'group') {
-      const g = groups.value.find(g => g.id === activeChat.value!.id)
-      if (g) g.messages.length = 0
-    } else if (activeChat.value?.type === 'ai') {
-      aiChatHistory.value.length = 0
-    }
-    showToast('聊天记录已清空')
-  }
-}
-// 查找聊天
-function openChatSearch() {
-  chatSearchMode.value = !chatSearchMode.value
-  chatSearchQuery.value = ''
-}
-// 右键头像 → 拍一拍
-function handleAvatarContextMenu(e: MouseEvent, name: string) {
-  e.preventDefault()
-  handlePoke(name)
-}
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
-async function handleChatSend(){
-  const text=chatInput.value.trim();if((!text&&!pendingFiles.value.length)||isAiTyping.value)return
-  // 引用消息前缀
-  const prefix = quoteMsg.value ? `[引用 ${quoteMsg.value.sender_name}: ${quoteMsg.value.content?.slice(0,20)}] ` : ''
-  const finalText = prefix + text
-  chatInput.value='';pendingFiles.value=[];quoteMsg.value=null;showMention.value=false
-  if(activeChat.value?.type==='ai'){await sendToAI(finalText);scrollChat()}
-  else if(activeChat.value?.type==='group'){sendGroupMsg(activeChat.value.id,finalText);scrollChat()}
-  else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,finalText);scrollChat()}
-}
-// 格式化消息时间（今天/昨天/更早）
-function formatMsgTime(s:string){
-  const d = new Date(s)
-  const now = new Date()
-  const hm = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
-  const isToday = d.toDateString() === now.toDateString()
-  if (isToday) return hm
-  const yesterday = new Date(now); yesterday.setDate(now.getDate()-1)
-  if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`
-  return `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${hm}`
-}
-// 获取消息发送者在群聊中的角色(仅群聊有效)
-function getMsgRole(msg: ChatMsg): 'owner'|'admin'|'member'|'' {
-  if (activeChat.value?.type !== 'group' || !activeGroup.value) return ''
-  const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
-  return m?.role || ''
-}
-// 获取消息发送者的群昵称(优先群备注→昵称)
-function getGroupNickname(msg: ChatMsg): string {
-  if (activeChat.value?.type !== 'group' || !activeGroup.value) return msg.sender_name
-  const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
-  return m?.nickname || msg.sender_name
-}
+async function handleChatSend(){const text=chatInput.value.trim();if(!text||isAiTyping.value)return;chatInput.value='';if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}else if(activeChat.value?.type==='group'){if(mentionIds.value.length>0){sendGroupMsgWithMentions(activeChat.value.id,text,[...mentionIds.value]);mentionIds.value=[]}else{sendGroupMsg(activeChat.value.id,text)};scrollChat()}else if(activeChat.value?.type==='private'){sendPrivateMsg(activeChat.value.id,text);scrollChat()}}
+function formatMsgTime(s:string){return formatMsgTimeUtil(s)}
 function autoResize(e:Event){const el=e.target as HTMLTextAreaElement;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px'}
-// @提及输入监听
-function handleMentionInput(e:Event){
-  autoResize(e)
-  if (activeChat.value?.type !== 'group' || !activeGroup.value) { showMention.value = false; return }
-  const text = chatInput.value
-  // 检查最后一个@后的内容
-  const lastAt = text.lastIndexOf('@')
-  if (lastAt === -1 || lastAt < text.lastIndexOf(' ') - 1) { showMention.value = false; return }
-  const query = text.slice(lastAt + 1).toLowerCase()
-  showMention.value = true
-  mentionList.value = activeGroup.value.members
-    .filter((m: GroupMember) => m.spark_id !== myProfile.value?.spark_id && m.nickname.toLowerCase().includes(query))
-    .slice(0, 8)
-}
-// 选中@提及成员
-function selectMention(m: GroupMember) {
-  const lastAt = chatInput.value.lastIndexOf('@')
-  if (lastAt !== -1) {
-    chatInput.value = chatInput.value.slice(0, lastAt) + `@${m.nickname} `
-  }
-  showMention.value = false
-}
 function showCtxMenu(e:MouseEvent,type:string,id:string){ctxMenu.show=true;ctxMenu.x=e.clientX;ctxMenu.y=e.clientY;ctxMenu.type=type;ctxMenu.id=id}
 // 消息右键菜单(仿微信)：2分钟内可撤回
-function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=isMine&&elapsed<2*60*1000}
-function msgCtxAction(action:string){msgCtx.show=false;if(action==='copy'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)navigator.clipboard.writeText(msg.content);showToast('已复制')}else if(action==='recall'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1){const msg=chatMessages.value[idx];const recallSys:ChatMsg={id:Date.now().toString()+'_recall',content:`「${msg.sender_name}」撤回了一条消息`,type:'system',sender_id:'system',sender_name:'system',sender_avatar:'',sender_type:'user',created_at:new Date().toISOString(),is_read:true};chatMessages.value.splice(idx,1,recallSys);showToast('消息已撤回')}}else if(action==='delete'){const idx=chatMessages.value.findIndex(m=>m.id===msgCtx.msgId);if(idx!==-1)chatMessages.value.splice(idx,1);showToast('已删除')}else if(action==='forward'){showToast('转发功能开发中')}else if(action==='favorite'){showToast('已收藏');const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)addFavorite({type:'message',title:'聊天消息',content:msg.content,source:`来自${msg.sender_name}`})}else if(action==='quote'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg){quoteMsg.value=msg;showToast('已引用，输入回复内容')}}else if(action==='select'){showToast('多选功能开发中')}}
-// 查看联系人的朋友圈
+function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();const canRecall=isMine&&elapsed<2*60*1000;if(msg.type==='poke'){if(!canRecall)return;msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=true;return};msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=canRecall}
+function msgCtxAction(action:string){msgCtx.show=false;if(action==='copy'){const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)navigator.clipboard.writeText(msg.content);showToast('已复制')}else if(action==='recall'){if(!activeChat.value)return;const chatType=activeChat.value.type==='group'?'group':activeChat.value.type==='ai'?'ai':'private';const ok=recallMessage(activeChat.value.id,msgCtx.msgId,chatType);if(ok)showToast('消息已撤回');else showToast('撤回失败，可能已超过2分钟')}else if(action==='delete'){showToast('已删除(仅自己可见)')}else if(action==='forward'){showToast('转发功能开发中')}else if(action==='favorite'){showToast('已收藏');const msg=chatMessages.value.find(m=>m.id===msgCtx.msgId);if(msg)addFavorite({type:'message',title:'聊天消息',content:msg.content,source:`来自${msg.sender_name}`})}else if(action==='quote'){showToast('引用功能开发中')}else if(action==='select'){showToast('多选功能开发中')}}
+// 查看联系人的星火域
 function contactMoments(sparkId:string){return moments.value.filter(m=>m.author_id===sparkId)}
 function ctxMenuAction(action:string){ctxMenu.show=false;if(action==='delete'){confirmDialog.show=true;confirmDialog.title='删除聊天';confirmDialog.text='确定删除该聊天吗？';confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{showToast('已删除')}}else if(action==='pin')showToast('已置顶');else if(action==='unread'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);if(f)f.unread=1;showToast('已标记未读')}else if(action==='mute')showToast('已设置免打扰')}
 function handleRemoveFriend(sparkId:string){const f=friends.value.find(f=>f.spark_id===sparkId);confirmDialog.show=true;confirmDialog.title='⚠️ 删除联系人';confirmDialog.text=`确定要删除「${f?.nickname||sparkId}」吗？`;confirmDialog.btnText='删除';confirmDialog.onConfirm=()=>{removeFriend(sparkId);selectedContact.value=null;rightPanel.value='none';showToast('已删除')}}
-function handleGlobalSearch(){const q=globalSearch.value.trim().toLowerCase();if(!q){globalSearchResults.value=[];return};const r:typeof globalSearchResults.value=[];friends.value.filter(f=>f.nickname.toLowerCase().includes(q)||f.spark_id.includes(q)).forEach(f=>r.push({id:f.id,name:f.nickname,avatar:f.avatar,desc:f.spark_id,action:()=>openPrivateChat(f.spark_id)}));groups.value.filter(g=>g.name.toLowerCase().includes(q)).forEach(g=>r.push({id:g.id,name:g.name,avatar:g.avatar,desc:`${g.members.length}人`,action:()=>openGroupChat(g.id)}));globalSearchResults.value=r.slice(0,10)}
-function handleSearchFriend(){addFriendResult.value=addFriendQuery.value.trim()?searchUser(addFriendQuery.value.trim()):null}
-function handleAddFriendResult(){
-  if(!addFriendResult.value)return
-  // 支持预设备注+来意说明
-  const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio})
-  if(r.ok && addFriendRemark.value.trim()){
-    setFriendRemark(addFriendResult.value.spark_id, addFriendRemark.value.trim())
-  }
-  showToast(r.msg)
-  addFriendResult.value=null;addFriendQuery.value='';addFriendRemark.value='';addFriendMessage.value=''
-  showAddFriendModal.value=false
+
+// ====== 好友管理功能 ======
+function getContactMeta(f: Friend | null): string {
+  if (!f) return ''
+  const p = f.profile as import('../../composables/useCompanion').SparkProfile | undefined
+  const parts: string[] = []
+  if (p?.region) parts.push(p.region)
+  if (p?.identity) parts.push(p.identity)
+  else if (p?.university) parts.push(p.university)
+  if (p?.major) parts.push(p.major)
+  return parts.join(' | ')
 }
+function openContactRemarkEdit() {
+  if (!selectedContact.value) return
+  const newRemark = prompt('输入备注：', selectedContact.value.remark || '')
+  if (newRemark !== null) { setFriendRemark(selectedContact.value.spark_id, newRemark); showToast('备注已更新') }
+}
+function handleContactStarToggle() {
+  if (!selectedContact.value) return
+  toggleStarFriend(selectedContact.value.spark_id)
+  showToast(selectedContact.value.is_starred ? '已设为星标' : '已取消星标')
+}
+function handleContactBlock() {
+  if (!selectedContact.value) return
+  const f = selectedContact.value
+  confirmDialog.show = true; confirmDialog.title = '🚫 拉黑'; confirmDialog.text = `确定要拉黑「${f.nickname}」吗？`; confirmDialog.btnText = '拉黑'
+  confirmDialog.onConfirm = () => { blockFriend(f.spark_id); showToast('已拉黑') }
+}
+// 聊天设置中的好友管理
+function openChatFriendRemarkEdit() {
+  if (!chatFriend.value) return
+  const newRemark = prompt('输入备注：', chatFriend.value.remark || '')
+  if (newRemark !== null) { setFriendRemark(chatFriend.value.spark_id, newRemark); showToast('备注已更新') }
+}
+function handleChatStarToggle() {
+  if (!chatFriend.value) return
+  toggleStarFriend(chatFriend.value.spark_id)
+  showToast(chatFriend.value.is_starred ? '已设为星标' : '已取消星标')
+}
+function openChatFriendPermissions() {
+  if (!chatFriend.value) return
+  const perms = getFriendPermissions(chatFriend.value.spark_id)
+  const choice = confirm(`当前权限：\n- 允许查看我的星火域: ${perms.allow_view_my_moments ? '是' : '否'}\n- 隐藏对方星火域: ${perms.hide_their_moments ? '是' : '否'}\n\n点击“确定”切换“允许查看我的星火域”设置`)
+  if (choice) {
+    updateFriendPermissions(chatFriend.value.spark_id, { allow_view_my_moments: !perms.allow_view_my_moments })
+    showToast('权限已更新')
+  }
+}
+function handleChatBlockFriend() {
+  if (!chatFriend.value) return
+  const f = chatFriend.value
+  confirmDialog.show = true; confirmDialog.title = '🚫 拉黑'; confirmDialog.text = `确定要拉黑「${f.nickname}」吗？`; confirmDialog.btnText = '拉黑'
+  confirmDialog.onConfirm = () => { blockFriend(f.spark_id); showChatSettings.value = false; showToast('已拉黑') }
+}
+function handleChatDeleteFriend() {
+  if (!chatFriend.value) return
+  const f = chatFriend.value
+  confirmDialog.show = true; confirmDialog.title = '⚠️ 删除好友'; confirmDialog.text = `确定要删除「${f.nickname}」吗？`; confirmDialog.btnText = '删除'
+  confirmDialog.onConfirm = () => { removeFriend(f.spark_id); activeChat.value = null; rightPanel.value = 'none'; showToast('已删除') }
+}
+function handleGlobalSearch(){const q=globalSearch.value.trim().toLowerCase();if(!q){globalSearchResults.value=[];return};const r:typeof globalSearchResults.value=[];friends.value.filter(f=>f.nickname.toLowerCase().includes(q)||f.spark_id.includes(q)).forEach(f=>r.push({id:f.id,name:f.nickname,avatar:f.avatar,desc:f.spark_id,action:()=>openPrivateChat(f.spark_id)}));groups.value.filter(g=>g.name.toLowerCase().includes(q)).forEach(g=>r.push({id:g.id,name:g.name,avatar:g.avatar,desc:`${g.members.length}人`,action:()=>openGroupChat(g.id)}));globalSearchResults.value=r.slice(0,10)}
+let _searchTimer:ReturnType<typeof setTimeout>|null=null
+function debouncedSearch(){if(_searchTimer)clearTimeout(_searchTimer);_searchTimer=setTimeout(handleGlobalSearch,300)}
+function handleSearchFriend(){addFriendResult.value=addFriendQuery.value.trim()?searchUser(addFriendQuery.value.trim()):null}
+function handleAddFriendResult(){if(!addFriendResult.value)return;const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio});showToast(r.msg);addFriendResult.value=null;addFriendQuery.value='';showAddFriendModal.value=false}
 function handleCreateGroup(){if(!newGroupName.value.trim())return;createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value);showToast('群聊已创建！');showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[]}
 function handlePost(){if(!postContent.value.trim())return;postMoment(postContent.value.trim(),[],postVis.value);postContent.value='';showToast('已发布')}
 function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return;commentMoment(id,c);commentInputs[id]=''}
@@ -730,59 +743,306 @@ function onDragEnter(){isDragging.value=true}
 function onDragLeave(){isDragging.value=false}
 function onDrop(e:DragEvent){isDragging.value=false;const files=e.dataTransfer?.files;if(!files)return;processFiles(files)}
 function onFileInput(e:Event){const el=e.target as HTMLInputElement;if(el.files)processFiles(el.files);el.value=''}
-function processFiles(files:FileList){for(let i=0;i<files.length;i++){const f=files[i];const isImage=f.type.startsWith('image/');if(isImage){const reader=new FileReader();reader.onload=()=>pendingFiles.value.push({type:'image',name:f.name,url:reader.result as string});reader.readAsDataURL(f)}else{pendingFiles.value.push({type:'file',name:f.name})}}}
-onMounted(()=>{window.addEventListener('click',closeMenus);window.addEventListener('resize',()=>isMobile.value=window.innerWidth<768)})
-onUnmounted(()=>{window.removeEventListener('click',closeMenus)})
+function processFiles(files:FileList){for(let i=0;i<files.length;i++){const f=files[i];const isImage=f.type.startsWith('image/');if(isImage){const url=URL.createObjectURL(f);pendingFiles.value.push({type:'image',name:f.name,url})}else{pendingFiles.value.push({type:'file',name:f.name})}}}
+function clearPendingFile(idx:number){const f=pendingFiles.value[idx];if(f?.url?.startsWith('blob:'))URL.revokeObjectURL(f.url);pendingFiles.value.splice(idx,1)}
+function clearAllPendingFiles(){pendingFiles.value.forEach(f=>{if(f.url?.startsWith('blob:'))URL.revokeObjectURL(f.url)});pendingFiles.value=[]}
+function handleSendPendingFiles(){if(!activeChat.value||!pendingFiles.value.length)return;pendingFiles.value.forEach(f=>{const content=f.type==='image'?`[图片] ${f.name}`:`[文件] ${f.name}`;if(activeChat.value?.type==='group')sendGroupMsg(activeChat.value.id,content);else if(activeChat.value?.type==='private')sendPrivateMsg(activeChat.value.id,content)});clearAllPendingFiles();scrollChat()}
+let _resizeHandler:null|(()=>void)=null
+onMounted(()=>{window.addEventListener('click',closeMenus);_resizeHandler=()=>{isMobile.value=window.innerWidth<768};window.addEventListener('resize',_resizeHandler)})
+onUnmounted(()=>{window.removeEventListener('click',closeMenus);if(_resizeHandler)window.removeEventListener('resize',_resizeHandler);clearAllPendingFiles();if(_searchTimer)clearTimeout(_searchTimer)})
 watch(showQRModal,v=>{if(v)nextTick(()=>renderQR(userQrCanvas.value,getQRData()))})
 watch(showGroupQR,v=>{if(v&&activeGroup.value)nextTick(()=>renderQR(groupQrCanvas.value,getQRData(undefined,'group',activeGroup.value!.id)))})
 watch(()=>chatMessages.value.length,()=>scrollChat())
 watch(isAiTyping,()=>scrollChat())
 // 切换聊天时关闭设置面板
-watch(activeChat,()=>{showChatSettings.value=false;showKickPanel.value=false})
-// ===== v6.0 群管理handler =====
-/** 踢出群成员 */
-function handleKickMember(m:GroupMember){
-  if(!activeGroup.value)return
-  confirmDialog.show=true;confirmDialog.title='⚠️ 移出成员'
-  confirmDialog.text=`确定要将「${m.nickname}」移出群聊吗？`
-  confirmDialog.btnText='移出'
-  confirmDialog.onConfirm=()=>{kickMember(activeGroup.value!.id,m.spark_id);showToast(`已将「${m.nickname}」移出群聊`)}
-}
-/** 修改群名称 */
-function startRenameGroup(){
-  if(!activeGroup.value||!isGroupOwnerOrAdmin.value)return
-  const newName=prompt('输入新群名称:',activeGroup.value.name)
-  if(newName&&newName.trim()){
-    renameGroup(activeGroup.value.id,newName.trim())
-    showToast(`群名已修改为「${newName.trim()}」`)
+watch(activeChat,()=>{showChatSettings.value=false;showGroupMgmt.value=false;mentionIds.value=[]})
+
+// @提及功能
+function onChatInputForMention(e: Event) {
+  autoResize(e)
+  const el = e.target as HTMLTextAreaElement
+  const val = el.value
+  const pos = el.selectionStart || 0
+  // 检查光标前是否刚输入@
+  if (val[pos - 1] === '@' && activeChat.value?.type === 'group') {
+    showMentionPicker.value = true
+    mentionSearch.value = ''
+  } else if (showMentionPicker.value) {
+    // 提取@后的搜索关键字
+    const lastAt = val.lastIndexOf('@', pos - 1)
+    if (lastAt >= 0) {
+      mentionSearch.value = val.slice(lastAt + 1, pos)
+    } else {
+      showMentionPicker.value = false
+    }
   }
 }
-/** 编辑群公告 */
-function startEditAnnouncement(){
-  if(!activeGroup.value||!isGroupOwnerOrAdmin.value){showToast('仅群主/管理员可修改公告');return}
-  const text=prompt('输入群公告:',activeGroup.value.announcement)
-  if(text!==null){
-    setGroupAnnouncement(activeGroup.value.id,text.trim())
-    showToast('群公告已更新')
+const filteredMentionMembers = computed(() => {
+  if (!activeGroup.value) return []
+  const q = mentionSearch.value.toLowerCase()
+  return activeGroup.value.members
+    .filter(m => m.spark_id !== myProfile.value?.spark_id)
+    .filter(m => !q || m.nickname.toLowerCase().includes(q))
+})
+function selectMention(member: GroupChat['members'][0]) {
+  const ta = document.querySelector('.cp-input-row textarea') as HTMLTextAreaElement | null
+  if (!ta) return
+  const val = ta.value
+  const pos = ta.selectionStart || val.length
+  const lastAt = val.lastIndexOf('@', pos - 1)
+  if (lastAt >= 0) {
+    const before = val.slice(0, lastAt)
+    const after = val.slice(pos)
+    chatInput.value = `${before}@${member.nickname} ${after}`
+    mentionIds.value.push(member.spark_id)
   }
+  showMentionPicker.value = false
 }
-/** 解散群聊 */
-function handleDissolveGroup(){
-  if(!activeGroup.value)return
-  confirmDialog.show=true;confirmDialog.title='⚠️ 解散群聊'
-  confirmDialog.text=`确定要解散「${activeGroup.value.name}」吗？此操作不可撤销！`
-  confirmDialog.btnText='解散'
-  confirmDialog.onConfirm=()=>{dissolveGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('群聊已解散')}
+// 获取群成员角色
+function getGroupMsgRole(msg: ChatMsg): 'owner' | 'admin' | 'member' | null {
+  if (!activeGroup.value) return null
+  const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
+  return m?.role || null
 }
-/** 退出群聊 */
-function handleQuitGroup(){
-  if(!activeGroup.value)return
-  confirmDialog.show=true;confirmDialog.title='退出群聊'
-  confirmDialog.text=`确定要退出「${activeGroup.value.name}」吗？`
-  confirmDialog.btnText='退出'
-  confirmDialog.onConfirm=()=>{quitGroup(activeGroup.value!.id);activeChat.value=null;rightPanel.value='none';showToast('已退出群聊')}
+// 群头像九宫格
+function getGroupAvatarGrid(g: GroupChat) {
+  return g.members.slice(0, 9).map(m => m.avatar)
 }
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void viewProfile;void handlePopupAction;void handlePopupUpdateRemark;void selectContact;void sendFriendRequest;void clearChatHistory;void openChatSearch;void handleAvatarContextMenu;void chatSearchHits;void chatSearchMode;void feedCoverStyle;void showVisMenu;void isRecording;void startVoiceInput;void showInviteModal;void setGroupAdmin;void removeGroupAdmin;void inviteToGroup;void addFriendSource;void getMsgRole;void getGroupNickname;void showMention;void mentionList;void quoteMsg;void selectMention;void handleMentionInput
+function getGridClass(count: number): string {
+  if (count <= 2) return 'grid-2'
+  if (count <= 4) return 'grid-4'
+  return 'grid-9'
+}
+// 群管理操作
+function handleRenameGroup() {
+  if (!activeGroup.value || !groupRenameInput.value.trim()) return
+  const r = renameGroup(activeGroup.value.id, groupRenameInput.value.trim())
+  showToast(r.msg); groupRenameInput.value = ''
+}
+function handleSetAnnouncement() {
+  if (!activeGroup.value || !groupAnnouncementInput.value.trim()) return
+  const r = setGroupAnnouncement(activeGroup.value.id, groupAnnouncementInput.value.trim())
+  showToast(r.msg); groupAnnouncementInput.value = ''
+}
+function handleSetAdmin(memberId: string, isAdmin: boolean) {
+  if (!activeGroup.value) return
+  const r = setGroupAdmin(activeGroup.value.id, memberId, isAdmin)
+  showToast(r.msg)
+}
+function handleKickMember(memberId: string) {
+  if (!activeGroup.value) return
+  const member = activeGroup.value.members.find(m => m.spark_id === memberId)
+  confirmDialog.show = true
+  confirmDialog.title = '移出成员'
+  confirmDialog.text = `确定要将「${member?.nickname || memberId}」移出群聊吗？`
+  confirmDialog.btnText = '移出'
+  confirmDialog.onConfirm = () => { const r = kickGroupMember(activeGroup.value!.id, memberId); showToast(r.msg) }
+}
+function handleDisbandGroup() {
+  if (!activeGroup.value) return
+  confirmDialog.show = true
+  confirmDialog.title = '⚠️ 解散群聊'
+  confirmDialog.text = `确定要解散「${activeGroup.value.name}」吗？此操作不可撤销。`
+  confirmDialog.btnText = '解散'
+  confirmDialog.onConfirm = () => { const r = disbandGroup(activeGroup.value!.id); showToast(r.msg); closeRight() }
+}
+function handleTransferOwner(memberId: string) {
+  if (!activeGroup.value) return
+  const member = activeGroup.value.members.find(m => m.spark_id === memberId)
+  confirmDialog.show = true
+  confirmDialog.title = '转让群主'
+  confirmDialog.text = `确定要将群主转让给「${member?.nickname || memberId}」吗？`
+  confirmDialog.btnText = '转让'
+  confirmDialog.onConfirm = () => { const r = transferGroupOwner(activeGroup.value!.id, memberId); showToast(r.msg) }
+}
+const myGroupRole = computed(() => {
+  if (!activeGroup.value || !myProfile.value) return null
+  return getMemberRole(activeGroup.value.id, myProfile.value.spark_id)
+})
+// 检查消息是否包含@当前用户
+function isMentionedInMsg(msg: ChatMsg): boolean {
+  if (!myProfile.value) return false
+  if (msg.mentions?.includes(myProfile.value.spark_id)) return true
+  return msg.content.includes(`@${myProfile.value.nickname}`)
+}
+void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis
+// 渲染消息内容（@提及高亮）
+function renderMsgContent(content: string): string {
+  // 转义HTML
+  const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // 高亮 @提及
+  return escaped.replace(/@([\w\u4e00-\u9fff\uff08\uff09\(\)]+)/g, '<span class="cp-mention-hl">@$1</span>')
+}
+
+// 星火域双栏: 我的动态(置顶优先)
+const myMoments = computed(() => {
+  if (!myProfile.value) return []
+  const mine = moments.value.filter(m => m.author_id === myProfile.value!.spark_id)
+  return [...mine].sort((a, b) => {
+    if (a.is_pinned && !b.is_pinned) return -1
+    if (!a.is_pinned && b.is_pinned) return 1
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+})
+// 星火域双栏: 所有动态(时间倒序+可见性过滤)
+const allMoments = computed(() => {
+  const filtered = filterMomentsByVisibility(
+    [...moments.value].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  )
+  return filtered
+})
+
+// 拖拽分隔条
+function onDividerMouseDown(e: MouseEvent) {
+  e.preventDefault()
+  isDraggingDivider.value = true
+  const container = (e.target as HTMLElement).parentElement
+  if (!container) return
+  const rect = container.getBoundingClientRect()
+  const onMove = (ev: MouseEvent) => {
+    const x = ev.clientX - rect.left
+    const pct = (x / rect.width) * 100
+    momentLeftWidth.value = Math.max(20, Math.min(50, pct))
+  }
+  const onUp = () => {
+    isDraggingDivider.value = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+// 背景图上传
+function onBgFileSelect(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (!el.files?.[0]) return
+  const file = el.files[0]
+  if (!file.type.startsWith('image/')) return
+  const url = URL.createObjectURL(file)
+  customBgUrl.value = url
+  el.value = ''
+}
+
+// 动态菜单切换
+function toggleMomentMenu(momentId: string) {
+  momentMenuId.value = momentMenuId.value === momentId ? null : momentId
+}
+function handleTogglePin(momentId: string) {
+  togglePinMoment(momentId)
+  momentMenuId.value = null
+}
+function handleDeleteMoment(momentId: string) {
+  deleteMoment(momentId)
+  momentMenuId.value = null
+}
+
+// ====== 发布编辑器功能 ======
+const visibilityOptions = [
+  { value: 'three_days', label: '最近三天' },
+  { value: 'one_month', label: '最近一个月' },
+  { value: 'half_year', label: '最近半年' },
+  { value: 'forever', label: '全部' },
+]
+const visibilityLabels: Record<string, string> = {
+  three_days: '最近三天', one_month: '最近一个月', half_year: '最近半年', forever: '全部'
+}
+function handleVisibilityChange(val: 'three_days' | 'one_month' | 'half_year' | 'forever') {
+  updateMomentVisibility({ timeRange: val })
+  showToast(`设置成功，你的动态将仅展示${visibilityLabels[val]}的内容`)
+}
+
+const maxImagesAllowed = computed(() => publishVideos.value.length > 0 ? 6 : 9)
+
+function removePublishImage(idx: number) {
+  const img = publishImages.value[idx]
+  if (img.blob && img.url.startsWith('blob:')) URL.revokeObjectURL(img.url)
+  publishImages.value.splice(idx, 1)
+}
+function removePublishVideo(idx: number) {
+  const vid = publishVideos.value[idx]
+  if (vid.url.startsWith('blob:')) URL.revokeObjectURL(vid.url)
+  publishVideos.value.splice(idx, 1)
+}
+function onPublishDrop(targetIdx: number) {
+  if (dragIdx.value === null || dragIdx.value === targetIdx) return
+  const arr = [...publishImages.value]
+  const [moved] = arr.splice(dragIdx.value, 1)
+  arr.splice(targetIdx, 0, moved)
+  publishImages.value = arr
+  dragIdx.value = null
+}
+function onPublishFileSelect(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (!el.files) return
+  for (let i = 0; i < el.files.length; i++) {
+    const f = el.files[i]
+    if (f.type.startsWith('image/')) {
+      if (publishImages.value.length >= maxImagesAllowed.value) {
+        showToast(`图片最多${maxImagesAllowed.value}张${publishVideos.value.length > 0 ? '（视频占用3个位置）' : ''}`)
+        break
+      }
+      publishImages.value.push({ url: URL.createObjectURL(f), name: f.name, blob: true })
+    } else if (f.type.startsWith('video/')) {
+      if (publishVideos.value.length >= 1) { showToast('最多上传1个视频'); continue }
+      publishVideos.value.push({ url: URL.createObjectURL(f), name: f.name })
+      // 视频占位后检查图片是否超出
+      while (publishImages.value.length > 6) {
+        const removed = publishImages.value.pop()
+        if (removed?.blob && removed.url.startsWith('blob:')) URL.revokeObjectURL(removed.url)
+        showToast('有视频时图片最多6张，已移除多余图片')
+      }
+    } else {
+      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size })
+    }
+  }
+  el.value = ''
+}
+function onPublishFileAttach() {
+  // 创建一个专门的文件选择器
+  const inp = document.createElement('input')
+  inp.type = 'file'
+  inp.multiple = true
+  inp.accept = '.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx,.txt'
+  inp.onchange = () => {
+    if (!inp.files) return
+    for (let i = 0; i < inp.files.length; i++) {
+      const f = inp.files[i]
+      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size })
+    }
+  }
+  inp.click()
+}
+function formatPublishFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+function handlePublish() {
+  if (!publishContent.value.trim()) return
+  postMoment(
+    publishContent.value.trim(),
+    publishImages.value.map(img => img.url),
+    publishVis.value,
+    true,
+    {
+      videoUrls: publishVideos.value.map(v => v.url),
+      fileUrls: publishFiles.value.map(f => f.url),
+      fileNames: publishFiles.value.map(f => f.name),
+      fileSizes: publishFiles.value.map(f => f.size),
+      isLive: publishIsLive.value,
+    }
+  )
+  showToast('已发布')
+  // 重置
+  publishContent.value = ''
+  publishImages.value = []
+  publishVideos.value = []
+  publishFiles.value = []
+  publishIsLive.value = false
+  publishVis.value = 'public'
+  showPublishModal.value = false
+}
 </script>
 
 <style scoped>
@@ -841,15 +1101,6 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-sb-hint{text-align:center;padding:16px 0;color:rgba(255,255,255,.1);font-size:10px}
 /* lg头像 */
 .cp-av.lg{width:48px;height:48px;font-size:22px;border-radius:12px}
-/* 好友申请列表 */
-.cp-friend-req{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 32px;border-bottom:1px solid rgba(255,255,255,.02)}
-.cp-req-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.cp-req-name{font-size:12px;color:rgba(255,255,255,.5);font-weight:500}
-.cp-req-msg{font-size:10px;color:rgba(255,255,255,.15)}
-.cp-req-acts{display:flex;gap:4px}
-.cp-req-accept{padding:4px 12px;border-radius:6px;border:none;background:rgba(34,197,94,.1);color:rgba(34,197,94,.7);font-size:10px;cursor:pointer;font-weight:600;transition:all .12s}.cp-req-accept:hover{background:rgba(34,197,94,.2)}
-.cp-req-status{font-size:10px;color:rgba(255,255,255,.15)}
-.cp-badge.sm{min-width:14px;height:14px;font-size:8px;padding:0 3px;border-radius:7px;margin-left:auto}
 /* 右侧主面板 */
 .cp-main{flex:1;display:flex;flex-direction:column;min-width:0;z-index:1;position:relative}
 .cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;background:rgba(8,6,18,.7);backdrop-filter:blur(20px)}
@@ -857,10 +1108,15 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-hdr-sub{font-size:10px;color:rgba(255,255,255,.15)}.cp-hdr-btn{background:none;border:none;font-size:15px;cursor:pointer;padding:4px}
 /* ☰设置按钮高亮 */
 .cs-btn{font-size:16px;color:rgba(255,255,255,.25);border-radius:6px;transition:all .15s}.cs-btn:hover{color:rgba(255,255,255,.4);background:rgba(255,255,255,.02)}.cs-btn.active{color:rgba(139,92,246,.6);background:rgba(139,92,246,.06)}
-.cp-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}.cp-messages::-webkit-scrollbar{width:2px}
+.cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px}.cp-messages::-webkit-scrollbar{width:2px}
 .cp-sys-msg{text-align:center;color:rgba(255,255,255,.1);font-size:10px;padding:4px 12px;background:rgba(255,255,255,.015);border-radius:20px;margin:0 auto}
-.cp-msg{display:flex;gap:8px;max-width:75%;align-items:flex-start}.cp-msg.mine{margin-left:auto;flex-direction:row-reverse}.cp-msg.sys{margin:0 auto;max-width:100%}
-.cp-msg-av{width:32px;height:32px;border-radius:8px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;border:1px solid rgba(255,255,255,.03)}.cp-msg-av.my{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.06)}
+/* 碰一碰消息 */
+.cp-poke-msg{text-align:center;color:rgba(255,255,255,.2);font-size:10px;padding:4px 12px;background:rgba(255,255,255,.01);border-radius:20px;margin:0 auto;animation:poke-shake .4s ease}
+.cp-msg.poke{margin:0 auto;max-width:100%}
+@keyframes poke-shake{0%{transform:translateX(0)}15%{transform:translateX(-3px)}30%{transform:translateX(3px)}45%{transform:translateX(-2px)}60%{transform:translateX(2px)}75%{transform:translateX(-1px)}100%{transform:translateX(0)}}
+.cp-msg{display:flex;gap:8px;max-width:72%;align-items:flex-start}.cp-msg.mine{margin-left:auto;flex-direction:row-reverse}.cp-msg.sys{margin:0 auto;max-width:100%}
+.cp-msg-av{width:32px;height:32px;border-radius:8px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;border:1px solid rgba(255,255,255,.03);cursor:pointer;transition:transform .15s}.cp-msg-av.my{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.06)}
+.cp-msg-av-self{flex-shrink:0}
 .cp-msg-body{display:flex;flex-direction:column;gap:2px;min-width:0}.cp-msg-meta{display:flex;align-items:center;gap:4px;padding:0 4px}.cp-msg-name{font-size:9px;color:rgba(255,255,255,.15)}
 .cp-bubble-row{display:flex;align-items:flex-end;gap:4px}.cp-bubble-row.reverse{flex-direction:row-reverse}
 .cp-bubble{padding:8px 12px;border-radius:14px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.75);word-break:break-word;white-space:pre-wrap}
@@ -868,26 +1124,18 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-msg.mine .cp-bubble{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.08);border-top-right-radius:4px;color:rgba(255,255,255,.85)}
 .cp-msg.ai .cp-bubble{background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);border-top-left-radius:4px}
 .cp-msg-time{font-size:8px;color:rgba(255,255,255,.08);white-space:nowrap;flex-shrink:0}
-/* 已读状态：未读灰色单勾 / 已读紫色双勾 */
-.cp-read-status{font-size:11px;color:rgba(255,255,255,.18);flex-shrink:0;line-height:1;letter-spacing:-2px}.cp-read-status.read{color:rgba(139,92,246,.6)}
 /* 时间更醒目 */
 .cp-msg-time2{font-size:9px;color:rgba(255,255,255,.25);white-space:nowrap;flex-shrink:0;align-self:flex-end}
-/* 群聊角色标签 */
-.cp-role-tag{font-size:8px;padding:1px 4px;border-radius:3px;font-weight:700;flex-shrink:0}
-.cp-role-tag.owner{background:rgba(251,191,36,.12);color:rgba(251,191,36,.85);border:1px solid rgba(251,191,36,.15)}
-.cp-role-tag.admin{background:rgba(16,185,129,.1);color:rgba(16,185,129,.75);border:1px solid rgba(16,185,129,.12)}
-/* 我的消息名字隐藏(微信风格) */
-.cp-msg.mine .cp-msg-meta{display:none}
 /* 头像可点击 */
 .cp-msg-av{cursor:pointer;transition:transform .15s}.cp-msg-av:hover{transform:scale(1.08)}
 /* 图片气泡 */
 .cp-bubble-img{max-width:200px;max-height:200px;border-radius:8px;display:block}
 /* 消息footer：时间+已读在消息下方 */
-.cp-msg-footer{display:flex;align-items:center;gap:4px;padding:1px 4px}.cp-msg-footer.reverse{justify-content:flex-end}
+.cp-msg-footer{display:flex;align-items:center;gap:4px;padding:1px 4px}.cp-msg.mine .cp-msg-footer{flex-direction:row-reverse;justify-content:flex-start}
 
 /* 聊天区域布局(消息+设置面板并排) */
 .cp-chat-body{flex:1;display:flex;overflow:hidden}
-.cp-chat-body .cp-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.cp-chat-body .cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px}
 /* 聊天设置面板(仿微信) */
 .cp-chat-settings{width:260px;flex-shrink:0;border-left:1px solid rgba(255,255,255,.04);background:rgba(8,6,18,.85);backdrop-filter:blur(16px);padding:16px;overflow-y:auto}
 .cs-members{display:flex;flex-wrap:wrap;gap:10px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.03);margin-bottom:10px}
@@ -909,6 +1157,10 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-pf-chip{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);font-size:10px;color:rgba(255,255,255,.35)}
 .cp-pf-thumb{width:28px;height:28px;border-radius:4px;object-fit:cover}.cp-pf-name{max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cp-pf-chip button{background:none;border:none;color:rgba(255,255,255,.15);cursor:pointer;font-size:12px}
+/* 文件预览发送/取消按钮 */
+.cp-pf-actions{display:flex;gap:6px;margin-left:auto;align-items:center}
+.cp-pf-cancel{padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:none;color:rgba(255,255,255,.25);font-size:10px;cursor:pointer;transition:all .12s}.cp-pf-cancel:hover{background:rgba(255,255,255,.03);color:rgba(255,255,255,.4)}
+.cp-pf-send{padding:3px 12px;border-radius:6px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;font-size:10px;font-weight:600;cursor:pointer;transition:all .12s}.cp-pf-send:hover{opacity:.85}
 .typing-dots{display:flex;gap:4px;padding:4px 0}.typing-dots span{width:5px;height:5px;border-radius:50%;background:rgba(139,92,246,.3);animation:dot 1.4s infinite}.typing-dots span:nth-child(2){animation-delay:.2s}.typing-dots span:nth-child(3){animation-delay:.4s}
 @keyframes dot{0%,80%,100%{transform:scale(.6);opacity:.3}40%{transform:scale(1);opacity:.8}}
 /* 输入区 */
@@ -931,25 +1183,57 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .pf-btn{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 20px;border-radius:12px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.4);font-size:11px;cursor:pointer;transition:all .15s;min-width:80px}.pf-btn span{font-size:20px}.pf-btn:hover{background:rgba(139,92,246,.04);border-color:rgba(139,92,246,.08);color:rgba(139,92,246,.6)}
 .pf-btn.primary{background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.1);color:rgba(139,92,246,.7)}
 .pf-delete{display:block;margin:32px auto 0;padding:10px 24px;border-radius:10px;border:1px solid rgba(239,68,68,.1);background:none;color:rgba(239,68,68,.5);font-size:12px;cursor:pointer;transition:all .15s}.pf-delete:hover{background:rgba(239,68,68,.04);color:rgba(239,68,68,.7)}
-/* 资料卡增强 */
-.pf-sub{font-size:11px;color:rgba(255,255,255,.2);margin:2px 0 0}
-.pf-moments-preview{display:flex;gap:4px;margin:0 8px}.pf-moment-thumb{font-size:14px}
-.pf-delete-link{display:block;width:100%;text-align:center;padding:10px;border:none;background:none;color:rgba(239,68,68,.5);font-size:12px;cursor:pointer;border-radius:8px;transition:all .15s}.pf-delete-link:hover{background:rgba(239,68,68,.04);color:rgba(239,68,68,.7)}
-/* 动态广场/朋友圈 */
+.pf-star{font-size:16px;vertical-align:middle;margin-right:4px}
+.pf-meta{color:rgba(168,85,247,.45)!important;font-size:10px!important}
+.pf-danger-zone{display:flex;flex-direction:column;gap:4px;padding:8px 0}
+.pf-action-link{display:block;width:100%;text-align:center;padding:8px;border-radius:8px;border:none;background:none;font-size:12px;cursor:pointer;transition:all .15s}
+.pf-action-link.warn{color:rgba(251,191,36,.5)}.pf-action-link.warn:hover{background:rgba(251,191,36,.04);color:rgba(251,191,36,.7)}
+.pf-action-link.danger{color:rgba(239,68,68,.5)}.pf-action-link.danger:hover{background:rgba(239,68,68,.04);color:rgba(239,68,68,.7)}
+.cs-val{font-size:10px;color:rgba(255,255,255,.2);margin-left:auto;margin-right:4px}
+.cs-row.warn{color:rgba(251,191,36,.5)!important}.cs-row.warn:hover{background:rgba(251,191,36,.04)!important}
+.cs-row.danger{color:rgba(239,68,68,.5)!important}.cs-row.danger:hover{background:rgba(239,68,68,.04)!important}
+/* 动态星火域/欢迎页 */
 .cp-main-feed{overflow-y:auto}
-.cp-feed-full{padding:0;max-width:100%}
-/* 朋友圈封面 */
-.cp-feed-header{position:relative;height:180px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.06));border-bottom:1px solid rgba(255,255,255,.03);margin-bottom:40px}
-.cp-feed-cover{position:absolute;inset:0;background:linear-gradient(180deg,rgba(139,92,246,.03) 0%,rgba(8,6,18,.8) 100%)}
-.cp-feed-me{position:absolute;bottom:-30px;right:24px;display:flex;align-items:flex-end;gap:10px}
-.cp-feed-myname{font-size:14px;color:white;font-weight:700;margin-bottom:8px;text-shadow:0 2px 8px rgba(0,0,0,.4)}
-/* feed发布框 */
-.feed-post{margin:0 20px 16px;padding:12px;border-radius:12px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
-/* feed卡片 */
-.cp-feed-card{padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.02)}
-.cp-feed-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.cp-feed-info{flex:1;display:flex;flex-direction:column}.cp-feed-info b{font-size:12px;color:rgba(255,255,255,.55)}.cp-feed-info small{color:rgba(255,255,255,.1);font-size:9px;margin-top:1px}
-.cp-feed-text{font-size:13px;color:rgba(255,255,255,.5);line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
+/* 双栏布局 */
+.cp-moments-dual{display:flex;height:100%;overflow:hidden;position:relative}
+.cp-moments-dual.is-dragging{cursor:col-resize;user-select:none}
+.cp-ml{display:flex;flex-direction:column;overflow-y:auto;border-right:none;padding:0}.cp-ml::-webkit-scrollbar{width:2px}.cp-ml::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+/* 背景图区域 */
+.cp-ml-bg{position:relative;height:160px;overflow:hidden;cursor:pointer;flex-shrink:0;transition:height .4s cubic-bezier(.4,0,.2,1)}
+.cp-ml-bg.expanded{height:320px}
+.cp-ml-bg-img{width:100%;height:100%;background-size:cover;background-position:center;transition:transform .4s cubic-bezier(.4,0,.2,1)}
+.cp-ml-bg.expanded .cp-ml-bg-img{transform:scale(1.08)}
+.cp-ml-bg-default{width:100%;height:100%;background:linear-gradient(135deg,rgba(139,92,246,.25) 0%,rgba(59,130,246,.15) 50%,rgba(168,85,247,.2) 100%)}
+.cp-ml-bg-upload{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.4);backdrop-filter:blur(8px);border:none;border-radius:8px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;opacity:.6;transition:opacity .2s}.cp-ml-bg-upload:hover{opacity:1}
+/* 用户信息 */
+.cp-ml-profile{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.03)}
+.cp-ml-pinfo{flex:1;min-width:0}.cp-ml-pinfo b{font-size:13px;color:rgba(255,255,255,.7);display:block}.cp-ml-pinfo p{font-size:10px;color:rgba(255,255,255,.2);margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 我的动态列表 */
+.cp-ml-list{flex:1;overflow-y:auto;padding:8px 10px}.cp-ml-list::-webkit-scrollbar{width:2px}.cp-ml-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.cp-ml-title{font-size:11px;color:rgba(255,255,255,.15);margin:0 0 8px;font-weight:600;letter-spacing:.5px}
+/* 拖拽分隔条 */
+.cp-divider{width:4px;cursor:col-resize;background:rgba(255,255,255,.03);flex-shrink:0;transition:all .2s;position:relative}
+.cp-divider:hover,.cp-divider.active{width:6px;background:rgba(139,92,246,.25)}
+.cp-divider::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:32px;border-radius:2px;background:rgba(255,255,255,.08);transition:background .2s}
+.cp-divider:hover::after,.cp-divider.active::after{background:rgba(139,92,246,.5)}
+/* 右栏 */
+.cp-mr{flex:1;min-width:300px;overflow-y:auto;padding:16px 20px}.cp-mr::-webkit-scrollbar{width:2px}.cp-mr::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.cp-mr-title{font-size:15px;color:rgba(255,255,255,.65);margin:0 0 16px;font-weight:700}
+/* 置顶标识 */
+.cp-pin-badge{font-size:9px;color:rgba(139,92,246,.6);background:rgba(139,92,246,.08);padding:1px 6px;border-radius:4px;margin-right:auto}
+.cp-feed-card.is-pinned{border-color:rgba(139,92,246,.12);background:rgba(139,92,246,.03)}
+/* 动态菜单 */
+.cp-feed-menu-wrap{position:relative;margin-left:auto}
+.cp-feed-dots{background:none;border:none;color:rgba(255,255,255,.2);font-size:16px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .12s;line-height:1}.cp-feed-dots:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.4)}
+.cp-feed-dropdown{position:absolute;top:100%;right:0;background:rgba(30,28,44,.98);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:3px;z-index:10;min-width:110px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.cp-feed-dropdown button{display:block;width:100%;padding:6px 10px;border:none;background:none;color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;border-radius:5px;text-align:left;transition:all .1s}
+.cp-feed-dropdown button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
+.cp-feed-dropdown button.del{color:rgba(239,68,68,.5)}.cp-feed-dropdown button.del:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.7)}
+/* 左栏post box */
+.cp-ml .cp-post-box{margin:8px 10px;padding:8px;border-radius:10px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
+.cp-feed-card{padding:14px;border-radius:14px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03);margin-bottom:10px}
+.cp-feed-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.cp-feed-head b{font-size:12px;color:rgba(255,255,255,.55)}.cp-feed-head small{color:rgba(255,255,255,.1);margin-left:6px;font-size:9px}
+.cp-feed-card p{font-size:13px;color:rgba(255,255,255,.5);line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
 .cp-feed-acts{display:flex;gap:8px}.cp-feed-acts button{padding:4px 10px;border-radius:6px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .15s}.cp-feed-acts button:hover{background:rgba(139,92,246,.04);color:rgba(139,92,246,.5)}.cp-feed-acts button.liked{color:rgba(239,68,68,.5)}
 .cp-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center}
 .cp-welcome-icon{font-size:48px;margin-bottom:12px}.cp-welcome h3{color:white;font-size:18px;margin:0 0 6px}.cp-welcome p{color:rgba(255,255,255,.15);font-size:12px;margin:0 0 20px}
@@ -972,71 +1256,96 @@ void updateProfile;void favorites;void addFavorite;void CosmicBackground;void fo
 .cp-qr-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;text-align:left}.cp-qr-av{width:36px;height:36px;border-radius:10px;background:rgba(139,92,246,.08);display:flex;align-items:center;justify-content:center;font-size:18px}.cp-qr-name{font-size:12px;color:white;font-weight:600}.cp-qr-id{font-size:9px;color:rgba(139,92,246,.4)}.cp-qr-canvas{display:block;margin:0 auto;border-radius:10px}
 .cp-qr-paste{margin-top:8px}.cp-qr-paste p{font-size:10px;color:rgba(255,255,255,.15);margin:0 0 4px}
 .cp-id-row{display:flex;gap:4px}.cp-id-row input{flex:1;padding:6px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:10px;outline:none}.cp-id-row button{padding:4px 12px;border-radius:7px;border:none;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:10px;cursor:pointer;font-weight:600;white-space:nowrap}
-/* ===== v6.0 新增CSS ===== */
-/* 可见性选择器 */
-.cp-vis-select{position:relative;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);cursor:pointer;font-size:11px;color:rgba(255,255,255,.4);transition:all .15s;user-select:none}
-.cp-vis-select:hover,.cp-vis-select.open{background:rgba(139,92,246,.04);border-color:rgba(139,92,246,.1);color:rgba(139,92,246,.6)}
-.cp-vis-icon{font-size:13px}.cp-vis-arrow{font-size:8px;opacity:.4;transition:transform .2s}.cp-vis-select.open .cp-vis-arrow{transform:rotate(180deg)}
-.cp-vis-menu{position:absolute;bottom:calc(100% + 6px);left:0;background:rgba(20,18,32,.98);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;box-shadow:0 8px 32px rgba(0,0,0,.5);min-width:140px;z-index:20}
-.cp-vis-menu button{display:flex;width:100%;align-items:center;gap:6px;padding:8px 12px;border:none;background:none;color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;border-radius:7px;transition:all .12s}
-.cp-vis-menu button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
-.cp-vis-menu button span{font-size:14px}.cp-vis-menu button small{margin-left:auto;font-size:9px;color:rgba(255,255,255,.15)}
-.cp-post-btn{padding:6px 18px!important;border-radius:8px!important;background:linear-gradient(135deg,#8b5cf6,#6d28d9)!important;color:white!important;border:none!important;font-size:11px!important;font-weight:600!important;cursor:pointer;transition:all .15s!important}.cp-post-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 12px rgba(139,92,246,.25)!important}.cp-post-btn:disabled{opacity:.3!important;cursor:not-allowed}
-/* 星火域封面 */
-.cp-feed-cover{position:relative;height:180px;border-radius:0 0 20px 20px;overflow:hidden}
-.cp-feed-cover-inner{width:100%;height:100%;background:linear-gradient(135deg, rgba(139,92,246,.15) 0%, rgba(59,130,246,.1) 50%, rgba(16,185,129,.08) 100%);background-size:200% 200%;animation:gradientShift 8s ease infinite}
-@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-.cp-feed-me{display:flex;align-items:center;gap:12px;padding:0 20px;margin-top:-30px;position:relative;z-index:2}
-.cp-feed-myinfo{display:flex;flex-direction:column;gap:2px}
-.cp-feed-myname{font-size:16px;font-weight:700;color:white}
-.cp-feed-motto{font-size:11px;color:rgba(255,255,255,.25);font-style:italic}
-/* 查找聊天搜索栏 */
-.cs-search-bar{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
-.cs-search-bar input{flex:1;padding:6px 10px;border-radius:7px;border:1px solid rgba(139,92,246,.12);background:rgba(255,255,255,.02);color:white;font-size:11px;outline:none}.cs-search-bar input:focus{border-color:rgba(139,92,246,.25)}
-.cs-search-count{font-size:9px;color:rgba(139,92,246,.4);white-space:nowrap}
-/* 群聊设置 - 成员九宫格 */
-.cs-members-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:10px 12px}
-.cs-gm{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 2px;border-radius:8px;transition:all .12s;position:relative}
-.cs-gm:hover{background:rgba(139,92,246,.04)}
-.cs-gmname{font-size:9px;color:rgba(255,255,255,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50px;text-align:center}
-.cs-role{position:absolute;top:-2px;right:-4px;font-size:7px;padding:1px 3px;border-radius:3px;font-weight:700}
-.cs-role.owner{background:rgba(251,191,36,.15);color:rgba(251,191,36,.8)}
-.cs-role.admin{background:rgba(16,185,129,.12);color:rgba(16,185,129,.7)}
-.cs-gm-add{border:1px dashed rgba(255,255,255,.08);border-radius:8px}
-.cs-gm-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.02);display:flex;align-items:center;justify-content:center;font-size:16px;color:rgba(255,255,255,.18)}
-.cs-hint{font-size:9px;color:rgba(139,92,246,.3);text-align:center;padding:2px 0 8px;cursor:pointer}
-.cs-hint:hover{color:rgba(139,92,246,.5)}
-/* 踢人面板 */
-.cs-kick-panel{padding:6px 12px;border-top:1px solid rgba(255,255,255,.03);max-height:160px;overflow-y:auto}
-.cs-kick-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;transition:background .12s}
-.cs-kick-row:hover{background:rgba(239,68,68,.03)}
-.cs-kick-row span{flex:1;font-size:11px;color:rgba(255,255,255,.45)}
-.cs-kick-btn{padding:3px 10px;border-radius:5px;border:none;background:rgba(239,68,68,.08);color:rgba(239,68,68,.6);font-size:9px;cursor:pointer;font-weight:600;transition:all .12s}
-.cs-kick-btn:hover{background:rgba(239,68,68,.15);color:rgba(239,68,68,.85)}
-/* 群名/公告值 */
-.cs-val{font-size:10px;color:rgba(255,255,255,.25);display:flex;align-items:center;gap:4px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 解散/退群按钮 */
-.cs-danger{background:rgba(239,68,68,.06)!important;color:rgba(239,68,68,.7)!important;border-color:rgba(239,68,68,.1)!important}
-.cs-danger:hover{background:rgba(239,68,68,.12)!important;color:rgba(239,68,68,.9)!important}
-.cs-warn{background:rgba(251,191,36,.06)!important;color:rgba(251,191,36,.6)!important;border-color:rgba(251,191,36,.08)!important}
-.cs-warn:hover{background:rgba(251,191,36,.12)!important;color:rgba(251,191,36,.8)!important}
-/* 添加好友增强 */
-.cp-af-result{padding:10px;border-radius:10px;background:rgba(139,92,246,.02);border:1px solid rgba(139,92,246,.06);margin:10px 0}
-.cp-af-user{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.cp-af-info{display:flex;flex-direction:column;gap:2px}.cp-af-info b{font-size:13px;color:white;font-weight:600}.cp-af-info small{font-size:10px;color:rgba(139,92,246,.4)}
-.cp-af-source{opacity:.5!important;cursor:not-allowed!important}
-.cp-add-btn.full{display:block;width:100%;text-align:center;margin-top:8px;padding:8px!important;border-radius:8px!important;background:linear-gradient(135deg,#8b5cf6,#6d28d9)!important;color:white!important;border:none!important;font-size:12px!important;font-weight:600!important;cursor:pointer}
-.cp-field textarea{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;font-family:inherit;outline:none;resize:none}.cp-field textarea:focus{border-color:rgba(139,92,246,.15)}
-/* @提及下拉面板 */
-.cp-mention-panel{position:absolute;bottom:100%;left:8px;right:8px;max-height:200px;overflow-y:auto;background:rgba(15,12,30,.96);backdrop-filter:blur(20px);border:1px solid rgba(139,92,246,.12);border-radius:10px;padding:4px;z-index:20;box-shadow:0 -4px 16px rgba(0,0,0,.4)}
-.cp-mention-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;cursor:pointer;transition:background .12s;font-size:12px;color:rgba(255,255,255,.7)}
-.cp-mention-item:hover{background:rgba(139,92,246,.08)}
-/* 消息引用预览条 */
-.cp-quote-bar{display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(139,92,246,.04);border-left:2px solid rgba(139,92,246,.4);border-radius:0 6px 6px 0;margin:0 8px}
-.cp-quote-text{flex:1;font-size:11px;color:rgba(139,92,246,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cp-quote-close{width:18px;height:18px;border-radius:50%;border:none;background:rgba(255,255,255,.04);color:rgba(255,255,255,.25);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}.cp-quote-close:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)}
-/* 录音动画 */
-.cp-tools button.active{color:rgba(239,68,68,.8)!important;animation:recordPulse 1s ease-in-out infinite}
-@keyframes recordPulse{0%,100%{opacity:1}50%{opacity:.4}}
 @media(max-width:768px){.cp-sidebar{width:100%;position:absolute;z-index:5}.cp-sidebar.collapsed{display:none}.cp-msg{max-width:90%}}
+/* 角色标签 */
+.cp-role-tag{font-size:11px;padding:1px 6px;border-radius:3px;font-weight:bold;color:white;line-height:1.4}
+.cp-role-tag.owner{background:#f59e0b}
+.cp-role-tag.admin{background:#10b981}
+.cp-role-tag.sm{font-size:9px;padding:0 4px}
+/* 时间分隔线 */
+.cp-time-sep{text-align:center;color:rgba(255,255,255,.18);font-size:10px;padding:8px 0;user-select:none;width:100%;align-self:center}
+/* @提及高亮 */
+.cp-mention-hl{color:#a855f7;font-weight:500}
+/* 被@提醒 */
+.cp-mention-alert{text-align:center;font-size:10px;color:#a855f7;padding:2px 10px;background:rgba(168,85,247,.06);border-radius:10px;margin:0 auto 4px;width:fit-content}
+/* @提及选择器 */
+.cp-mention-picker{position:absolute;bottom:100%;left:0;right:0;background:rgba(20,18,34,.98);border:1px solid rgba(255,255,255,.06);border-radius:12px 12px 0 0;padding:6px;max-height:200px;overflow-y:auto;z-index:10}
+.cp-mention-header{font-size:10px;color:rgba(255,255,255,.2);padding:4px 8px;font-weight:600}
+.cp-mention-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:all .12s}
+.cp-mention-item:hover{background:rgba(139,92,246,.06)}
+.cp-mention-name{font-size:11px;color:rgba(255,255,255,.5);flex:1}
+/* 群头像九宫格 */
+.cp-group-av{width:34px;height:34px;border-radius:9px;background:rgba(139,92,246,.06);display:grid;gap:1px;padding:2px;flex-shrink:0;overflow:hidden}
+.cp-group-av.grid-2{grid-template-columns:1fr 1fr;align-items:center}
+.cp-group-av.grid-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.cp-group-av.grid-9{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr}
+.cp-gav-item{display:flex;align-items:center;justify-content:center;font-size:10px;border-radius:2px;background:rgba(139,92,246,.04);overflow:hidden;line-height:1}
+.cp-group-av.grid-2 .cp-gav-item{font-size:12px}
+.cp-group-av.grid-4 .cp-gav-item{font-size:10px}
+.cp-group-av.grid-9 .cp-gav-item{font-size:8px}
+/* 已读状态优化 */
+.cp-read-status{font-size:10px;color:#94a3b8;flex-shrink:0;line-height:1;letter-spacing:-1px}.cp-read-status.read{color:#a855f7}
+/* 群管理样式 */
+.cs-announcement{font-size:11px;color:rgba(255,255,255,.35);padding:4px 8px;margin:0;line-height:1.5;background:rgba(255,255,255,.015);border-radius:6px}
+.cs-mgmt-input{display:flex;gap:4px;padding:4px 0}
+.cs-mgmt-input input{flex:1;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:10px;outline:none}
+.cs-mgmt-input input:focus{border-color:rgba(139,92,246,.15)}
+.cs-mgmt-input button{padding:4px 10px;border-radius:6px;border:none;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:10px;cursor:pointer;font-weight:600;white-space:nowrap}
+.cs-member-row{display:flex;align-items:center;gap:6px;padding:5px 4px;border-radius:6px}
+.cs-member-row:hover{background:rgba(255,255,255,.015)}
+.cs-member-name{font-size:11px;color:rgba(255,255,255,.45);flex:1}
+.cs-member-acts{display:flex;gap:3px;margin-left:auto}
+.cs-act-btn{padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.06);background:none;color:rgba(255,255,255,.3);font-size:9px;cursor:pointer;transition:all .12s}
+.cs-act-btn:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6);border-color:rgba(139,92,246,.1)}
+.cs-act-btn.warn{color:rgba(251,191,36,.5);border-color:rgba(251,191,36,.1)}.cs-act-btn.warn:hover{background:rgba(251,191,36,.06);color:rgba(251,191,36,.7)}
+.cs-act-btn.danger{color:rgba(239,68,68,.5);border-color:rgba(239,68,68,.1)}.cs-act-btn.danger:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.7)}
+/* 发布按钮(侧栏) */
+.cp-sb-publish-btn{display:block;width:calc(100% - 16px);margin:8px;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(109,40,217,.15));color:rgba(139,92,246,.7);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center}
+.cp-sb-publish-btn:hover{background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(109,40,217,.25));color:rgba(139,92,246,.9)}
+/* 左栏发布按钮 */
+.cp-ml-publish{padding:8px 10px}
+.cp-publish-btn{display:block;width:100%;padding:10px;border-radius:10px;border:1px dashed rgba(139,92,246,.2);background:rgba(139,92,246,.04);color:rgba(139,92,246,.6);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center}
+.cp-publish-btn:hover{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:rgba(139,92,246,.8)}
+/* 齿轮图标 */
+.cp-ml-gear{width:28px;height:28px;border-radius:7px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.25);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.cp-ml-gear:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6)}
+/* 可见性设置面板 */
+.cp-vis-panel{padding:10px 12px;background:rgba(139,92,246,.02);border:1px solid rgba(139,92,246,.06);border-radius:10px;margin:0 10px 8px}
+.cp-vis-panel h4{font-size:11px;color:rgba(255,255,255,.35);margin:0 0 8px;font-weight:600}
+.cp-vis-opts{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.cp-vis-opt{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);cursor:pointer;font-size:10px;color:rgba(255,255,255,.3);transition:all .12s}
+.cp-vis-opt.active{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.15);color:rgba(139,92,246,.7)}
+.cp-vis-opt input{display:none}
+.cp-vis-toggle{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.3)}
+/* LIVE标识(动态卡片内) */
+.cp-live-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:6px;background:rgba(239,68,68,.12);color:white;font-size:9px;font-weight:700;letter-spacing:.5px}
+.cp-live-dot-sm{width:5px;height:5px;border-radius:50%;background:#ef4444;animation:live-pulse-sm 1.5s infinite}
+@keyframes live-pulse-sm{0%,100%{opacity:1}50%{opacity:.3}}
+/* 发布弹窗 */
+.cp-publish-modal{width:440px}
+.cp-pub-text{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:13px;resize:none;outline:none;font-family:inherit;line-height:1.6;box-sizing:border-box;margin-bottom:8px}
+.cp-pub-text:focus{border-color:rgba(139,92,246,.15)}
+.cp-pub-text::placeholder{color:rgba(255,255,255,.12)}
+.cp-pub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px}
+.cp-pub-item{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:grab;border:1px solid rgba(255,255,255,.04)}
+.cp-pub-item.video{cursor:default}
+.cp-pub-thumb{width:100%;height:100%;object-fit:cover;display:block}
+.cp-pub-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.cp-pub-idx{position:absolute;bottom:2px;left:2px;padding:0 4px;border-radius:3px;background:rgba(0,0,0,.5);color:rgba(255,255,255,.5);font-size:9px}
+.cp-pub-vid-tag{position:absolute;bottom:4px;left:4px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:white;font-size:9px}
+.cp-pub-media-count{font-size:10px;color:rgba(255,255,255,.2);margin-bottom:6px;text-align:right}
+.cp-pub-files{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
+.cp-pub-file-chip{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);font-size:10px;color:rgba(255,255,255,.35)}
+.cp-pub-file-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-pub-file-size{color:rgba(255,255,255,.15);flex-shrink:0}
+.cp-pub-file-chip button{background:none;border:none;color:rgba(255,255,255,.15);cursor:pointer;font-size:12px;flex-shrink:0}
+.cp-pub-tools{display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:4px 0}
+.cp-pub-tools button{width:30px;height:30px;border-radius:8px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.cp-pub-tools button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.5)}
+.cp-pub-live-toggle{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);cursor:pointer;font-size:10px;font-weight:700;color:rgba(255,255,255,.25);transition:all .12s;letter-spacing:.5px}
+.cp-pub-live-toggle.active{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.15);color:white}
+.cp-pub-live-toggle input{display:none}
+.cp-pub-live-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.15)}
+.cp-pub-live-toggle.active .cp-pub-live-dot{background:#ef4444;animation:live-pulse-sm 1.5s infinite}
+.cp-pub-vis-sel{margin-left:auto;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:10px;outline:none}
 </style>

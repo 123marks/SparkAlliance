@@ -418,7 +418,7 @@
           <h3>🚀 分享到</h3>
           <div class="sp-share-grid">
             <button class="sp-share-btn" @click="handleShareToWall">🏫 校园墙</button>
-            <button class="sp-share-btn" @click="handleShareToMoment">📸 朋友圈</button>
+            <button class="sp-share-btn" @click="handleShareToMoment">📸 星火域</button>
           </div>
           <button class="sp-share-close" @click="showShareModal = false">取消</button>
         </div>
@@ -782,7 +782,7 @@ async function handleShareToWall() {
 async function handleShareToMoment() {
   if (!shareProduct.value) return
   const ok = await shareProductToMoment(shareProduct.value)
-  showToast(ok ? '📸 已分享到朋友圈' : '分享失败')
+  showToast(ok ? '📸 已分享到星火域' : '分享失败')
   showShareModal.value = false
 }
 

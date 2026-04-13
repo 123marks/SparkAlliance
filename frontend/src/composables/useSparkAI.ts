@@ -3,8 +3,8 @@ import { ref } from 'vue'
 export type { SparkAction } from '../utils/assistantProtocol'
 import { parseSparkActions, type SparkAction } from '../utils/assistantProtocol'
 
-// 直连 NVIDIA API（无需 Supabase Edge Function）
-const API_KEY = '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'
+// 直连 NVIDIA API（优先从环境变量读取，避免硬编码泄漯）
+const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || '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'
 const BASE_URL = '/api/nvidia'
 
 // 系统提示词
@@ -380,6 +380,11 @@ export function useSparkAI() {
         saveConversations()
       }
     } finally {
+      // 确保所有定时器都被清理，防止内存泄漯
+      if (smoothTimer) {
+        clearInterval(smoothTimer)
+        smoothTimer = null
+      }
       isStreaming.value = false
       streamPhase.value = 'idle'
       abortController.value = null

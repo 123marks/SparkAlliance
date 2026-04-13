@@ -40,7 +40,10 @@ export interface SparkProfile {
   show_in_plaza: boolean
   id_changed: boolean
   id_last_changed_at?: string  // ID最后修改时间
-  poke_suffix: string          // 拍一拍自定义文案(如"的肩膀")
+  poke_text?: string            // 自定义碰一碰文案，默认"碰了碰"
+  region?: string               // 地区
+  identity?: string             // 身份，如"计算机大二"
+  major?: string                // 专业
   created_at: string
 
   // 统计（计算属性）
@@ -63,6 +66,23 @@ export interface Friend {
   last_msg?: string      // 最后一条消息预览
   last_msg_time?: string
   unread: number
+  is_starred?: boolean   // 星标好友
+}
+
+/** 好友标签 */
+export interface FriendTag {
+  id: string
+  name: string
+  color: string          // 标签颜色
+  members: string[]      // 好友spark_id列表
+  priority: number       // 优先级权重
+  created_at: string
+}
+
+/** 好友权限设置 */
+export interface FriendPermissions {
+  allow_view_my_moments: boolean  // 允许对方查看我的星火域
+  hide_their_moments: boolean     // 隐藏对方星火域
 }
 
 /** 好友请求 */
@@ -70,9 +90,8 @@ export interface FriendRequest {
   id: string
   from: { spark_id: string; nickname: string; avatar: string; bio: string }
   from_profile?: SparkProfile
-  message: string          // 验证消息/来意说明
-  remark_preset: string    // 预设备注
-  source: string           // 'search' | 'qrcode' | 'group:群名' | 'plaza'
+  message: string
+  source: string         // 'search' | 'qrcode' | 'plaza'
   status: 'pending' | 'accepted' | 'rejected'
   created_at: string
 }
@@ -86,22 +105,14 @@ export interface ChatMsg {
   sender_type: 'user' | 'ai'
   receiver_id?: string   // 私聊接收者
   content: string
-  type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video'
+  type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video' | 'poke'
   media_url?: string
   share_data?: { type: string; title: string; route: string }
   is_read: boolean       // 已读状态
   read_at?: string       // 读取时间
   created_at: string
   synced?: boolean       // 是否已同步到数据库
-}
-
-/** 群聊成员 */
-export interface GroupMember {
-  spark_id: string
-  nickname: string
-  avatar: string
-  role: 'owner' | 'admin' | 'member'  // 群主/管理员/普通成员
-  joined_at: string
+  mentions?: string[]    // @提及的 spark_id 列表
 }
 
 /** 群聊 */
@@ -111,13 +122,17 @@ export interface GroupChat {
   avatar: string        // emoji
   owner_id: string      // spark_id
   ai_enabled: boolean
-  admins: string[]       // 管理员spark_id列表
-  announcement: string   // 群公告
-  muted: boolean         // 消息免打扰
-  members: GroupMember[]
+  members: { spark_id: string; nickname: string; avatar: string; role: 'owner' | 'admin' | 'member' }[]
   messages: ChatMsg[]
   created_at: string
   unread: number
+  announcement?: string // 群公告
+}
+
+/** 动态可见时间范围设置 */
+export interface MomentVisibilitySettings {
+  timeRange: 'three_days' | 'one_month' | 'half_year' | 'forever'
+  allowStrangers: boolean
 }
 
 /** 动态 */
@@ -130,6 +145,11 @@ export interface Moment {
   content: string
   media_urls: string[]
   video_urls?: string[]
+  file_urls?: string[]      // 文件附件URL列表
+  file_names?: string[]     // 文件名列表
+  file_sizes?: number[]     // 文件大小列表(字节)
+  is_live?: boolean         // 是否为实况Live动态
+  live_expires_at?: string  // 实况过期时间(24h后)
   visibility: 'public' | 'friends' | 'private'
   show_in_plaza: boolean
   likes: string[]         // 点赞者 spark_id 列表
@@ -138,6 +158,7 @@ export interface Moment {
   comment_count?: number
   comments: MomentComment[]
   shares: number
+  is_pinned: boolean      // 是否置顶
   created_at: string
   expires_at?: string | null
 }
@@ -177,10 +198,59 @@ export function formatTimeAgo(dateStr: string): string {
   const d = new Date(dateStr).getTime()
   const diff = Date.now() - d
   if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
-  if (diff < 2592000000) return Math.floor(diff / 86400000) + ' 天前'
-  return new Date(dateStr).toLocaleDateString('zh-CN')
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
+  if (diff < 604800000) return Math.floor(diff / 86400000) + '天前'
+  // 7天以上显示 MM-DD
+  const date = new Date(dateStr)
+  const now = new Date()
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  }
+  // 超过一年显示 YYYY-MM-DD
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** 智能格式化消息时间（用于聊天气泡） */
+export function formatMsgTime(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const hm = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+
+  // 同一天
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+    return hm
+  }
+
+  // 昨天
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (d.getFullYear() === yesterday.getFullYear() && d.getMonth() === yesterday.getMonth() && d.getDate() === yesterday.getDate()) {
+    return `昨天 ${hm}`
+  }
+
+  // 7天内显示星期几
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (diffDays < 7) {
+    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    return `${weekDays[d.getDay()]} ${hm}`
+  }
+
+  // 同年
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm}`
+  }
+
+  // 跨年
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm}`
+}
+
+/** 是否应显示时间分隔线（间隔5分钟以上） */
+export function shouldShowTimeSeparator(prevMsg: { created_at: string } | null, currMsg: { created_at: string }): boolean {
+  if (!prevMsg) return true
+  const prev = new Date(prevMsg.created_at).getTime()
+  const curr = new Date(currMsg.created_at).getTime()
+  return curr - prev > 5 * 60 * 1000
 }
 
 // ============ 存储层 ============
@@ -193,6 +263,10 @@ const STORAGE_KEYS = {
   moments: 'spark_companion_moments',
   favorites: 'spark_companion_favorites',
   aiChat: 'spark_companion_ai_chat',
+  tags: 'spark_companion_tags',
+  blacklist: 'spark_companion_blacklist',
+  friendPermissions: 'spark_companion_friend_permissions',
+  momentVisibility: 'spark_companion_moment_visibility',
 }
 
 function loadData<T>(key: string, fallback: T): T {
@@ -243,7 +317,6 @@ function createCompatProfile(data: {
     interests: [],
     show_in_plaza: true,
     id_changed: false,
-    poke_suffix: '',
     created_at: now(),
   }
 }
@@ -256,8 +329,35 @@ export function useCompanion() {
   const moments = ref<Moment[]>([])
   const favorites = ref<Favorite[]>([])
   const aiChatHistory = ref<ChatMsg[]>([])
+  const friendTags = ref<FriendTag[]>([])
+  const blacklist = ref<string[]>([])
+  const friendPermissions = ref<Record<string, FriendPermissions>>({})
   const loading = ref(false)
   const isAiTyping = ref(false)
+
+  // ====== 私聊内存缓存层（消除高频 localStorage 解析） ======
+  let _privateChatCache: Record<string, ChatMsg[]> | null = null
+  let _privateChatDirty = false
+
+  function getPrivateChatStore(): Record<string, ChatMsg[]> {
+    if (!_privateChatCache) {
+      _privateChatCache = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    }
+    return _privateChatCache
+  }
+
+  function flushPrivateChatStore() {
+    if (_privateChatDirty && _privateChatCache) {
+      saveData(STORAGE_KEYS.privateChats, _privateChatCache)
+      _privateChatDirty = false
+    }
+  }
+
+  function markPrivateChatDirty() {
+    _privateChatDirty = true
+    // 延迟写盘，合并同一帧内的多次写操作
+    queueMicrotask(flushPrivateChatStore)
+  }
 
   function hydrateCompatibilityState() {
     if (myProfile.value) {
@@ -316,7 +416,7 @@ export function useCompanion() {
         id: uid(), user_id: '', spark_id: 'spark_' + Math.random().toString(36).slice(2, 8),
         nickname: '星火用户', avatar: '⚡', bio: '这个人很懒，什么都没留下',
         gender: '未知', university: '', school_year: '', interests: [],
-        show_in_plaza: true, id_changed: false, poke_suffix: '', created_at: now(),
+        show_in_plaza: true, id_changed: false, created_at: now(),
       }
       saveData(STORAGE_KEYS.profile, myProfile.value)
     }
@@ -326,6 +426,9 @@ export function useCompanion() {
     moments.value = loadData(STORAGE_KEYS.moments, [])
     favorites.value = loadData(STORAGE_KEYS.favorites, [])
     aiChatHistory.value = loadData(STORAGE_KEYS.aiChat, [])
+    friendTags.value = loadData(STORAGE_KEYS.tags, [])
+    blacklist.value = loadData(STORAGE_KEYS.blacklist, [])
+    friendPermissions.value = loadData(STORAGE_KEYS.friendPermissions, {})
 
     // 注入示例好友（首次使用时）
     if (friends.value.length === 0) {
@@ -342,11 +445,10 @@ export function useCompanion() {
       const demoGroup: GroupChat = {
         id: uid(), name: '期末复习互助群', avatar: '📖',
         owner_id: myProfile.value.spark_id, ai_enabled: true,
-        admins: ['spark_demo_01'], announcement: '请大家更改备注，方便大家联系！', muted: false,
         members: [
-          { spark_id: myProfile.value.spark_id, nickname: myProfile.value.nickname, avatar: myProfile.value.avatar, role: 'owner' as const, joined_at: now() },
-          { spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓', role: 'admin' as const, joined_at: now() },
-          { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚', role: 'member' as const, joined_at: now() },
+          { spark_id: myProfile.value.spark_id, nickname: myProfile.value.nickname, avatar: myProfile.value.avatar, role: 'owner' as const },
+          { spark_id: 'spark_demo_01', nickname: '张三（学长）', avatar: '🎓', role: 'admin' as const },
+          { spark_id: 'spark_demo_02', nickname: '李四', avatar: '📚', role: 'member' as const },
         ],
         messages: [
           { id: uid(), sender_id: 'spark_demo_01', sender_name: '张三（学长）', sender_avatar: '🎓', sender_type: 'user', content: '大家期末复习进度怎么样？', type: 'text', is_read: true, created_at: new Date(Date.now() - 3600000).toISOString() },
@@ -369,7 +471,7 @@ export function useCompanion() {
           likes: ['spark_demo_02'], comments: [
             { id: uid(), author_id: 'spark_demo_02', author_name: '李四', author_avatar: '📚', content: '学长说得太对了！我去试试 💪', created_at: now() },
           ],
-          shares: 2, created_at: new Date(Date.now() - 7200000).toISOString(),
+          shares: 2, is_pinned: false, created_at: new Date(Date.now() - 7200000).toISOString(),
         },
       ]
       saveData(STORAGE_KEYS.moments, moments.value)
@@ -535,7 +637,6 @@ export function useCompanion() {
       },
       from_profile: sender,
       message,
-      remark_preset: '',
       source,
       status: 'pending',
       created_at: now(),
@@ -565,7 +666,7 @@ export function useCompanion() {
         const g = groups.value.find(g => g.id === data.id)
         if (g) {
           if (g.members.some(m => m.spark_id === myProfile.value?.spark_id)) return { ok: false, msg: '已在群聊中' }
-          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'member', joined_at: now() })
+          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'member' })
           saveData(STORAGE_KEYS.groups, groups.value)
           return { ok: true, msg: `已加入群聊「${g.name}」` }
         }
@@ -586,42 +687,60 @@ export function useCompanion() {
     if (f) { f.remark = remark; saveData(STORAGE_KEYS.friends, friends.value) }
   }
 
-  // ------ 私聊 ------
+  // ------ 私聊（内存缓存 + Supabase 同步） ------
   function getPrivateChat(friendId: string): ChatMsg[] {
-    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
-    return all[friendId] || []
+    return getPrivateChatStore()[friendId] || []
   }
 
-  /** 标记消息为已读 */
+  /** 标记消息为已读（本地缓存 + 异步 Supabase 同步） */
   function markMessagesAsRead(friendId: string) {
-    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    const all = getPrivateChatStore()
     const msgs = all[friendId]
     if (!msgs) return
 
     let hasUnread = false
+    const readAt = now()
+    const updatedMsgIds: string[] = []
     msgs.forEach(m => {
       if (m.sender_id !== myProfile.value?.spark_id && !m.is_read) {
         m.is_read = true
-        m.read_at = now()
+        m.read_at = readAt
         hasUnread = true
+        updatedMsgIds.push(m.id)
       }
     })
 
     if (hasUnread) {
-      saveData(STORAGE_KEYS.privateChats, all)
+      markPrivateChatDirty()
       // 清除好友未读计数
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f && f.unread > 0) {
         f.unread = 0
         saveData(STORAGE_KEYS.friends, friends.value)
       }
+      // 异步同步已读状态到 Supabase
+      syncReadStatusToSupabase(friendId, updatedMsgIds, readAt)
     }
   }
 
-  /** 获取未读消息数 */
+  /** 异步同步已读状态到 Supabase */
+  async function syncReadStatusToSupabase(friendId: string, _msgIds: string[], readAt: string) {
+    if (!myProfile.value?.user_id) return
+    try {
+      await supabase.from('companion_read_receipts').upsert({
+        user_id: myProfile.value.user_id,
+        friend_id: friendId,
+        last_read_at: readAt,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,friend_id' })
+    } catch (e) {
+      console.warn('[Companion] sync read status error:', e)
+    }
+  }
+
+  /** 获取未读消息数（从内存缓存读取） */
   function getUnreadCount(friendId: string): number {
-    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
-    const msgs = all[friendId] || []
+    const msgs = getPrivateChatStore()[friendId] || []
     return msgs.filter(m => m.sender_id !== myProfile.value?.spark_id && !m.is_read).length
   }
 
@@ -631,7 +750,7 @@ export function useCompanion() {
   })
 
   function sendPrivateMsg(friendId: string, content: string, type: 'text' | 'image' | 'share' = 'text', shareData?: ChatMsg['share_data']) {
-    const all = loadData<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, {})
+    const all = getPrivateChatStore()
     if (!all[friendId]) all[friendId] = []
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
@@ -640,7 +759,7 @@ export function useCompanion() {
       content, type, share_data: shareData, is_read: false, created_at: now(),
     }
     all[friendId].push(msg)
-    saveData(STORAGE_KEYS.privateChats, all)
+    markPrivateChatDirty()
 
     // 更新好友最后消息
     const f = friends.value.find(f => f.spark_id === friendId)
@@ -655,10 +774,13 @@ export function useCompanion() {
   }
 
   /** AI自动回复（私聊） */
-  async function triggerAIReply(friendId: string, userMsg: string, allChats: Record<string, ChatMsg[]>) {
+  async function triggerAIReply(friendId: string, userMsg: string, _allChats: Record<string, ChatMsg[]>) {
+    void _allChats // 使用缓存替代传入引用
     isAiTyping.value = true
     try {
-      const history = (allChats[friendId] || []).slice(-20).map(m => ({
+      const store = getPrivateChatStore()
+      const chatMsgs = store[friendId] || []
+      const history = chatMsgs.slice(-20).map(m => ({
         role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }))
@@ -667,8 +789,9 @@ export function useCompanion() {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
-      allChats[friendId].push(aiMsg)
-      saveData(STORAGE_KEYS.privateChats, allChats)
+      if (!store[friendId]) store[friendId] = []
+      store[friendId].push(aiMsg)
+      markPrivateChatDirty()
       // 更新好友最后消息
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
@@ -676,126 +799,98 @@ export function useCompanion() {
     isAiTyping.value = false
   }
 
+  // ------ 消息撤回 ------
+  function recallMessage(chatId: string, msgId: string, chatType: 'private' | 'group' | 'ai' = 'private'): boolean {
+    if (chatType === 'private') {
+      const all = getPrivateChatStore()
+      const msgs = all[chatId]
+      if (!msgs) return false
+      const idx = msgs.findIndex(m => m.id === msgId)
+      if (idx < 0) return false
+      const msg = msgs[idx]
+      // 只能撤回自己的消息，且2分钟内
+      if (msg.sender_id !== myProfile.value?.spark_id) return false
+      if (Date.now() - new Date(msg.created_at).getTime() > 2 * 60 * 1000) return false
+      // 替换为系统消息
+      msgs.splice(idx, 1, {
+        id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+        sender_type: 'user', content: '你撤回了一条消息', type: 'system',
+        is_read: true, created_at: now(),
+      })
+      markPrivateChatDirty()
+      return true
+    } else if (chatType === 'group') {
+      const g = groups.value.find(g => g.id === chatId)
+      if (!g) return false
+      const idx = g.messages.findIndex(m => m.id === msgId)
+      if (idx < 0) return false
+      const msg = g.messages[idx]
+      if (msg.sender_id !== myProfile.value?.spark_id) return false
+      if (Date.now() - new Date(msg.created_at).getTime() > 2 * 60 * 1000) return false
+      g.messages.splice(idx, 1, {
+        id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+        sender_type: 'user', content: '你撤回了一条消息', type: 'system',
+        is_read: true, created_at: now(),
+      })
+      saveData(STORAGE_KEYS.groups, groups.value)
+      return true
+    } else if (chatType === 'ai') {
+      const idx = aiChatHistory.value.findIndex(m => m.id === msgId)
+      if (idx < 0) return false
+      const msg = aiChatHistory.value[idx]
+      if (msg.sender_id !== myProfile.value?.spark_id) return false
+      if (Date.now() - new Date(msg.created_at).getTime() > 2 * 60 * 1000) return false
+      aiChatHistory.value.splice(idx, 1, {
+        id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+        sender_type: 'user', content: '你撤回了一条消息', type: 'system',
+        is_read: true, created_at: now(),
+      })
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return true
+    }
+    return false
+  }
+
+  // ------ 碰一碰 ------
+  function sendPokeMessage(chatId: string, targetName: string, chatType: 'private' | 'group' = 'private') {
+    const pokeText = myProfile.value?.poke_text || '碰了碰'
+    const content = `你${pokeText} ${targetName}`
+    const msg: ChatMsg = {
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      content, type: 'poke', is_read: true, created_at: now(),
+    }
+    if (chatType === 'private') {
+      const all = getPrivateChatStore()
+      if (!all[chatId]) all[chatId] = []
+      all[chatId].push(msg)
+      markPrivateChatDirty()
+    } else {
+      const g = groups.value.find(g => g.id === chatId)
+      if (g) { g.messages.push(msg); saveData(STORAGE_KEYS.groups, groups.value) }
+    }
+    return msg
+  }
+
   // ------ 群聊 ------
   function createGroup(name: string, memberIds: string[], aiEnabled = true): string {
-    const nowStr = now()
-    const members: GroupMember[] = [
-      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'owner', joined_at: nowStr },
+    const members: GroupChat['members'] = [
+      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'owner' },
       ...memberIds.map(id => {
         const f = friends.value.find(f => f.spark_id === id)
-        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', role: 'member' as const, joined_at: nowStr }
+        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', role: 'member' as const }
       }),
     ]
     const g: GroupChat = {
       id: uid(), name, avatar: '👥', owner_id: myProfile.value!.spark_id,
-      ai_enabled: aiEnabled, admins: [], announcement: '', muted: false,
-      members, messages: [
-        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', is_read: true, created_at: nowStr } as ChatMsg,
+      ai_enabled: aiEnabled, members, messages: [
+        { id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️', sender_type: 'ai', content: `群聊「${name}」已创建`, type: 'system', is_read: true, created_at: now() } as ChatMsg,
       ],
-      created_at: nowStr, unread: 0,
+      created_at: now(), unread: 0,
     }
     groups.value.push(g)
     saveData(STORAGE_KEYS.groups, groups.value)
     return g.id
-  }
-
-  // 群管理函数
-  /** 排序群成员：群主→管理员→普通(按首字母) */
-  function sortGroupMembers(g: GroupChat): GroupMember[] {
-    return [...g.members].sort((a, b) => {
-      const order = { owner: 0, admin: 1, member: 2 }
-      if (order[a.role] !== order[b.role]) return order[a.role] - order[b.role]
-      return a.nickname.localeCompare(b.nickname, 'zh-CN')
-    })
-  }
-
-  /** 设置管理员 */
-  function setGroupAdmin(groupId: string, sparkId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || g.owner_id !== myProfile.value?.spark_id) return
-    if (!g.admins.includes(sparkId)) g.admins.push(sparkId)
-    const m = g.members.find(m => m.spark_id === sparkId)
-    if (m) m.role = 'admin'
-    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${m?.nickname}」已被设为管理员`, type: 'system', is_read: true, created_at: now() })
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 移除管理员 */
-  function removeGroupAdmin(groupId: string, sparkId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || g.owner_id !== myProfile.value?.spark_id) return
-    g.admins = g.admins.filter(id => id !== sparkId)
-    const m = g.members.find(m => m.spark_id === sparkId)
-    if (m) m.role = 'member'
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 设置群公告 */
-  function setGroupAnnouncement(groupId: string, text: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g) return
-    const isOwnerOrAdmin = g.owner_id === myProfile.value?.spark_id || g.admins.includes(myProfile.value?.spark_id || '')
-    if (!isOwnerOrAdmin) return
-    g.announcement = text
-    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `群公告已更新：${text}`, type: 'system', is_read: true, created_at: now() })
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 修改群名称 */
-  function renameGroup(groupId: string, newName: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g) return
-    const isOwnerOrAdmin = g.owner_id === myProfile.value?.spark_id || g.admins.includes(myProfile.value?.spark_id || '')
-    if (!isOwnerOrAdmin) return
-    const old = g.name
-    g.name = newName
-    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `群名已从「${old}」改为「${newName}」`, type: 'system', is_read: true, created_at: now() })
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 踢出成员(群主/管理员可操作) */
-  function kickMember(groupId: string, sparkId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g) return
-    const myId = myProfile.value?.spark_id || ''
-    const isOwner = g.owner_id === myId
-    const isAdmin = g.admins.includes(myId)
-    if (!isOwner && !isAdmin) return
-    // 管理员不能踢群主/其他管理员
-    if (!isOwner && (sparkId === g.owner_id || g.admins.includes(sparkId))) return
-    const m = g.members.find(m => m.spark_id === sparkId)
-    g.members = g.members.filter(m => m.spark_id !== sparkId)
-    g.admins = g.admins.filter(id => id !== sparkId)
-    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${m?.nickname}」已被移出群聊`, type: 'system', is_read: true, created_at: now() })
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 解散群聊(仅群主) */
-  function dissolveGroup(groupId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || g.owner_id !== myProfile.value?.spark_id) return
-    groups.value = groups.value.filter(g => g.id !== groupId)
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 退出群聊(非群主) */
-  function quitGroup(groupId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || g.owner_id === myProfile.value?.spark_id) return
-    const myId = myProfile.value?.spark_id || ''
-    g.members = g.members.filter(m => m.spark_id !== myId)
-    g.admins = g.admins.filter(id => id !== myId)
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 邀请好友入群 */
-  function inviteToGroup(groupId: string, sparkId: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || g.members.some(m => m.spark_id === sparkId)) return
-    const f = friends.value.find(f => f.spark_id === sparkId)
-    g.members.push({ spark_id: sparkId, nickname: f?.nickname || sparkId, avatar: f?.avatar || '👤', role: 'member', joined_at: now() })
-    g.messages.push({ id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '', sender_type: 'user', content: `「${f?.nickname || sparkId}」加入了群聊`, type: 'system', is_read: true, created_at: now() })
-    saveData(STORAGE_KEYS.groups, groups.value)
   }
 
   function sendGroupMsg(groupId: string, content: string) {
@@ -836,11 +931,29 @@ export function useCompanion() {
   }
 
   // ------ 动态系统 ------
-  function postMoment(content: string, mediaUrls: string[] = [], visibility: 'public' | 'friends' | 'private' = 'public', showInPlaza = true) {
+  function postMoment(
+    content: string,
+    mediaUrls: string[] = [],
+    visibility: 'public' | 'friends' | 'private' = 'public',
+    showInPlaza = true,
+    options?: {
+      videoUrls?: string[]
+      fileUrls?: string[]
+      fileNames?: string[]
+      fileSizes?: number[]
+      isLive?: boolean
+    }
+  ) {
     const m: Moment = {
       id: uid(), author_id: myProfile.value!.spark_id, author_name: myProfile.value!.nickname,
       author_avatar: myProfile.value!.avatar, content, media_urls: mediaUrls,
-      visibility, show_in_plaza: showInPlaza, likes: [], comments: [], shares: 0, created_at: now(),
+      video_urls: options?.videoUrls || [],
+      file_urls: options?.fileUrls || [],
+      file_names: options?.fileNames || [],
+      file_sizes: options?.fileSizes || [],
+      is_live: options?.isLive || false,
+      live_expires_at: options?.isLive ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
+      visibility, show_in_plaza: showInPlaza, likes: [], comments: [], shares: 0, is_pinned: false, created_at: now(),
     }
     moments.value.unshift(m)
     saveData(STORAGE_KEYS.moments, moments.value)
@@ -884,6 +997,16 @@ export function useCompanion() {
 
   function deleteMoment(momentId: string) {
     moments.value = moments.value.filter(m => m.id !== momentId)
+    saveData(STORAGE_KEYS.moments, moments.value)
+  }
+
+  /** 切换动态置顶状态 */
+  function togglePinMoment(momentId: string) {
+    const m = moments.value.find(m => m.id === momentId)
+    if (!m || !myProfile.value) return
+    // 只能置顶自己的动态
+    if (m.author_id !== myProfile.value.spark_id) return
+    m.is_pinned = !m.is_pinned
     saveData(STORAGE_KEYS.moments, moments.value)
   }
 
@@ -951,6 +1074,254 @@ export function useCompanion() {
     saveData(STORAGE_KEYS.aiChat, [])
   }
 
+  // ====== F6: 星标好友 ======
+  function toggleStarFriend(friendId: string) {
+    const f = friends.value.find(f => f.spark_id === friendId)
+    if (f) {
+      f.is_starred = !f.is_starred
+      saveData(STORAGE_KEYS.friends, friends.value)
+    }
+  }
+
+  // ====== F12: 好友标签系统 ======
+  function createTag(name: string, color: string): FriendTag {
+    const tag: FriendTag = {
+      id: uid(), name, color, members: [], priority: friendTags.value.length, created_at: now()
+    }
+    friendTags.value.push(tag)
+    saveData(STORAGE_KEYS.tags, friendTags.value)
+    return tag
+  }
+
+  function renameTag(tagId: string, newName: string) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (tag) { tag.name = newName; saveData(STORAGE_KEYS.tags, friendTags.value) }
+  }
+
+  function deleteTag(tagId: string) {
+    friendTags.value = friendTags.value.filter(t => t.id !== tagId)
+    saveData(STORAGE_KEYS.tags, friendTags.value)
+  }
+
+  function addMemberToTag(tagId: string, friendId: string) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (tag && !tag.members.includes(friendId)) {
+      tag.members.push(friendId)
+      saveData(STORAGE_KEYS.tags, friendTags.value)
+    }
+  }
+
+  function removeMemberFromTag(tagId: string, friendId: string) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (tag) {
+      tag.members = tag.members.filter(m => m !== friendId)
+      saveData(STORAGE_KEYS.tags, friendTags.value)
+    }
+  }
+
+  function setMemberPriority(tagId: string, _friendId: string, priority: number) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (tag) { tag.priority = priority; saveData(STORAGE_KEYS.tags, friendTags.value) }
+  }
+
+  function getTagsForFriend(friendId: string): FriendTag[] {
+    return friendTags.value.filter(t => t.members.includes(friendId))
+  }
+
+  // ====== F18: 好友权限/拉黑/备注 ======
+  function updateFriendRemark(friendId: string, remark: string) {
+    setFriendRemark(friendId, remark)
+  }
+
+  function blockFriend(friendId: string) {
+    if (!blacklist.value.includes(friendId)) {
+      blacklist.value.push(friendId)
+      saveData(STORAGE_KEYS.blacklist, blacklist.value)
+    }
+  }
+
+  function unblockFriend(friendId: string) {
+    blacklist.value = blacklist.value.filter(id => id !== friendId)
+    saveData(STORAGE_KEYS.blacklist, blacklist.value)
+  }
+
+  function isBlocked(friendId: string): boolean {
+    return blacklist.value.includes(friendId)
+  }
+
+  function updateFriendPermissions(friendId: string, perms: Partial<FriendPermissions>) {
+    const current = friendPermissions.value[friendId] || { allow_view_my_moments: true, hide_their_moments: false }
+    friendPermissions.value[friendId] = { ...current, ...perms }
+    saveData(STORAGE_KEYS.friendPermissions, friendPermissions.value)
+  }
+
+  function getFriendPermissions(friendId: string): FriendPermissions {
+    return friendPermissions.value[friendId] || { allow_view_my_moments: true, hide_their_moments: false }
+  }
+
+  // ------ 群聊管理 ------
+
+  /** 获取群成员角色 */
+  function getMemberRole(groupId: string, sparkId: string): 'owner' | 'admin' | 'member' | null {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return null
+    const m = g.members.find(m => m.spark_id === sparkId)
+    return m?.role || null
+  }
+
+  /** 设置/取消管理员（仅群主） */
+  function setGroupAdmin(groupId: string, memberId: string, isAdmin: boolean): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    if (g.owner_id !== myProfile.value?.spark_id) return { ok: false, msg: '仅群主可设置管理员' }
+    const member = g.members.find(m => m.spark_id === memberId)
+    if (!member) return { ok: false, msg: '成员不存在' }
+    if (member.spark_id === g.owner_id) return { ok: false, msg: '不能修改群主角色' }
+    member.role = isAdmin ? 'admin' : 'member'
+    // 插入系统消息
+    g.messages.push({
+      id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+      sender_type: 'user', content: `群主已${isAdmin ? '设置' : '取消'} ${member.nickname} 为管理员`,
+      type: 'system', is_read: true, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: isAdmin ? '已设置为管理员' : '已取消管理员' }
+  }
+
+  /** 踢出成员（群主可踢任何人，管理员可踢普通成员） */
+  function kickGroupMember(groupId: string, memberId: string): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    const myRole = getMemberRole(groupId, myProfile.value?.spark_id || '')
+    const targetMember = g.members.find(m => m.spark_id === memberId)
+    if (!targetMember) return { ok: false, msg: '成员不存在' }
+    if (targetMember.spark_id === g.owner_id) return { ok: false, msg: '不能踢出群主' }
+    if (myRole === 'admin' && targetMember.role === 'admin') return { ok: false, msg: '管理员不能踢出其他管理员' }
+    if (myRole === 'member') return { ok: false, msg: '普通成员无权踢人' }
+    g.members = g.members.filter(m => m.spark_id !== memberId)
+    g.messages.push({
+      id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+      sender_type: 'user', content: `${targetMember.nickname} 已被移出群聊`,
+      type: 'system', is_read: true, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: `已将 ${targetMember.nickname} 移出群聊` }
+  }
+
+  /** 解散群聊（仅群主） */
+  function disbandGroup(groupId: string): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    if (g.owner_id !== myProfile.value?.spark_id) return { ok: false, msg: '仅群主可解散群聊' }
+    groups.value = groups.value.filter(gr => gr.id !== groupId)
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: `群聊「${g.name}」已解散` }
+  }
+
+  /** 转让群主（仅群主） */
+  function transferGroupOwner(groupId: string, newOwnerId: string): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    if (g.owner_id !== myProfile.value?.spark_id) return { ok: false, msg: '仅群主可转让' }
+    const newOwner = g.members.find(m => m.spark_id === newOwnerId)
+    if (!newOwner) return { ok: false, msg: '目标成员不存在' }
+    // 旧群主变成普通成员
+    const oldOwner = g.members.find(m => m.spark_id === g.owner_id)
+    if (oldOwner) oldOwner.role = 'member'
+    newOwner.role = 'owner'
+    g.owner_id = newOwnerId
+    g.messages.push({
+      id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+      sender_type: 'user', content: `${newOwner.nickname} 已成为新群主`,
+      type: 'system', is_read: true, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: `已将群主转让给 ${newOwner.nickname}` }
+  }
+
+  /** 设置群公告（群主/管理员） */
+  function setGroupAnnouncement(groupId: string, content: string): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    const myRole = getMemberRole(groupId, myProfile.value?.spark_id || '')
+    if (myRole !== 'owner' && myRole !== 'admin') return { ok: false, msg: '仅群主或管理员可设置公告' }
+    g.announcement = content
+    g.messages.push({
+      id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+      sender_type: 'user', content: `群公告已更新：${content}`,
+      type: 'system', is_read: true, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: '群公告已更新' }
+  }
+
+  /** 修改群名称（群主/管理员） */
+  function renameGroup(groupId: string, newName: string): { ok: boolean; msg: string } {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return { ok: false, msg: '群聊不存在' }
+    const myRole = getMemberRole(groupId, myProfile.value?.spark_id || '')
+    if (myRole !== 'owner' && myRole !== 'admin') return { ok: false, msg: '仅群主或管理员可修改群名' }
+    const oldName = g.name
+    g.name = newName
+    g.messages.push({
+      id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
+      sender_type: 'user', content: `群名称已修改为「${newName}」`,
+      type: 'system', is_read: true, created_at: now(),
+    })
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return { ok: true, msg: `群名已从「${oldName}」修改为「${newName}」` }
+  }
+
+  /** 发送群消息（带提及解析） */
+  function sendGroupMsgWithMentions(groupId: string, content: string, mentionIds: string[]) {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return
+    const msg: ChatMsg = {
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      content, type: 'text', is_read: true, created_at: now(),
+      mentions: mentionIds.length > 0 ? mentionIds : undefined,
+    }
+    g.messages.push(msg)
+    saveData(STORAGE_KEYS.groups, groups.value)
+
+    // @星火 触发AI回复
+    if (g.ai_enabled && content.includes('@星火')) {
+      triggerGroupAI(groupId, content)
+    }
+  }
+
+  // ====== F10: 动态可见时间范围设置 ======
+  const momentVisibilitySettings = ref<MomentVisibilitySettings>(
+    loadData<MomentVisibilitySettings>(STORAGE_KEYS.momentVisibility, { timeRange: 'forever', allowStrangers: false })
+  )
+
+  function updateMomentVisibility(settings: Partial<MomentVisibilitySettings>) {
+    Object.assign(momentVisibilitySettings.value, settings)
+    saveData(STORAGE_KEYS.momentVisibility, momentVisibilitySettings.value)
+  }
+
+  /** 根据可见时间范围过滤动态 */
+  function filterMomentsByVisibility(momentsList: Moment[], authorSettings?: MomentVisibilitySettings): Moment[] {
+    const settings = authorSettings || momentVisibilitySettings.value
+    if (settings.timeRange === 'forever') return momentsList
+    const nowMs = Date.now()
+    const rangeMs: Record<string, number> = {
+      three_days: 3 * 24 * 60 * 60 * 1000,
+      one_month: 30 * 24 * 60 * 60 * 1000,
+      half_year: 180 * 24 * 60 * 60 * 1000,
+    }
+    const cutoff = nowMs - (rangeMs[settings.timeRange] || Infinity)
+    return momentsList.filter(m => new Date(m.created_at).getTime() >= cutoff)
+  }
+
+  /** 检查实况动态是否还在有效期内 */
+  function isMomentLive(moment: Moment): boolean {
+    if (!moment.is_live) return false
+    if (!moment.live_expires_at) return false
+    return new Date(moment.live_expires_at).getTime() > Date.now()
+  }
+
   init()
 
   void loadProfileFromSupabase
@@ -958,19 +1329,29 @@ export function useCompanion() {
   return {
     // 数据
     myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
+    friendTags, blacklist, friendPermissions,
     loading, isAiTyping, totalUnreadMessages,
     // 档案
     updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
     // 好友
     searchUser, searchBySparkId, sendFriendRequest, addFriend, addFriendByQR, removeFriend, setFriendRemark,
+    // 好友管理(星标/标签/拉黑/权限)
+    toggleStarFriend, updateFriendRemark,
+    createTag, renameTag, deleteTag, addMemberToTag, removeMemberFromTag, setMemberPriority, getTagsForFriend,
+    blockFriend, unblockFriend, isBlocked,
+    updateFriendPermissions, getFriendPermissions,
     // 私聊
     getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
+    // 消息操作
+    recallMessage, sendPokeMessage,
     // 群聊
-    createGroup, sendGroupMsg, fetchMomentComments,
-    sortGroupMembers, setGroupAdmin, removeGroupAdmin, setGroupAnnouncement,
-    renameGroup, kickMember, dissolveGroup, quitGroup, inviteToGroup,
+    createGroup, sendGroupMsg, sendGroupMsgWithMentions, fetchMomentComments,
+    // 群管理
+    getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
     // 动态
-    postMoment, toggleLike, commentMoment, deleteMoment,
+    postMoment, toggleLike, commentMoment, deleteMoment, togglePinMoment,
+    // 动态可见性设置
+    momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
     // 收藏
     addFavorite, removeFavorite,
     // AI

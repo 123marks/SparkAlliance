@@ -28,7 +28,7 @@
         <Transition name="pp-fade">
           <div v-if="showMoreMenu" class="pp-more-menu">
             <button @click="startEditRemark">📝 设置备注</button>
-            <button @click="emit('action', 'permissions')">🔐 设置朋友圈权限</button>
+            <button @click="emit('action', 'permissions')">🔐 设置星火域权限</button>
             <button @click="emit('action', 'recommend')">👤 推荐给朋友</button>
             <button @click="emit('action', 'star')">⭐ 设为星标朋友</button>
             <button class="warn" @click="emit('action', 'block')">🚫 加入黑名单</button>
@@ -56,7 +56,7 @@
 
         <div class="pp-section">
           <div class="pp-row clickable" @click="emit('action', 'moments')">
-            <span class="pp-label">朋友圈</span>
+            <span class="pp-label">星火域</span>
             <div class="pp-moments-preview">
               <span v-for="i in Math.min(momentCount, 4)" :key="i" class="pp-moment-dot">📝</span>
             </div>
