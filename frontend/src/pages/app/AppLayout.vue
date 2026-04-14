@@ -345,7 +345,9 @@ const handleLogout = async () => {
   flex-direction: column;
   height: 100vh;
   width: 100%;
-  background: transparent; /* v7.3: 透明让星空背景穿透 */
+  position: relative;
+  z-index: 1; /* 确保在CosmicBackground(z-index:0)之上 */
+  background: transparent;
   color: var(--color-text-primary);
   overflow: hidden;
 }
@@ -553,6 +555,8 @@ const handleLogout = async () => {
   flex: 1;
   margin-top: 56px;
   min-height: 0;
+  position: relative;
+  z-index: 1; /* 建立stacking context */
 }
 
 /* ====== 侧边栏 ====== */

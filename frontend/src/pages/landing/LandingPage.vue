@@ -32,7 +32,8 @@ import FooterSection from './sections/FooterSection.vue'
 .landing-page {
   width: 100%;
   min-height: 100vh;
-  background-color: transparent; /* v7.3: 透明让星空背景穿透 */
+  background-color: transparent;
   position: relative;
+  z-index: 1; /* 确保所有内容在CosmicBackground之上 */
 }
 </style>
