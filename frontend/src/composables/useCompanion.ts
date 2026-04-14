@@ -822,7 +822,7 @@ export function useCompanion() {
       }))
       const reply = await callAI([...history, { role: 'user', content: userMsg }])
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       if (!store[friendId]) store[friendId] = []
@@ -831,8 +831,20 @@ export function useCompanion() {
       // 更新好友最后消息
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
-    } catch { /* 静默失败 */ }
-    isAiTyping.value = false
+    } catch (err: any) {
+      // v7.1: 失败时插入错误消息
+      const store = getPrivateChatStore()
+      const errorMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        sender_type: 'ai', content: `⚠️ ${err?.message || 'AI服务暂时不可用'}`, type: 'text', is_read: true, created_at: now(),
+      }
+      if (!store[friendId]) store[friendId] = []
+      store[friendId].push(errorMsg)
+      markPrivateChatDirty()
+    } finally {
+      isAiTyping.value = false
+      aiTypingText.value = ''
+    }
   }
 
   // ------ 消息撤回 ------
@@ -958,20 +970,32 @@ export function useCompanion() {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return
     isAiTyping.value = true
+    aiTypingText.value = '正在思考...'
     try {
       const history = g.messages.slice(-20).map(m => ({
         role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
         content: `${m.sender_name}: ${m.content}`,
       }))
+      aiTypingText.value = '正在生成回复...'
       const reply = await callAI(history, `这是群聊「${g.name}」中的对话。有人 @你说："${triggerMsg}"。请回复。`)
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       g.messages.push(aiMsg)
       saveData(STORAGE_KEYS.groups, groups.value)
-    } catch { /* 静默 */ }
-    isAiTyping.value = false
+    } catch (err: any) {
+      // v7.1: 失败时插入错误提示
+      const errorMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        sender_type: 'ai', content: `⚠️ ${err?.message || 'AI服务暂时不可用'}`, type: 'text', is_read: true, created_at: now(),
+      }
+      g.messages.push(errorMsg)
+      saveData(STORAGE_KEYS.groups, groups.value)
+    } finally {
+      isAiTyping.value = false
+      aiTypingText.value = ''
+    }
   }
 
   // ------ 动态系统 ------
