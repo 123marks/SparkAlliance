@@ -173,10 +173,10 @@
                   </div>
                   <!-- 语音消息：可播放气泡 + 转文字 -->
                   <div v-if="msg.type==='voice'" class="cp-voice-wrapper">
-                    <div class="cp-voice-bubble" :class="{playing:playingVoiceId===msg.id}" @click.stop="playVoice(msg)">
+                    <div class="cp-voice-bubble" :class="{playing:playingVoiceId===msg.id}" :style="{width: getVoiceBubbleWidth(msg.voice_duration||3)+'px'}" @click.stop="playVoice(msg)">
                       <span class="cp-voice-icon" :class="{playing:playingVoiceId===msg.id}">🔊</span>
                       <div class="cp-voice-bars" :class="{playing:playingVoiceId===msg.id}">
-                        <span v-for="i in Math.min(Math.max(msg.voice_duration||3,3),15)" :key="i" class="cp-vbar" :style="{height:(4+Math.random()*12)+'px',animationDelay:(i*0.08)+'s'}"></span>
+                        <span v-for="i in getVoiceBarCount(msg.voice_duration||3)" :key="i" class="cp-vbar" :style="{height:(4+Math.random()*12)+'px',animationDelay:(i*0.06)+'s'}"></span>
                       </div>
                       <span class="cp-voice-dur">{{ msg.voice_duration||0 }}″</span>
                     </div>
@@ -233,16 +233,16 @@
               <!-- 群成员列表 -->
               <div class="cs-members">
                 <div v-for="m in filteredGroupMembers" :key="m.spark_id" class="cs-member" @click="handleViewGroupMember(m)">
-                  <SparkAvatar :avatar="m.avatar" :name="m.group_nickname||m.nickname" size="md" />
+                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="md" />
                   <span class="cs-mname">{{ m.group_nickname||m.nickname }}</span>
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
-                  <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理</span>
+                  <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                 </div>
                 <!-- 添加/移出按钮 -->
                 <div class="cs-member cs-add-btn" @click="showToast('邀请成员')"><span class="cs-add-icon">＋</span><span class="cs-mname">添加</span></div>
                 <div v-if="myGroupRole==='owner'||myGroupRole==='admin'" class="cs-member cs-add-btn" @click="showToast('移出成员')"><span class="cs-add-icon cs-remove">－</span><span class="cs-mname">移出</span></div>
               </div>
-              <div v-if="activeGroup.members.length>8 && !showAllMembers" class="cs-show-more" @click="showAllMembers=true">查看更多 ∨</div>
+              <div v-if="activeGroup.members.length>8 && !showAllMembers" class="cs-show-more" @click="showAllMembers=true">查看更多 ({{activeGroup.members.length}}人) ∨</div>
               <div v-if="showAllMembers" class="cs-show-more" @click="showAllMembers=false">收起 ∧</div>
 
               <!-- 群聊名称 -->
@@ -259,17 +259,17 @@
                 <div class="cs-row clickable" @click="showAnnouncementHistory=!showAnnouncementHistory">
                   <span>群公告</span>
                   <span class="cs-val cs-val-truncate">{{ activeGroup.announcement||'未设置' }}</span>
-                  <span class="cs-arrow">›</span>
+                  <span class="cs-arrow" :class="{open:showAnnouncementHistory}">›</span>
                 </div>
                 <!-- 公告详情/历史 -->
                 <template v-if="showAnnouncementHistory">
                   <div class="cs-announcement-detail">
                     <p v-if="activeGroup.announcement" class="cs-ann-content">{{ activeGroup.announcement }}</p>
                     <p v-else class="cs-ann-empty">暂无群公告</p>
-                    <!-- 群主/管理员可编辑 -->
+                    <!-- 群主/管理员可编辑（v7.0修复：确保此区域正确显示） -->
                     <div v-if="myGroupRole==='owner'||myGroupRole==='admin'" class="cs-ann-edit">
-                      <textarea v-model="groupAnnouncementInput" placeholder="输入新的群公告..." rows="2" class="cs-ann-textarea"></textarea>
-                      <button class="cs-ann-publish" @click="handleSetAnnouncement" :disabled="!groupAnnouncementInput.trim()">发布公告</button>
+                      <textarea v-model="groupAnnouncementInput" placeholder="输入新的群公告..." rows="3" class="cs-ann-textarea"></textarea>
+                      <button class="cs-ann-publish" @click="handleSetAnnouncement" :disabled="!groupAnnouncementInput.trim()">📢 发布公告</button>
                     </div>
                     <!-- 历史公告 -->
                     <div v-if="activeGroup.announcement_history?.length" class="cs-ann-history">
@@ -322,14 +322,15 @@
                     <div class="cs-row"><span>修改群名</span></div>
                     <div class="cs-mgmt-input"><input v-model="groupRenameInput" :placeholder="activeGroup.name" maxlength="30"><button @click="handleRenameGroup">确定</button></div>
                   </div>
-                  <!-- 成员管理 -->
+                  <!-- 成员管理（带角色标签和操作按钮） -->
                   <div class="cs-section">
-                    <div class="cs-row"><span>成员管理</span></div>
+                    <div class="cs-row"><span>成员管理 ({{activeGroup.members.length}}人)</span></div>
                     <div v-for="m in activeGroup.members" :key="m.spark_id" class="cs-member-row">
-                      <SparkAvatar :avatar="m.avatar" :name="m.group_nickname||m.nickname" size="xs" />
+                      <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="xs" />
                       <span class="cs-member-name">{{ m.group_nickname||m.nickname }}</span>
                       <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
-                      <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理</span>
+                      <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
+                      <span v-else class="cp-role-tag member sm">成员</span>
                       <div v-if="canManageMember(m)" class="cs-member-acts">
                         <button v-if="myGroupRole==='owner'" @click="handleSetAdmin(m.spark_id, m.role!=='admin')" class="cs-act-btn">{{ m.role==='admin'?'取消管理':'设为管理' }}</button>
                         <button v-if="myGroupRole==='owner'" @click="handleTransferOwner(m.spark_id)" class="cs-act-btn warn">转让群主</button>
@@ -990,8 +991,9 @@ function handlePokeAvatar(e:MouseEvent,targetName:string,targetId:string){
   if(!activeChat.value)return
   if(targetId===myProfile.value?.spark_id)return
   pokeMenu.show=true
-  pokeMenu.x=e.clientX
-  pokeMenu.y=e.clientY
+  const pos=clampMenuPos(e.clientX,e.clientY,155,90)
+  pokeMenu.x=pos.x
+  pokeMenu.y=pos.y
   pokeMenu.targetName=targetName
   pokeMenu.targetId=targetId
 }
@@ -1032,10 +1034,18 @@ async function handleChatSend(){
   }
 }
 function formatMsgTime(s:string){return formatMsgTimeUtil(s)}
+// v7.0: 菜单位置边界检测（防止溢出屏幕）
+function clampMenuPos(x: number, y: number, menuW = 155, menuH = 280): { x: number; y: number } {
+  const vw = window.innerWidth, vh = window.innerHeight
+  return {
+    x: x + menuW > vw ? Math.max(4, x - menuW) : x,
+    y: y + menuH > vh ? Math.max(4, y - menuH) : y,
+  }
+}
 function autoResize(e:Event){const el=e.target as HTMLTextAreaElement;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px'}
-function showCtxMenu(e:MouseEvent,type:string,id:string){ctxMenu.show=true;ctxMenu.x=e.clientX;ctxMenu.y=e.clientY;ctxMenu.type=type;ctxMenu.id=id}
+function showCtxMenu(e:MouseEvent,type:string,id:string){const pos=clampMenuPos(e.clientX,e.clientY,155,160);ctxMenu.show=true;ctxMenu.x=pos.x;ctxMenu.y=pos.y;ctxMenu.type=type;ctxMenu.id=id}
 // 消息右键菜单(仿微信)：2分钟内可撤回
-function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();const canRecall=isMine&&elapsed<2*60*1000;if(msg.type==='poke'){if(!canRecall)return;msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=true;return};msgCtx.show=true;msgCtx.x=e.clientX;msgCtx.y=e.clientY;msgCtx.msgId=msg.id;msgCtx.canRecall=canRecall}
+function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();const canRecall=isMine&&elapsed<2*60*1000;const menuH=canRecall?310:280;const pos=clampMenuPos(e.clientX,e.clientY,155,menuH);if(msg.type==='poke'){if(!canRecall)return;msgCtx.show=true;msgCtx.x=pos.x;msgCtx.y=pos.y;msgCtx.msgId=msg.id;msgCtx.canRecall=true;return};msgCtx.show=true;msgCtx.x=pos.x;msgCtx.y=pos.y;msgCtx.msgId=msg.id;msgCtx.canRecall=canRecall}
 // ===== 消息右键菜单全功能实装（v6.6） =====
 function msgCtxAction(action:string){
   msgCtx.show=false
@@ -1177,6 +1187,18 @@ function formatVoiceDuration(sec: number): string {
   return `${m}:${s.toString().padStart(2,'0')}`
 }
 
+// v7.0: 语音气泡宽度根据时长动态计算（短→窄，长→宽，最大不超过容器60%）
+function getVoiceBubbleWidth(duration: number): number {
+  // 3秒=100px, 10秒=150px, 30秒=220px, 60秒=300px
+  const minW = 100, maxW = 300
+  const t = Math.min(Math.max(duration, 1), 60) / 60 // 0~1
+  return Math.round(minW + (maxW - minW) * Math.sqrt(t))
+}
+// v7.0: 波浪条数量根据时长动态计算
+function getVoiceBarCount(duration: number): number {
+  // 3秒=5条, 10秒=10条, 30秒=20条, 60秒=30条
+  return Math.min(Math.max(Math.round(duration * 0.5), 4), 30)
+}
 // ====== v6.9: 语音系统核心重写 ======
 // 核心思路：录音时同步开启SpeechRecognition并行收集文字
 // 用户点"转文字"时直接使用已收集的文本
@@ -1225,11 +1247,14 @@ function startParallelRecognition() {
           interimText += event.results[i][0].transcript
         }
       }
-      collectedTranscript = finalText
+      // v7.0修复：同时保留final和interim，确保短录音也能拿到结果
+      collectedTranscript = finalText || interimText
       realtimeTranscript.value = finalText + interimText
     }
 
-    parallelRecognition.onerror = () => { /* 静默处理，不影响录音 */ }
+    parallelRecognition.onerror = (e: any) => {
+      if (e.error === 'not-allowed') showToast('语音识别被禁止，请检查浏览器权限')
+    }
     parallelRecognition.onend = () => {
       // 如果还在录音中，自动重启识别（避免识别超时断开）
       if (isRecording.value) {
@@ -1281,22 +1306,23 @@ function stopRecording() {
   mediaRecorder.stop()
 }
 
-// 完成录音 → 进入转文字流程（使用录音期间收集的文本）
+// 完成录音 → 进入转文字流程（v7.0: 延迟等待最后识别结果）
 function stopAndConvertToText() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
-  // 先收集最终结果再停止识别
-  const finalText = collectedTranscript || realtimeTranscript.value
-  stopParallelRecognition()
   mediaRecorder.onstop = () => {
     voicePreviewBlob.value = new Blob(audioChunks, { type: 'audio/webm' })
     voicePreviewDuration.value = voiceDuration.value
     mediaRecorder!.stream.getTracks().forEach(t => t.stop())
     isRecording.value = false
     if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-    // 直接使用录音期间收集的文本
-    voiceShowTextPreview.value = true
-    voiceTextConverting.value = false
-    voiceTextPreview.value = finalText || '(未识别到语音内容，请确保说话时靠近麦克风)'
+    // v7.0: 延迟600ms收集最终结果（给识别引擎时间处理最后片段）
+    setTimeout(() => {
+      const finalText = collectedTranscript || realtimeTranscript.value
+      stopParallelRecognition()
+      voiceShowTextPreview.value = true
+      voiceTextConverting.value = false
+      voiceTextPreview.value = finalText || '(未识别到语音内容，请确保：\n1. 说话时靠近麦克风\n2. 使用Chrome/Edge浏览器\n3. 已授权麦克风权限)'
+    }, 600)
   }
   mediaRecorder.stop()
 }
@@ -1540,16 +1566,19 @@ function toggleChatMute(type:string, id:string){
     if(g){g.is_muted=!g.is_muted;persistGroups();showToast(g.is_muted?'已开启免打扰':'已关闭免打扰')}
   }
 }
-// 清空聊天记录（v6.9: 群聊也持久化）
+// 清空聊天记录（v7.0: 彻底清空，同步清除侧边栏状态）
 function handleClearChatHistory(){
   if(!activeChat.value)return
   confirmDialog.show=true;confirmDialog.title='清空聊天记录';confirmDialog.text='确定要清空所有聊天记录吗？此操作不可撤销。';confirmDialog.btnText='清空'
   confirmDialog.onConfirm=()=>{
     if(activeChat.value?.type==='group'){
       const g=groups.value.find(g=>g.id===activeChat.value!.id)
-      if(g){ g.messages=[]; persistGroups() }
+      if(g){ g.messages=[]; g.unread=0; persistGroups() }
     } else if(activeChat.value?.type==='private'){
       clearPrivateChat(activeChat.value.id)
+      // 同步清除侧边栏显示的最后一条消息和未读数
+      const f=friends.value.find(f=>f.spark_id===activeChat.value!.id)
+      if(f){ f.last_msg=''; f.last_msg_time=''; f.unread=0; persistFriends() }
     } else if(activeChat.value?.type==='ai'){
       aiChatHistory.value=[]
     }
@@ -2308,6 +2337,7 @@ function handlePublish() {
 .cp-role-tag{font-size:11px;padding:1px 6px;border-radius:3px;font-weight:bold;color:white;line-height:1.4}
 .cp-role-tag.owner{background:#f59e0b}
 .cp-role-tag.admin{background:#10b981}
+.cp-role-tag.member{background:rgba(255,255,255,.08);color:rgba(255,255,255,.35);font-weight:normal}
 .cp-role-tag.sm{font-size:9px;padding:0 4px}
 /* 时间分隔线 */
 .cp-time-sep{text-align:center;color:rgba(255,255,255,.18);font-size:10px;padding:8px 0;user-select:none;width:100%;align-self:center}
@@ -2518,8 +2548,8 @@ function handlePublish() {
 .cp-multi-bar button.del:hover{background:rgba(239,68,68,.12);color:rgba(239,68,68,.7)}
 
 /* ====== 语音消息气泡（v6.7重做） ====== */
-.cp-voice-wrapper{display:flex;flex-direction:column;gap:4px;max-width:220px}
-.cp-voice-bubble{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:100px;max-width:200px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.08);border-radius:16px;cursor:pointer;transition:all .15s}
+.cp-voice-wrapper{display:flex;flex-direction:column;gap:4px;max-width:320px}
+.cp-voice-bubble{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:80px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.08);border-radius:16px;cursor:pointer;transition:all .15s}
 .cp-voice-bubble:hover{background:rgba(139,92,246,.1)}
 .cp-voice-bubble.playing{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.2)}
 .cp-voice-icon{font-size:16px;transition:transform .3s}

@@ -71,14 +71,14 @@ const meteorColors = ['#60a5fa', '#a78bfa', '#f87171', '#facc15']
 function init() {
   dusts = []; meteors = []; asteroids = []; fallingMeteors = []; impacts = []
 
-  // 星尘 — 一闪一亮，明显闪烁
-  const dustCount = Math.floor((w * h) / 4000)
+  // 星尘 — 柔和闪烁，不刺眼
+  const dustCount = Math.floor((w * h) / 5000)
   for (let i = 0; i < dustCount; i++) {
     dusts.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.8 + 0.3,
-      alpha: Math.random(), phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.04 + 0.01, // 更快闪烁
+      size: Math.random() * 1.5 + 0.3,
+      alpha: Math.random() * 0.4, phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.012 + 0.003, // 柔和闪烁（速度降低60%）
       color: dustColors[Math.floor(Math.random() * dustColors.length)]
     })
   }
@@ -164,8 +164,8 @@ function animate(ctx: CanvasRenderingContext2D) {
   // 1. 星尘闪烁
   for (const d of dusts) {
     d.phase += d.speed
-    // 一闪一亮：大范围透明度变化 0.05 ~ 0.95
-    const a = (Math.sin(d.phase) * 0.5 + 0.5) * 0.9 + 0.05
+    // 柔和闪烁：小范围透明度变化 0.08 ~ 0.42
+    const a = (Math.sin(d.phase) * 0.5 + 0.5) * 0.34 + 0.08
     // 超慢漂移
     d.y -= 0.05
     if (d.y < -2) { d.y = h + 2; d.x = Math.random() * w }
@@ -422,12 +422,12 @@ onBeforeUnmount(() => {
   width: 100vw; height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.75; /* 提高透明度让流星/陨石坠落更明显 */
+  opacity: 0.5; /* 降低到0.5，不干扰前景内容 */
   animation: cosmicFadeIn 3s ease-out;
 }
 
 @keyframes cosmicFadeIn {
   from { opacity: 0; }
-  to { opacity: 0.75; }
+  to { opacity: 0.5; }
 }
 </style>

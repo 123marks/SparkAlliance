@@ -141,6 +141,7 @@ export interface GroupChat {
     spark_id: string
     nickname: string       // 用户名
     avatar: string
+    avatar_url?: string    // 用户上传的真实头像URL
     role: 'owner' | 'admin' | 'member'
     group_nickname?: string // 群昵称（覆盖显示名）
   }[]
@@ -907,12 +908,16 @@ export function useCompanion() {
   }
 
   // ------ 群聊 ------
+  // v7.0: 成员上限500
+  const MAX_GROUP_MEMBERS = 500
+
   function createGroup(name: string, memberIds: string[], aiEnabled = true): string {
+    const limitedIds = memberIds.slice(0, MAX_GROUP_MEMBERS - 1) // 减去群主自己
     const members: GroupChat['members'] = [
-      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'owner' },
-      ...memberIds.map(id => {
+      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, avatar_url: myProfile.value!.avatar_url, role: 'owner' },
+      ...limitedIds.map(id => {
         const f = friends.value.find(f => f.spark_id === id)
-        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', role: 'member' as const }
+        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', avatar_url: f?.avatar_url, role: 'member' as const }
       }),
     ]
     const g: GroupChat = {
@@ -1215,6 +1220,14 @@ export function useCompanion() {
     const member = g.members.find(m => m.spark_id === memberId)
     if (!member) return { ok: false, msg: '成员不存在' }
     if (member.spark_id === g.owner_id) return { ok: false, msg: '不能修改群主角色' }
+    // v7.0: 管理员数量上限 = floor(成员数/5)，最少1个
+    if (isAdmin) {
+      const currentAdminCount = g.members.filter(m => m.role === 'admin').length
+      const maxAdmins = Math.max(1, Math.floor(g.members.length / 5))
+      if (currentAdminCount >= maxAdmins) {
+        return { ok: false, msg: `管理员数量已达上限（最多${maxAdmins}人）` }
+      }
+    }
     member.role = isAdmin ? 'admin' : 'member'
     // 插入系统消息
     g.messages.push({
@@ -1402,7 +1415,27 @@ export function useCompanion() {
   function persistFriends() { saveData(STORAGE_KEYS.friends, friends.value) }
   function persistGroups() { saveData(STORAGE_KEYS.groups, groups.value) }
 
+  // v7.0: 同步当前用户的最新头像到所有群的成员列表
+  function syncMyGroupAvatars() {
+    if (!myProfile.value) return
+    let changed = false
+    for (const g of groups.value) {
+      const me = g.members.find(m => m.spark_id === myProfile.value!.spark_id)
+      if (me) {
+        if (me.avatar !== myProfile.value.avatar || me.avatar_url !== myProfile.value.avatar_url || me.nickname !== myProfile.value.nickname) {
+          me.avatar = myProfile.value.avatar
+          me.avatar_url = myProfile.value.avatar_url
+          me.nickname = myProfile.value.nickname
+          changed = true
+        }
+      }
+    }
+    if (changed) persistGroups()
+  }
+
   init()
+  // 初始化后同步头像
+  setTimeout(() => syncMyGroupAvatars(), 500)
 
   void loadProfileFromSupabase
 
@@ -1440,6 +1473,6 @@ export function useCompanion() {
     // 工具
     formatTimeAgo,
     // 持久化
-    persistFriends, persistGroups,
+    persistFriends, persistGroups, syncMyGroupAvatars, MAX_GROUP_MEMBERS,
   }
 }
