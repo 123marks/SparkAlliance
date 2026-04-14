@@ -96,7 +96,7 @@
         <div class="cp-contact-group" @click="contactGroupExpand.friends=!contactGroupExpand.friends"><span class="cp-cg-icon fri">📖</span><span class="cp-cg-text">联系人</span><span class="cp-cg-count">{{ friends.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.friends}">›</span></div>
         <template v-if="contactGroupExpand.friends">
           <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="selectContact(f)">
-            <SparkAvatar :avatar="f.avatar" :name="f.nickname" size="sm" clickable @click.stop="showProfilePopup(f)" />
+            <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url" :name="f.nickname" size="sm" clickable @click.stop="showProfilePopup(f)" />
             <div class="cp-contact-info"><span class="cp-contact-name">{{ f.remark||f.nickname }}</span></div>
           </div>
         </template>
@@ -133,7 +133,7 @@
               <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
               <div v-else-if="msg.type==='poke'" class="cp-poke-msg">{{ msg.content }}</div>
               <template v-else>
-                <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
+                <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :avatar-url="msg.sender_avatar_url" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
                 <div class="cp-msg-body">
                   <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
                     <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
@@ -157,7 +157,7 @@
         <Transition name="fade">
           <div v-if="showChatSettings" class="cp-chat-settings">
             <div class="cs-members" v-if="activeChat?.type==='private'">
-              <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :name="chatFriend?.nickname||''" size="md" clickable /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
+              <div class="cs-member" @click="handleViewChatFriend"><SparkAvatar :avatar="chatFriend?.avatar||''" :avatar-url="chatFriend?.avatar_url" :name="chatFriend?.nickname||''" size="md" clickable @dblclick.stop="openAvatarPreview(chatFriend?.avatar||'', chatFriend?.avatar_url, chatFriend?.nickname)" /><span class="cs-mname">{{ chatFriend?.remark ? chatFriend.nickname + '（' + chatFriend.remark + '）' : chatFriend?.nickname }}</span></div>
             </div>
             <!-- 私聊好友管理菜单 -->
             <template v-if="activeChat?.type==='private' && chatFriend">
@@ -175,7 +175,7 @@
             <template v-if="activeChat?.type==='group' && activeGroup">
               <div class="cs-members">
                 <div v-for="m in activeGroup.members.slice(0,8)" :key="m.spark_id" class="cs-member">
-                  <SparkAvatar :avatar="m.avatar" :name="m.nickname" size="md" />
+                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.nickname" size="md" />
                   <span class="cs-mname">{{ m.nickname }}</span>
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                   <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
@@ -277,7 +277,7 @@
     <!-- 通讯录资料卡(仿微信) -->
     <main v-else-if="rightPanel==='contact'" class="cp-main cp-profile-card">
       <div class="pf-header">
-        <SparkAvatar :avatar="selectedContact?.avatar||''" :name="selectedContact?.nickname||''" size="lg" clickable @click="selectedContact&&showProfilePopup(selectedContact)" />
+        <SparkAvatar :avatar="selectedContact?.avatar||''" :avatar-url="selectedContact?.avatar_url" :name="selectedContact?.nickname||''" size="lg" clickable @click="selectedContact&&showProfilePopup(selectedContact)" @dblclick.stop="openAvatarPreview(selectedContact?.avatar||'', selectedContact?.avatar_url, selectedContact?.nickname)" />
         <div class="pf-info">
           <h2>
             <span v-if="selectedContact?.is_starred" class="pf-star">⭐</span>
