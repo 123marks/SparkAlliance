@@ -3,6 +3,9 @@
     <!-- 宇宙深空背景 — 受外观设置粒子开关控制 -->
     <CosmicBackground :enabled="particleEnabled" />
 
+    <!-- 临时版本水印 — 验证后删除 -->
+    <div class="version-watermark">v7.4.1 ✅</div>
+
     <!-- TopBar — 精简工具栏 -->
     <header class="topbar">
       <div class="topbar-left">
@@ -690,5 +693,21 @@ const handleLogout = async () => {
   .sidebar .nav-group-label { display: none; }
   .topbar-search { display: none; }
   .notif-panel { width: 280px; right: -40px; }
+}
+
+/* 临时版本水印 — 验证后删除 */
+.version-watermark {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(139, 92, 246, 0.9);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 99999;
+  pointer-events: none;
+  letter-spacing: 1px;
 }
 </style>
