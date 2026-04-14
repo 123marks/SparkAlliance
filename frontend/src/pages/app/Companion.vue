@@ -1,6 +1,5 @@
-<template>
+﻿<template>
   <div class="cp-layout">
-    <CosmicBackground :enabled="true" />
     <Transition name="toast"><div v-if="toast.show" class="cp-toast">{{ toast.msg }}</div></Transition>
 
     <!-- 确认框 -->
@@ -759,7 +758,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { useCompanion, formatTimeAgo, formatMsgTime as formatMsgTimeUtil, shouldShowTimeSeparator, type Friend, type ChatMsg, type GroupChat } from '../../composables/useCompanion'
-import CosmicBackground from '../../components/CosmicBackground.vue'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
 import QRCode from 'qrcode'
@@ -1949,7 +1947,7 @@ function isMentionedInMsg(msg: ChatMsg): boolean {
   if (msg.mentions?.includes(myProfile.value.spark_id)) return true
   return msg.content.includes(`@${myProfile.value.nickname}`)
 }
-void updateProfile;void favorites;void addFavorite;void CosmicBackground;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat
+void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat
 // 渲染消息内容（@提及高亮）
 function renderMsgContent(content: string): string {
   // 转义HTML

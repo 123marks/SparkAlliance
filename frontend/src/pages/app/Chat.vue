@@ -1,7 +1,6 @@
-<template>
+﻿<template>
   <div class="chat-layout" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <!-- 宇宙深空动态背景 -->
-    <CosmicBackground :enabled="true" />
     <!-- 拖拽遮罩 -->
     <Transition name="fade">
       <div v-if="isDragging" class="drop-overlay"><div class="drop-box"><div class="drop-icon">📎</div><div class="drop-text">松开即可上传</div><div class="drop-hint">支持文本、代码、图片等文件</div></div></div>
@@ -135,7 +134,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import CosmicBackground from '../../components/CosmicBackground.vue'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode } from '../../composables/useSparkAI'
 import { useSchedule } from '../../composables/useSchedule'

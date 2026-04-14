@@ -1,6 +1,5 @@
-<template>
+﻿<template>
   <!-- 宇宙深空动态背景 -->
-  <CosmicBackground :enabled="true" />
   
   <div class="profile-page" v-if="!isLoading">
     <!-- ====== Banner 区 ====== -->
@@ -376,7 +375,6 @@ import { ref, computed, watch, onMounted, reactive, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
-import CosmicBackground from '../../components/CosmicBackground.vue'
 import QRCode from 'qrcode'
 
 // Props — 支持他人主页
