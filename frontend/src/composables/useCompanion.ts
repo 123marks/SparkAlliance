@@ -67,8 +67,6 @@ export interface Friend {
   last_msg_time?: string
   unread: number
   is_starred?: boolean   // 星标好友
-  is_chat_pinned?: boolean // 会话置顶
-  is_muted?: boolean       // 消息免打扰
 }
 
 /** 好友标签 */
@@ -104,30 +102,17 @@ export interface ChatMsg {
   sender_id: string      // spark_id
   sender_name: string
   sender_avatar: string
-  sender_avatar_url?: string  // 发送者头像URL（上传的真实头像）
   sender_type: 'user' | 'ai'
   receiver_id?: string   // 私聊接收者
   content: string
   type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video' | 'poke'
   media_url?: string
-  voice_duration?: number      // 语音时长（秒）
-  voice_blob_url?: string      // 语音文件Blob URL
   share_data?: { type: string; title: string; route: string }
   is_read: boolean       // 已读状态
   read_at?: string       // 读取时间
   created_at: string
   synced?: boolean       // 是否已同步到数据库
   mentions?: string[]    // @提及的 spark_id 列表
-  quote_msg?: { sender_name: string; content: string }  // 引用消息
-}
-
-/** 群公告历史记录 */
-export interface GroupAnnouncementRecord {
-  id: string
-  content: string
-  author_id: string
-  author_name: string
-  created_at: string
 }
 
 /** 群聊 */
@@ -137,23 +122,11 @@ export interface GroupChat {
   avatar: string        // emoji
   owner_id: string      // spark_id
   ai_enabled: boolean
-  members: {
-    spark_id: string
-    nickname: string       // 用户名
-    avatar: string
-    avatar_url?: string    // 用户上传的真实头像URL
-    role: 'owner' | 'admin' | 'member'
-    group_nickname?: string // 群昵称（覆盖显示名）
-  }[]
+  members: { spark_id: string; nickname: string; avatar: string; role: 'owner' | 'admin' | 'member' }[]
   messages: ChatMsg[]
   created_at: string
   unread: number
-  announcement?: string          // 当前群公告
-  announcement_history?: GroupAnnouncementRecord[] // 公告历史
-  is_chat_pinned?: boolean       // 会话置顶
-  is_muted?: boolean             // 消息免打扰
-  group_remark?: string          // 群备注（仅自己可见）
-  show_member_nickname?: boolean // 是否显示群成员昵称
+  announcement?: string // 群公告
 }
 
 /** 动态可见时间范围设置 */
@@ -361,7 +334,6 @@ export function useCompanion() {
   const friendPermissions = ref<Record<string, FriendPermissions>>({})
   const loading = ref(false)
   const isAiTyping = ref(false)
-  const aiTypingText = ref('')  // v7.1: AI思考状态文字（'正在思考...' / '正在生成回复...'）
 
   // ====== 私聊内存缓存层（消除高频 localStorage 解析） ======
   let _privateChatCache: Record<string, ChatMsg[]> | null = null
@@ -517,6 +489,20 @@ export function useCompanion() {
     myProfile.value.group_count = groups.value.length
     myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
     saveData(STORAGE_KEYS.profile, myProfile.value)
+
+    // v7.2: 同步更新所有群中自己的成员头像/昵称
+    const sid = myProfile.value.spark_id
+    let groupDirty = false
+    for (const g of groups.value) {
+      const me = g.members.find(m => m.spark_id === sid)
+      if (me) {
+        if (updates.avatar) me.avatar = updates.avatar
+        if (updates.avatar_url) me.avatar_url = updates.avatar_url
+        if (updates.nickname && !me.group_nickname) me.nickname = updates.nickname
+        groupDirty = true
+      }
+    }
+    if (groupDirty) saveData(STORAGE_KEYS.groups, groups.value)
 
     // 同步到Supabase（异步）
     syncProfileToSupabase(updates)
@@ -720,13 +706,6 @@ export function useCompanion() {
     return getPrivateChatStore()[friendId] || []
   }
 
-  // 清空私聊记录
-  function clearPrivateChat(friendId: string) {
-    const all = getPrivateChatStore()
-    all[friendId] = []
-    savePrivateChatStore()
-  }
-
   /** 标记消息为已读（本地缓存 + 异步 Supabase 同步） */
   function markMessagesAsRead(friendId: string) {
     const all = getPrivateChatStore()
@@ -789,8 +768,7 @@ export function useCompanion() {
     if (!all[friendId]) all[friendId] = []
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
-      sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
       receiver_id: friendId,
       content, type, share_data: shareData, is_read: false, created_at: now(),
     }
@@ -822,7 +800,7 @@ export function useCompanion() {
       }))
       const reply = await callAI([...history, { role: 'user', content: userMsg }])
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       if (!store[friendId]) store[friendId] = []
@@ -831,20 +809,8 @@ export function useCompanion() {
       // 更新好友最后消息
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
-    } catch (err: any) {
-      // v7.1: 失败时插入错误消息
-      const store = getPrivateChatStore()
-      const errorMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
-        sender_type: 'ai', content: `⚠️ ${err?.message || 'AI服务暂时不可用'}`, type: 'text', is_read: true, created_at: now(),
-      }
-      if (!store[friendId]) store[friendId] = []
-      store[friendId].push(errorMsg)
-      markPrivateChatDirty()
-    } finally {
-      isAiTyping.value = false
-      aiTypingText.value = ''
-    }
+    } catch { /* 静默失败 */ }
+    isAiTyping.value = false
   }
 
   // ------ 消息撤回 ------
@@ -921,16 +887,12 @@ export function useCompanion() {
   }
 
   // ------ 群聊 ------
-  // v7.0: 成员上限500
-  const MAX_GROUP_MEMBERS = 500
-
   function createGroup(name: string, memberIds: string[], aiEnabled = true): string {
-    const limitedIds = memberIds.slice(0, MAX_GROUP_MEMBERS - 1) // 减去群主自己
     const members: GroupChat['members'] = [
-      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, avatar_url: myProfile.value!.avatar_url, role: 'owner' },
-      ...limitedIds.map(id => {
+      { spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'owner' },
+      ...memberIds.map(id => {
         const f = friends.value.find(f => f.spark_id === id)
-        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', avatar_url: f?.avatar_url, role: 'member' as const }
+        return { spark_id: id, nickname: f?.nickname || id, avatar: f?.avatar || '👤', role: 'member' as const }
       }),
     ]
     const g: GroupChat = {
@@ -948,13 +910,9 @@ export function useCompanion() {
   function sendGroupMsg(groupId: string, content: string) {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return
-    // 使用群昵称（如果设置了的话）
-    const me = g.members.find(m => m.spark_id === myProfile.value?.spark_id)
-    const displayName = me?.group_nickname || myProfile.value!.nickname
     const msg: ChatMsg = {
-      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: displayName,
-      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
-      sender_type: 'user',
+      id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
     }
     g.messages.push(msg)
@@ -970,32 +928,20 @@ export function useCompanion() {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return
     isAiTyping.value = true
-    aiTypingText.value = '正在思考...'
     try {
       const history = g.messages.slice(-20).map(m => ({
         role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
         content: `${m.sender_name}: ${m.content}`,
       }))
-      aiTypingText.value = '正在生成回复...'
       const reply = await callAI(history, `这是群聊「${g.name}」中的对话。有人 @你说："${triggerMsg}"。请回复。`)
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       g.messages.push(aiMsg)
       saveData(STORAGE_KEYS.groups, groups.value)
-    } catch (err: any) {
-      // v7.1: 失败时插入错误提示
-      const errorMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
-        sender_type: 'ai', content: `⚠️ ${err?.message || 'AI服务暂时不可用'}`, type: 'text', is_read: true, created_at: now(),
-      }
-      g.messages.push(errorMsg)
-      saveData(STORAGE_KEYS.groups, groups.value)
-    } finally {
-      isAiTyping.value = false
-      aiTypingText.value = ''
-    }
+    } catch { /* 静默 */ }
+    isAiTyping.value = false
   }
 
   // ------ 动态系统 ------
@@ -1115,42 +1061,26 @@ export function useCompanion() {
   async function sendToAI(content: string): Promise<string> {
     aiChatHistory.value.push({
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
-      sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
 
     isAiTyping.value = true
-    aiTypingText.value = '正在思考...'
     try {
       const history = aiChatHistory.value.slice(-20).map(m => ({
         role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }))
-      aiTypingText.value = '正在生成回复...'
       const reply = await callAI(history)
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
       return reply
-    } catch (err: any) {
-      // v7.1: 失败时插入错误消息气泡，而非静默失败
-      const errorText = err?.message || 'AI服务暂时不可用'
-      const errorMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
-        sender_type: 'ai', content: `⚠️ ${errorText}\n\n请稍后再试，或检查网络连接。`, type: 'text', is_read: true, created_at: now(),
-      }
-      aiChatHistory.value.push(errorMsg)
-      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
-      return errorText
-    } finally {
-      isAiTyping.value = false
-      aiTypingText.value = ''
-    }
+    } finally { isAiTyping.value = false }
   }
 
   function clearAIChat() {
@@ -1249,20 +1179,8 @@ export function useCompanion() {
   function getMemberRole(groupId: string, sparkId: string): 'owner' | 'admin' | 'member' | null {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return null
-    // v7.1: 精确匹配成员spark_id
     const m = g.members.find(m => m.spark_id === sparkId)
-    if (m?.role) return m.role
-    // v7.1兜底: 如果成员列表里没匹配到但owner_id匹配，说明spark_id曾被修改，自动修复
-    if (g.owner_id === sparkId) {
-      // 自动修复：将owner成员的spark_id更新为当前值
-      const ownerMember = g.members.find(m => m.role === 'owner')
-      if (ownerMember && ownerMember.spark_id !== sparkId) {
-        ownerMember.spark_id = sparkId
-        saveData(STORAGE_KEYS.groups, groups.value)
-      }
-      return 'owner'
-    }
-    return null
+    return m?.role || null
   }
 
   /** 设置/取消管理员（仅群主） */
@@ -1273,14 +1191,6 @@ export function useCompanion() {
     const member = g.members.find(m => m.spark_id === memberId)
     if (!member) return { ok: false, msg: '成员不存在' }
     if (member.spark_id === g.owner_id) return { ok: false, msg: '不能修改群主角色' }
-    // v7.0: 管理员数量上限 = floor(成员数/5)，最少1个
-    if (isAdmin) {
-      const currentAdminCount = g.members.filter(m => m.role === 'admin').length
-      const maxAdmins = Math.max(1, Math.floor(g.members.length / 5))
-      if (currentAdminCount >= maxAdmins) {
-        return { ok: false, msg: `管理员数量已达上限（最多${maxAdmins}人）` }
-      }
-    }
     member.role = isAdmin ? 'admin' : 'member'
     // 插入系统消息
     g.messages.push({
@@ -1350,50 +1260,13 @@ export function useCompanion() {
     const myRole = getMemberRole(groupId, myProfile.value?.spark_id || '')
     if (myRole !== 'owner' && myRole !== 'admin') return { ok: false, msg: '仅群主或管理员可设置公告' }
     g.announcement = content
-    // 保存到公告历史
-    if (!g.announcement_history) g.announcement_history = []
-    g.announcement_history.unshift({
-      id: uid(),
-      content,
-      author_id: myProfile.value!.spark_id,
-      author_name: myProfile.value!.nickname,
-      created_at: now(),
-    })
     g.messages.push({
       id: uid(), sender_id: 'system', sender_name: '系统', sender_avatar: '⚙️',
-      sender_type: 'user', content: `📢 群公告已更新：${content}`,
+      sender_type: 'user', content: `群公告已更新：${content}`,
       type: 'system', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.groups, groups.value)
     return { ok: true, msg: '群公告已更新' }
-  }
-
-  /** 设置群备注（仅自己可见） */
-  function setGroupRemark(groupId: string, remark: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g) return
-    g.group_remark = remark
-    saveData(STORAGE_KEYS.groups, groups.value)
-  }
-
-  /** 设置我在群里的昵称 */
-  function setMyGroupNickname(groupId: string, nickname: string) {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g || !myProfile.value) return
-    const me = g.members.find(m => m.spark_id === myProfile.value!.spark_id)
-    if (me) {
-      me.group_nickname = nickname || undefined
-      saveData(STORAGE_KEYS.groups, groups.value)
-    }
-  }
-
-  /** 获取群成员显示名（优先群昵称） */
-  function getGroupDisplayName(groupId: string, sparkId: string): string {
-    const g = groups.value.find(g => g.id === groupId)
-    if (!g) return sparkId
-    const m = g.members.find(m => m.spark_id === sparkId)
-    if (!m) return sparkId
-    return m.group_nickname || m.nickname
   }
 
   /** 修改群名称（群主/管理员） */
@@ -1419,8 +1292,7 @@ export function useCompanion() {
     if (!g) return
     const msg: ChatMsg = {
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
-      sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
       mentions: mentionIds.length > 0 ? mentionIds : undefined,
     }
@@ -1464,31 +1336,7 @@ export function useCompanion() {
     return new Date(moment.live_expires_at).getTime() > Date.now()
   }
 
-  // ====== 持久化工具（供前端侧边栏操作使用） ======
-  function persistFriends() { saveData(STORAGE_KEYS.friends, friends.value) }
-  function persistGroups() { saveData(STORAGE_KEYS.groups, groups.value) }
-
-  // v7.0: 同步当前用户的最新头像到所有群的成员列表
-  function syncMyGroupAvatars() {
-    if (!myProfile.value) return
-    let changed = false
-    for (const g of groups.value) {
-      const me = g.members.find(m => m.spark_id === myProfile.value!.spark_id)
-      if (me) {
-        if (me.avatar !== myProfile.value.avatar || me.avatar_url !== myProfile.value.avatar_url || me.nickname !== myProfile.value.nickname) {
-          me.avatar = myProfile.value.avatar
-          me.avatar_url = myProfile.value.avatar_url
-          me.nickname = myProfile.value.nickname
-          changed = true
-        }
-      }
-    }
-    if (changed) persistGroups()
-  }
-
   init()
-  // 初始化后同步头像
-  setTimeout(() => syncMyGroupAvatars(), 500)
 
   void loadProfileFromSupabase
 
@@ -1496,7 +1344,7 @@ export function useCompanion() {
     // 数据
     myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
     friendTags, blacklist, friendPermissions,
-    loading, isAiTyping, aiTypingText, totalUnreadMessages,
+    loading, isAiTyping, totalUnreadMessages,
     // 档案
     updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
     // 好友
@@ -1507,14 +1355,13 @@ export function useCompanion() {
     blockFriend, unblockFriend, isBlocked,
     updateFriendPermissions, getFriendPermissions,
     // 私聊
-    getPrivateChat, clearPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
+    getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
     // 消息操作
     recallMessage, sendPokeMessage,
     // 群聊
     createGroup, sendGroupMsg, sendGroupMsgWithMentions, fetchMomentComments,
     // 群管理
     getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
-    setGroupRemark, setMyGroupNickname, getGroupDisplayName,
     // 动态
     postMoment, toggleLike, commentMoment, deleteMoment, togglePinMoment,
     // 动态可见性设置
@@ -1525,7 +1372,5 @@ export function useCompanion() {
     sendToAI, clearAIChat,
     // 工具
     formatTimeAgo,
-    // 持久化
-    persistFriends, persistGroups, syncMyGroupAvatars, MAX_GROUP_MEMBERS,
   }
 }
