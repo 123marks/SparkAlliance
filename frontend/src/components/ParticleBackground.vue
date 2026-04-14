@@ -50,9 +50,9 @@ const initParticles = (canvas: HTMLCanvasElement) => {
   particles = [];
   stars = [];
   
-  const particleCount = Math.floor((canvas.width * canvas.height) / 45000);
+  const particleCount = Math.floor((canvas.width * canvas.height) / 160000);
   for (let i = 0; i < particleCount; i++) {
-    const size = Math.random() * 1.2 + 0.4;
+    const size = Math.random() * 0.6 + 0.2;
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
     const density = Math.random() * 30 + 1;
@@ -63,9 +63,9 @@ const initParticles = (canvas: HTMLCanvasElement) => {
     });
   }
 
-  const starCount = Math.floor((canvas.width * canvas.height) / 25000);
+  const starCount = Math.floor((canvas.width * canvas.height) / 200000);
   for (let i = 0; i < starCount; i++) {
-    const size = Math.random() * 0.8 + 0.2;
+    const size = Math.random() * 0.5 + 0.1;
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
     const twinkleSpeed = Math.random() * 0.015 + 0.003;
@@ -85,8 +85,8 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
   for (let i = 0; i < stars.length; i++) {
     let s = stars[i];
     s.phase += s.twinkleSpeed;
-    const alpha = Math.abs(Math.sin(s.phase)) * 0.35;
-    const isGlowing = alpha > 0.28;
+    const alpha = Math.abs(Math.sin(s.phase)) * 0.12;
+    const isGlowing = alpha > 0.14;
     
     s.y -= 0.06;
     if (s.y < 0) {
@@ -99,7 +99,7 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     ctx.fillStyle = s.color;
     ctx.globalAlpha = alpha;
     
-    ctx.shadowBlur = isGlowing ? 4 : 1;
+    ctx.shadowBlur = isGlowing ? 2 : 0;
     ctx.shadowColor = s.color;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -152,8 +152,8 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     ctx.closePath();
     ctx.fillStyle = p.color;
     
-    ctx.globalAlpha = 0.5;
-    ctx.shadowBlur = 3;
+    ctx.globalAlpha = 0.15;
+    ctx.shadowBlur = 0;
     ctx.shadowColor = p.color;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -178,8 +178,8 @@ const connectParticles = (ctx: CanvasRenderingContext2D) => {
       
       if (distance < maxDistance) {
         opacityValue = 1 - (distance / maxDistance);
-        ctx.strokeStyle = `rgba(255, 255, 255, ${opacityValue * 0.05})`;
-        ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${opacityValue * 0.015})`;
+      ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(particles[a].x, particles[a].y);
         ctx.lineTo(particles[b].x, particles[b].y);

@@ -104,8 +104,8 @@
         </div>
         <div v-if="isRec" class="voice-rec-bar">
           <button class="voice-cancel" @click="cancelVoice" title="取消">✕</button>
-          <div class="voice-wave-wrap">
-            <canvas ref="waveCanvas" class="voice-wave" width="320" height="32"></canvas>
+          <div class="voice-wave-wrap" ref="waveWrapRef">
+            <canvas ref="waveCanvas" class="voice-wave" height="32"></canvas>
             <span class="voice-dur">{{ recDuration }}s</span>
           </div>
           <button class="voice-done" @click="finishVoice" title="完成">
@@ -414,6 +414,7 @@ function onPaste(e:ClipboardEvent) {
 }
 
 const waveCanvas = ref<HTMLCanvasElement|null>(null)
+const waveWrapRef = ref<HTMLElement|null>(null)
 const recDuration = ref('0.0')
 let recognition: any = null
 let audioCtx: AudioContext | null = null
@@ -424,64 +425,144 @@ let recStartTime = 0
 let recTimer: ReturnType<typeof setInterval> | null = null
 
 function drawWaveform() {
-  if (!analyser || !waveCanvas.value) return
+  if (!analyser) return
+  if (!waveCanvas.value) { waveAnimId = requestAnimationFrame(drawWaveform); return }
   const canvas = waveCanvas.value
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+
+  if (waveWrapRef.value) {
+    const wrapW = waveWrapRef.value.clientWidth - 60
+    if (Math.abs(canvas.width - wrapW) > 2 && wrapW > 0) canvas.width = wrapW
+  }
+
   const bufLen = analyser.frequencyBinCount
-  const dataArr = new Uint8Array(bufLen)
-  analyser.getByteTimeDomainData(dataArr)
+  const timeData = new Uint8Array(bufLen)
+  analyser.getByteTimeDomainData(timeData)
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.lineWidth = 1.5
-  ctx.strokeStyle = 'rgba(139,92,246,0.6)'
-  ctx.beginPath()
-  const sliceWidth = canvas.width / bufLen
-  let x = 0
+
+  let sumSq = 0
   for (let i = 0; i < bufLen; i++) {
-    const v = dataArr[i] / 128.0
-    const y = (v * canvas.height) / 2
-    if (i === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
-    x += sliceWidth
+    const v = (timeData[i] - 128) / 128
+    sumSq += v * v
   }
-  ctx.lineTo(canvas.width, canvas.height / 2)
-  ctx.stroke()
+  const rms = Math.sqrt(sumSq / bufLen)
+  const isSpeaking = rms > 0.02
+
+  const barCount = Math.floor(canvas.width / 5)
+  const totalBarWidth = barCount * 3 + (barCount - 1) * 2
+  const offsetX = (canvas.width - totalBarWidth) / 2
+  const midY = canvas.height / 2
+
+  for (let i = 0; i < barCount; i++) {
+    const dataIdx = Math.floor(i * bufLen / barCount)
+    const rawVal = Math.abs(timeData[dataIdx] - 128) / 128
+
+    let barVal: number
+    if (isSpeaking) {
+      barVal = Math.max(0.08, rawVal * 1.5)
+    } else {
+      barVal = 0.04 + Math.sin(Date.now() / 300 + i * 0.3) * 0.03
+    }
+
+    const h = Math.max(2, barVal * canvas.height * 0.85)
+    const x = offsetX + i * 5
+    const alpha = isSpeaking ? 0.5 + barVal * 0.4 : 0.25
+    ctx.fillStyle = `rgba(139,92,246,${alpha})`
+    ctx.beginPath()
+    ctx.roundRect(x, midY - h / 2, 3, h, 1.5)
+    ctx.fill()
+  }
+
   waveAnimId = requestAnimationFrame(drawWaveform)
 }
+
+let noiseFilter: BiquadFilterNode | null = null
 
 async function toggleVoice() {
   if (isRec.value) { finishVoice(); return }
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) { toast('请使用 Chrome 或 Edge 浏览器'); return }
+  if (!SR) { toast('请使用 Chrome 或 Edge 浏览器以使用语音功能'); return }
 
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      }
+    })
   } catch {
-    toast('无法获取麦克风权限'); return
+    toast('无法获取麦克风权限，请在浏览器设置中允许'); return
   }
 
   audioCtx = new AudioContext()
   const source = audioCtx.createMediaStreamSource(mediaStream)
+
+  // 高通滤波器去除低频噪音（100Hz以下）
+  noiseFilter = audioCtx.createBiquadFilter()
+  noiseFilter.type = 'highpass'
+  noiseFilter.frequency.value = 100
+  noiseFilter.Q.value = 0.7
+
   analyser = audioCtx.createAnalyser()
-  analyser.fftSize = 256
-  source.connect(analyser)
+  analyser.fftSize = 512
+  analyser.smoothingTimeConstant = 0.75
+  analyser.minDecibels = -70
+  analyser.maxDecibels = -10
+
+  source.connect(noiseFilter)
+  noiseFilter.connect(analyser)
 
   recognition = new SR()
   recognition.lang = 'zh-CN'
   recognition.continuous = true
   recognition.interimResults = true
-  recognition.maxAlternatives = 3
+  recognition.maxAlternatives = 5
+
+  let finalizedText = ''
   recognition.onresult = (e: any) => {
-    let t = ''
-    for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript
-    inputText.value = t
+    let newFinal = ''
+    let interim = ''
+    for (let i = 0; i < e.results.length; i++) {
+      const result = e.results[i]
+      if (result.isFinal) {
+        newFinal += result[0].transcript
+      } else {
+        interim += result[0].transcript
+      }
+    }
+    if (newFinal) finalizedText = newFinal
+    inputText.value = (finalizedText + interim).trim()
   }
-  recognition.onerror = () => { cleanupVoice() }
-  recognition.onend = () => { if (isRec.value) { try { recognition.start() } catch { cleanupVoice() } } }
-  recognition.start()
+
+  recognition.onerror = (ev: any) => {
+    const fatal = new Set(['audio-capture', 'not-allowed', 'service-not-allowed'])
+    if (fatal.has(ev.error)) {
+      toast(ev.error === 'audio-capture' ? '麦克风不可用，请检查设备连接' : '麦克风权限被拒绝，请在浏览器地址栏左侧允许')
+      cleanupVoice()
+    } else if (ev.error === 'network') {
+      toast('语音识别需要网络连接，Chrome 会将音频发送到 Google 服务器处理')
+      cleanupVoice()
+    }
+  }
+
+  recognition.onend = () => {
+    if (isRec.value) {
+      try { recognition.start() } catch { cleanupVoice() }
+    }
+  }
+
+  try { recognition.start() } catch {
+    toast('语音识别启动失败，请确保使用 Chrome/Edge 并允许麦克风')
+    cleanupVoice()
+    return
+  }
 
   isRec.value = true
+  finalizedText = ''
   recStartTime = Date.now()
   recDuration.value = '0.0'
   recTimer = setInterval(() => {
@@ -492,9 +573,17 @@ async function toggleVoice() {
 }
 
 function finishVoice() {
-  recognition?.stop()
-  cleanupVoice()
-  if (inputText.value.trim()) handleSend()
+  if (!recognition) { cleanupVoice(); return }
+  let handled = false
+  const onFinalEnd = () => {
+    if (handled) return
+    handled = true
+    cleanupVoice()
+    if (inputText.value.trim()) handleSend()
+  }
+  recognition.onend = onFinalEnd
+  recognition.stop()
+  setTimeout(onFinalEnd, 500)
 }
 
 function cancelVoice() {
@@ -508,7 +597,8 @@ function cleanupVoice() {
   cancelAnimationFrame(waveAnimId)
   if (recTimer) { clearInterval(recTimer); recTimer = null }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
-  if (audioCtx) { audioCtx.close(); audioCtx = null }
+  if (noiseFilter) { noiseFilter.disconnect(); noiseFilter = null }
+  if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
   analyser = null
 }
 
@@ -525,7 +615,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 </script>
 
 <style scoped>
-.chat-layout { display:flex; height:calc(100vh - 72px); background:#0a0814; position:relative; overflow:hidden; }
+.chat-layout { display:flex; height:calc(100vh - 72px); background:rgba(10,8,20,0.78); position:relative; overflow:hidden; }
 .chat-layout > .cosmic-bg { position:absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
 .fade-enter-active,.fade-leave-active { transition:opacity .2s; } .fade-enter-from,.fade-leave-to { opacity:0; }
 .toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); padding:8px 20px; border-radius:10px; background:rgba(139,92,246,.12); backdrop-filter:blur(12px); border:1px solid rgba(139,92,246,.15); color:rgba(139,92,246,.9); font-size:12px; font-weight:600; z-index:200; white-space:nowrap; }

@@ -47,7 +47,7 @@
         <h2 class="cp-logo">💬 伴侣</h2>
         <div class="cp-sb-actions">
           <button @click="showSearchModal=true" class="cp-sb-btn" title="搜索">🔍</button>
-          <button @click.stop="showAddMenu=!showAddMenu" class="cp-sb-btn" title="添加">➕</button>
+          <button @click.stop="toggleAddMenu" class="cp-sb-btn" title="添加">➕</button>
         </div>
         <Transition name="fade">
           <div v-if="showAddMenu" class="cp-add-menu" @click.stop>
@@ -76,10 +76,10 @@
           :class="{active:(item.type==='private'?activeChat?.id===item.id&&activeChat?.type==='private':activeChat?.id===item.id&&activeChat?.type==='group'),'is-pinned':item.pinned}"
           @click="item.type==='group'?openGroupChat(item.id):openPrivateChat(item.id)"
           @contextmenu.prevent="e=>showCtxMenu(e,item.type,item.id)">
-          <!-- 群聊头像：九宫格 -->
+          <!-- 群聊头像：九宫格（支持图片+emoji混合） -->
           <template v-if="item.type==='group'">
             <div class="cp-group-av" :class="getGridClass(item.raw.members.length)">
-              <span v-for="(emoji,gi) in getGroupAvatarGrid(item.raw)" :key="gi" class="cp-gav-item">{{ emoji }}</span>
+              <SparkAvatar v-for="(m,gi) in getGroupAvatarMembers(item.raw)" :key="gi" :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.nickname" class="cp-gav-item" />
             </div>
           </template>
           <!-- 私聊头像 -->
@@ -155,10 +155,10 @@
               <div v-if="msg.type==='system'" class="cp-sys-msg">{{ msg.content }}</div>
               <div v-else-if="msg.type==='poke'" class="cp-poke-msg">{{ msg.content }}</div>
               <template v-else>
-                <!-- 他人头像（左侧） -->
-                <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :avatar-url="msg.sender_avatar_url" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
-                <!-- 自己头像（右侧，DOM在msg-body前面，row-reverse后视觉在右） -->
-                <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="msg.sender_avatar||myProfile?.avatar||''" :avatar-url="msg.sender_avatar_url||myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" />
+                <!-- 他人头像（左侧）— 点击打开资料卡/长按可放大 -->
+                <SparkAvatar v-if="msg.sender_id!==myProfile?.spark_id" :avatar="msg.sender_avatar" :avatar-url="msg.sender_avatar_url" :name="msg.sender_name" size="sm" clickable @click="handleViewMsgSender(msg)" @dblclick="openAvatarPreview(msg.sender_avatar_url, msg.sender_avatar, msg.sender_name)" @contextmenu.prevent="($event: any)=>handlePokeAvatar($event,msg.sender_name,msg.sender_id)" />
+                <!-- 自己头像（右侧）— 始终使用最新 profile 头像 -->
+                <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url||''" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" @dblclick="openAvatarPreview(myProfile?.avatar_url, myProfile?.avatar||'', myProfile?.nickname||'')" />
                 <div class="cp-msg-body">
                   <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
                     <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
@@ -244,7 +244,7 @@
               <!-- 群成员列表 -->
               <div class="cs-members">
                 <div v-for="m in filteredGroupMembers" :key="m.spark_id" class="cs-member" @click="handleViewGroupMember(m)">
-                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="md" />
+                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="md" clickable />
                   <span class="cs-mname">{{ m.group_nickname||m.nickname }}</span>
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                   <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
@@ -684,9 +684,53 @@
 
     <Transition name="fade"><div v-if="showSearchModal" class="cp-overlay" @click.self="showSearchModal=false"><div class="cp-modal"><h3>🔍 搜索</h3><div class="cp-field"><input v-model="globalSearch" placeholder="搜索好友、群聊..." @input="debouncedSearch"></div><div v-if="globalSearchResults.length" class="cp-search-results"><div v-for="r in globalSearchResults" :key="r.id" class="cp-search-item" @click="r.action();showSearchModal=false"><SparkAvatar :avatar="r.avatar" :name="r.name" size="sm" /><div class="cp-contact-info"><span class="cp-contact-name">{{ r.name }}</span><span class="cp-contact-id">{{ r.desc }}</span></div></div></div><p v-else-if="globalSearch.trim()" class="cp-empty">无结果</p><button class="cp-close-btn" @click="showSearchModal=false">关闭</button></div></div></Transition>
     <Transition name="fade"><div v-if="showAddFriendModal" class="cp-overlay" @click.self="showAddFriendModal=false"><div class="cp-modal sm"><h3>👤 添加好友</h3><div class="cp-field"><label>星火ID 或昵称</label><input v-model="addFriendQuery" placeholder="输入星火ID..." @keydown.enter="handleSearchFriend"></div><button class="cp-save-btn" @click="handleSearchFriend">🔍 搜索</button><p v-if="addFriendResult" class="cp-search-result">找到：{{ addFriendResult.nickname }}<button class="cp-add-btn" @click="handleAddFriendResult">✓ 添加</button></p><div class="cp-modal-btns"><button @click="showAddFriendModal=false">关闭</button></div></div></div></Transition>
-    <Transition name="fade"><div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false"><div class="cp-modal sm"><h3>📱 星火名片</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div><canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-qr-paste"><p>📋 粘贴二维码数据</p><div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴..."><button @click="handleQRPaste">添加</button></div></div><div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button><button class="primary" @click="copyQRData">📋 复制名片</button></div></div></div></Transition>
+    <Transition name="fade"><div v-if="showQRModal" class="cp-overlay" @click.self="showQRModal=false"><div class="cp-modal sm">
+      <h3>📱 扫码 / 名片</h3>
+      <div class="cp-qr-tabs">
+        <button :class="{active:qrTab==='my'}" @click="qrTab='my'">我的名片</button>
+        <button :class="{active:qrTab==='scan'}" @click="qrTab='scan'">扫一扫</button>
+      </div>
+      <!-- 我的名片 -->
+      <div v-if="qrTab==='my'">
+        <div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ myProfile?.avatar }}</span><div><div class="cp-qr-name">{{ myProfile?.nickname }}</div><div class="cp-qr-id">{{ myProfile?.spark_id }}</div></div></div><canvas ref="userQrCanvas" class="cp-qr-canvas"></canvas></div>
+        <div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button><button class="primary" @click="copyQRData">📋 复制名片</button></div>
+      </div>
+      <!-- 扫一扫 -->
+      <div v-if="qrTab==='scan'">
+        <div class="cp-scan-area" @dragenter.prevent="scanDragOver=true" @dragover.prevent @dragleave="scanDragOver=false" @drop.prevent="handleScanDrop">
+          <div class="cp-scan-box" :class="{dragover:scanDragOver}">
+            <div class="cp-scan-icon">📷</div>
+            <p>拖拽或点击上传二维码图片</p>
+            <p class="cp-scan-hint">支持 PNG/JPG 格式的二维码图片</p>
+            <button class="cp-scan-upload-btn" @click="scanFileInput?.click()">选择图片</button>
+            <input ref="scanFileInput" type="file" accept="image/*" style="display:none" @change="handleScanFile">
+          </div>
+        </div>
+        <div class="cp-qr-paste">
+          <p>📋 或直接粘贴二维码数据 / 星火ID</p>
+          <div class="cp-id-row"><input v-model="qrPasteInput" placeholder="粘贴数据或星火ID..."><button @click="handleQRPaste">识别添加</button></div>
+        </div>
+        <div v-if="scanResult" class="cp-scan-result" :class="scanResult.type">
+          <span>{{ scanResult.type==='success'?'✅':'❌' }} {{ scanResult.msg }}</span>
+          <button v-if="scanResult.type==='success'&&scanResult.action" @click="scanResult.action()">添加好友</button>
+        </div>
+        <div class="cp-modal-btns"><button @click="showQRModal=false">关闭</button></div>
+      </div>
+    </div></div></Transition>
     <Transition name="fade"><div v-if="showGroupQR" class="cp-overlay" @click.self="showGroupQR=false"><div class="cp-modal sm"><h3>📱 群二维码</h3><div class="cp-qr-card"><div class="cp-qr-top"><span class="cp-qr-av">{{ activeGroup?.avatar }}</span><div><div class="cp-qr-name">{{ activeGroup?.name }}</div></div></div><canvas ref="groupQrCanvas" class="cp-qr-canvas"></canvas></div><div class="cp-modal-btns"><button @click="showGroupQR=false">关闭</button><button class="primary" @click="copyGroupQR">📋 复制</button></div></div></div></Transition>
     <Transition name="fade"><div v-if="showCreateModal" class="cp-overlay" @click.self="showCreateModal=false"><div class="cp-modal"><h3>👥 创建群聊</h3><div class="cp-field"><label>群聊名称</label><input v-model="newGroupName" maxlength="30" placeholder="名字"></div><label class="cp-check"><input type="checkbox" v-model="newGroupAI"> 🌟 星火AI参与群聊</label><div v-if="friends.length" class="cp-member-sel"><p class="cp-field-label">选择成员</p><label v-for="f in friends" :key="f.id" class="cp-member-opt"><input type="checkbox" :value="f.spark_id" v-model="newGroupMembers"> {{ f.avatar }} {{ f.nickname }}</label></div><div class="cp-modal-btns"><button @click="showCreateModal=false">取消</button><button class="primary" :disabled="!newGroupName.trim()" @click="handleCreateGroup">🚀 创建</button></div></div></div></Transition>
+
+    <!-- 头像放大预览弹窗 -->
+    <Transition name="fade">
+      <div v-if="avatarPreview.show" class="cp-overlay cp-avatar-preview-overlay" @click.self="avatarPreview.show=false">
+        <div class="cp-avatar-preview-box">
+          <img v-if="avatarPreview.url" :src="avatarPreview.url" class="cp-avatar-preview-img" />
+          <div v-else class="cp-avatar-preview-emoji">{{ avatarPreview.emoji }}</div>
+          <div class="cp-avatar-preview-name">{{ avatarPreview.name }}</div>
+          <button class="cp-avatar-preview-close" @click="avatarPreview.show=false">✕</button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 发布动态编辑器弹窗 -->
     <Transition name="fade">
@@ -792,6 +836,14 @@ const isDragging = ref(false)
 const pendingFiles = ref<{type:string;name:string;url?:string}[]>([])
 const fileInput = ref<HTMLInputElement|null>(null)
 const viewProfile = ref<Friend|null>(null)
+// 头像放大预览
+const avatarPreview = reactive<{show:boolean;url:string;emoji:string;name:string}>({show:false,url:'',emoji:'',name:''})
+function openAvatarPreview(avatarUrl:string|undefined, avatar:string, name:string) {
+  avatarPreview.url = avatarUrl || ''
+  avatarPreview.emoji = (!avatarUrl && avatar) ? avatar : ''
+  avatarPreview.name = name
+  avatarPreview.show = true
+}
 // 个人名片弹窗
 const profilePopupVisible = ref(false)
 const profilePopupData = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string}>({ spark_id: '', nickname: '', avatar: '' })
@@ -807,6 +859,10 @@ const showQRModal = ref(false)
 const showGroupQR = ref(false)
 const showCreateModal = ref(false)
 const showAddMenu = ref(false)
+const qrTab = ref<'my'|'scan'>('my')
+const scanDragOver = ref(false)
+const scanFileInput = ref<HTMLInputElement|null>(null)
+const scanResult = ref<{type:'success'|'error';msg:string;action?:()=>void}|null>(null)
 const confirmDialog = reactive<{show:boolean;title:string;text:string;btnText:string;onConfirm:(()=>void)|null}>({show:false,title:'',text:'',btnText:'确认',onConfirm:null})
 const ctxMenu = reactive<{show:boolean;x:number;y:number;type:string;id:string}>({show:false,x:0,y:0,type:'',id:''})
 const globalSearch = ref('')
@@ -967,7 +1023,7 @@ function selectContact(f:Friend){selectedContact.value=f;rightPanel.value='conta
 // 聊天中点击⋯→弹出侧面板，showChatFriendCard改为打开资料弹窗
 function showChatFriendCard(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)showProfilePopup(f)}
 function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='private')return;const f=friends.value.find(f=>f.spark_id===activeChat.value!.id);if(f)showProfilePopup(f)}
-function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;if(msg.sender_id===myProfile.value?.spark_id){showSelfProfile();return};const f=friends.value.find(f=>f.spark_id===msg.sender_id);if(f)showProfilePopup(f)}
+function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;if(msg.sender_id===myProfile.value?.spark_id){showSelfProfile();return};const f=friends.value.find(f=>f.spark_id===msg.sender_id);if(f){showProfilePopup(f);return};profilePopupData.value={spark_id:msg.sender_id,nickname:msg.sender_name,avatar:msg.sender_avatar||'',avatar_url:msg.sender_avatar_url};profilePopupMomentCount.value=0;profilePopupIsSelf.value=false;profilePopupVisible.value=true}
 // 显示他人资料卡
 function showProfilePopup(f:Friend){
   profilePopupData.value={spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,avatar_url:f.profile?.avatar_url,remark:f.remark,bio:f.bio}
@@ -1199,15 +1255,16 @@ function formatVoiceDuration(sec: number): string {
 
 // v7.1: 语音气泡宽度大幅加大（短语音也要有足够视觉宽度）
 function getVoiceBubbleWidth(duration: number): number {
-  // 3秒=160px, 6秒=200px, 10秒=240px, 30秒=320px, 60秒=380px
-  const minW = 140, maxW = 380
-  const t = Math.min(Math.max(duration, 1), 60) / 60 // 0~1
-  return Math.round(minW + (maxW - minW) * Math.sqrt(t))
+  // 按时长线性映射：1秒=100px, 3秒=140px, 10秒=220px, 30秒=320px, 60秒=380px
+  // 最小100px避免太窄，最大不超过容器80%
+  const minW = 100, maxW = 380
+  const t = Math.min(Math.max(duration, 1), 60)
+  return Math.round(minW + (maxW - minW) * (t / 60))
 }
-// v7.1: 波浪条数量翻倍（视觉效果更丰富）
 function getVoiceBarCount(duration: number): number {
-  // 3秒=6条, 6秒=8条, 10秒=12条, 30秒=25条, 60秒=35条
-  return Math.min(Math.max(Math.round(duration * 1.2), 5), 35)
+  // 条数与气泡宽度成正比，保持视觉密度一致
+  const w = getVoiceBubbleWidth(duration)
+  return Math.min(Math.max(Math.round(w / 9), 5), 40)
 }
 // ====== v6.9: 语音系统核心重写 ======
 // 核心思路：录音时同步开启SpeechRecognition并行收集文字
@@ -1218,7 +1275,9 @@ let collectedTranscript = ''            // 录音期间收集到的完整文本
 // 开始录音（同步启动语音识别）
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    })
     mediaRecorder = new MediaRecorder(stream)
     audioChunks = []
     mediaRecorder.ondataavailable = (e) => { audioChunks.push(e.data) }
@@ -1263,7 +1322,12 @@ function startParallelRecognition() {
     }
 
     parallelRecognition.onerror = (e: any) => {
-      if (e.error === 'not-allowed') showToast('语音识别被禁止，请检查浏览器权限')
+      const fatal = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
+      if (fatal.has(e.error)) {
+        showToast(e.error === 'audio-capture' ? '麦克风不可用，请检查设备' : '语音识别被禁止，请检查浏览器权限')
+      } else if (e.error === 'network') {
+        showToast('语音识别需要网络连接')
+      }
     }
     parallelRecognition.onend = () => {
       // 如果还在录音中，自动重启识别（避免识别超时断开）
@@ -1376,12 +1440,14 @@ function sendVoiceFromPreview() {
 function sendVoiceMessage(blob: Blob, duration: number) {
   const blobUrl = URL.createObjectURL(blob)
   if (activeChat.value) {
+    const transcript = collectedTranscript || realtimeTranscript.value || ''
     const voiceMsg: ChatMsg = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
       sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
       sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
       sender_type: 'user', content: '[语音消息]', type: 'voice',
       voice_duration: duration, voice_blob_url: blobUrl,
+      voice_transcript: transcript,
       is_read: false, created_at: new Date().toISOString(),
     }
     if (activeChat.value.type === 'private') {
@@ -1414,88 +1480,21 @@ function playVoice(msg: ChatMsg) {
   }
 }
 
-// 已发送的语音消息→转文字（v6.8: 不播放音频，纯识别）
-// v6.9: 已发送语音的转文字（通过AudioContext回放+SpeechRecognition同步识别）
+// 已发送的语音消息→转文字
 async function convertVoiceToText(msg: ChatMsg) {
   if (voiceConvertedTexts[msg.id]) { delete voiceConvertedTexts[msg.id]; return }
-  if (!msg.voice_blob_url) { showToast('语音文件不可用'); return }
   voiceConverting[msg.id] = true
 
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) {
-    voiceConvertedTexts[msg.id] = '(浏览器不支持语音识别)'
+  // 优先使用录音时同步收集的转写文本
+  if ((msg as any).voice_transcript) {
+    voiceConvertedTexts[msg.id] = (msg as any).voice_transcript
     voiceConverting[msg.id] = false
     return
   }
 
-  try {
-    // 获取音频Blob数据
-    const response = await fetch(msg.voice_blob_url)
-    const audioBlob = await response.blob()
-    const audioCtx = new AudioContext()
-    const arrayBuffer = await audioBlob.arrayBuffer()
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-
-    // 创建MediaStreamDestination（虚拟输出，用户听不到）
-    const dest = audioCtx.createMediaStreamDestination()
-    const source = audioCtx.createBufferSource()
-    source.buffer = audioBuffer
-    source.connect(dest) // 连接到虚拟输出（不连接speakers所以用户听不到）
-
-    // 启动SpeechRecognition监听虚拟流
-    // 注意：SpeechRecognition无法直接接受MediaStream
-    // 只能监听默认麦克风，所以改用备选方案：
-    // 静音播放到扬声器同时启动识别（音量设为极小）
-    const gainNode = audioCtx.createGain()
-    gainNode.gain.value = 0.01 // 极低音量，几乎听不到
-    source.connect(gainNode)
-    gainNode.connect(audioCtx.destination)
-
-    const recognition = new SR()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.maxAlternatives = 1
-
-    let finalText = ''
-    recognition.onresult = (event: any) => {
-      let interim = ''
-      for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) finalText += event.results[i][0].transcript
-        else interim += event.results[i][0].transcript
-      }
-      voiceConvertedTexts[msg.id] = finalText + interim || '(识别中...)'
-    }
-
-    recognition.onerror = () => {
-      if (!voiceConvertedTexts[msg.id] || voiceConvertedTexts[msg.id] === '(识别中...)') {
-        voiceConvertedTexts[msg.id] = '(识别失败，建议发送前使用转文字功能)'
-      }
-      voiceConverting[msg.id] = false
-    }
-
-    recognition.onend = () => {
-      voiceConverting[msg.id] = false
-      if (!finalText) {
-        voiceConvertedTexts[msg.id] = '(未识别到内容，建议下次发送前使用转文字)'
-      }
-    }
-
-    // 同时启动播放和识别
-    source.start()
-    try { recognition.start() } catch { voiceConverting[msg.id] = false; return }
-
-    // 播放结束后延时停止识别
-    source.onended = () => {
-      setTimeout(() => {
-        try { recognition.stop() } catch { /* */ }
-        audioCtx.close()
-      }, 1500)
-    }
-  } catch {
-    voiceConvertedTexts[msg.id] = '(音频处理失败)'
-    voiceConverting[msg.id] = false
-  }
+  // 没有存储的转写，提示用户
+  voiceConvertedTexts[msg.id] = '(此语音未包含转写数据，建议发送前使用"转文字"功能)'
+  voiceConverting[msg.id] = false
 }
 
 // ===== 聊天记录搜索（微信风格分类Tab） =====
@@ -1680,8 +1679,77 @@ function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return
 async function renderQR(canvas:HTMLCanvasElement|null,data:string){if(!canvas)return;try{await QRCode.toCanvas(canvas,data,{width:160,margin:2,color:{dark:'#8b5cf6',light:'#0d0a1a'}})}catch{}}
 function copyQRData(){navigator.clipboard.writeText(getQRData());showToast('名片已复制')}
 function copyGroupQR(){if(activeGroup.value){navigator.clipboard.writeText(getQRData(undefined,'group',activeGroup.value.id));showToast('已复制')}}
-function handleQRPaste(){const r=addFriendByQR(qrPasteInput.value.trim());showToast(r.msg);if(r.ok)qrPasteInput.value=''}
-function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false;if(pokeMenu.show)pokeMenu.show=false}
+async function handleQRPaste(){
+  const input = qrPasteInput.value.trim()
+  if(!input){showToast('请输入数据');return}
+  const r=addFriendByQR(input)
+  if(r.ok){showToast(r.msg);qrPasteInput.value='';scanResult.value={type:'success',msg:r.msg}}
+  else{
+    try{
+      const results=await searchBySparkId(input)
+      if(results.length){
+        const sr=results[0]
+        scanResult.value={type:'success',msg:`找到用户: ${sr.nickname}`,action:()=>{const ar=addFriend({spark_id:sr.spark_id,nickname:sr.nickname,avatar:sr.avatar,bio:sr.bio});showToast(ar.msg);scanResult.value=null;showQRModal.value=false}}
+      } else {
+        scanResult.value={type:'error',msg:'未找到该用户'}
+      }
+    }catch{
+      scanResult.value={type:'error',msg:r.msg||'无法识别该数据'}
+    }
+  }
+}
+
+async function handleScanFile(e:Event){
+  const el=e.target as HTMLInputElement
+  if(!el.files?.length)return
+  await scanQRFromFile(el.files[0])
+  el.value=''
+}
+
+function handleScanDrop(e:DragEvent){
+  scanDragOver.value=false
+  const files=e.dataTransfer?.files
+  if(!files?.length)return
+  const imgFile=Array.from(files).find(f=>f.type.startsWith('image/'))
+  if(imgFile) scanQRFromFile(imgFile)
+  else scanResult.value={type:'error',msg:'请上传图片格式的二维码'}
+}
+
+async function scanQRFromFile(file:File){
+  scanResult.value=null
+  try{
+    const { default: jsQR } = await import('jsqr')
+    const bitmap=await createImageBitmap(file)
+    const canvas=document.createElement('canvas')
+    canvas.width=bitmap.width;canvas.height=bitmap.height
+    const ctx=canvas.getContext('2d')!
+    ctx.drawImage(bitmap,0,0)
+    const imageData=ctx.getImageData(0,0,canvas.width,canvas.height)
+    const code=jsQR(imageData.data,imageData.width,imageData.height)
+    if(!code){scanResult.value={type:'error',msg:'未检测到二维码，请确保图片清晰'};return}
+    const data=code.data
+    try{
+      const parsed=JSON.parse(data)
+      if(parsed.platform==='SparkAlliance'&&parsed.type==='user'){
+        const r=addFriendByQR(data)
+        if(r.ok){scanResult.value={type:'success',msg:`已识别用户: ${parsed.name||parsed.id}`};showToast(r.msg)}
+        else scanResult.value={type:'success',msg:`识别到: ${parsed.name||parsed.id}`,action:()=>{addFriend({spark_id:parsed.id,nickname:parsed.name||'星火用户',avatar:parsed.avatar||'🌟',bio:''});showToast('已发送好友请求');showQRModal.value=false}}
+      } else if(parsed.platform==='SparkAlliance'&&parsed.type==='group'){
+        scanResult.value={type:'success',msg:`识别到群聊: ${parsed.name||'未知群'}`,action:()=>{showToast('暂不支持扫码加群，请通过邀请加入');scanResult.value=null}}
+      } else {
+        scanResult.value={type:'error',msg:'非星火联盟二维码'}
+      }
+    }catch{
+      scanResult.value={type:'error',msg:`识别到数据但非星火格式: ${data.slice(0,50)}`}
+    }
+  }catch(err){
+    scanResult.value={type:'error',msg:'图片处理失败，请重试'}
+    console.error('[QR scan]',err)
+  }
+}
+let _addMenuOpenTime = 0
+function toggleAddMenu(){showAddMenu.value=!showAddMenu.value;if(showAddMenu.value)_addMenuOpenTime=Date.now()}
+function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value&&Date.now()-_addMenuOpenTime>300)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false;if(pokeMenu.show)pokeMenu.show=false}
 // 拖拽上传
 function onDragEnter(){isDragging.value=true}
 function onDragLeave(){isDragging.value=false}
@@ -1709,6 +1777,8 @@ onMounted(async ()=>{
       if (profile?.avatar_url && myProfile.value) {
         myProfile.value.avatar_url = profile.avatar_url
       }
+      // 头像同步后，更新所有群聊中自己的成员头像
+      syncMyGroupAvatars()
     }
   } catch { /* 离线模式忽略 */ }
 })
@@ -1770,6 +1840,9 @@ function getGroupMsgRole(msg: ChatMsg): 'owner' | 'admin' | 'member' | null {
 // 群头像九宫格
 function getGroupAvatarGrid(g: GroupChat) {
   return g.members.slice(0, 9).map(m => m.avatar)
+}
+function getGroupAvatarMembers(g: GroupChat) {
+  return g.members.slice(0, 9)
 }
 function getGridClass(count: number): string {
   if (count <= 2) return 'grid-2'
@@ -1843,11 +1916,14 @@ const filteredGroupMembers = computed(() => {
 })
 
 // v6.9: 点击群成员查看资料
-function handleViewGroupMember(m: { spark_id: string; nickname: string; avatar: string; group_nickname?: string }) {
+function handleViewGroupMember(m: { spark_id: string; nickname: string; avatar: string; avatar_url?: string; group_nickname?: string }) {
   if (m.spark_id === myProfile.value?.spark_id) { showSelfProfile(); return }
   const f = friends.value.find(f => f.spark_id === m.spark_id)
-  if (f) showProfilePopup(f)
-  else showToast(`${m.group_nickname || m.nickname}`)
+  if (f) { showProfilePopup(f); return }
+  profilePopupData.value = { spark_id: m.spark_id, nickname: m.group_nickname || m.nickname, avatar: m.avatar, avatar_url: m.avatar_url }
+  profilePopupMomentCount.value = 0
+  profilePopupIsSelf.value = false
+  profilePopupVisible.value = true
 }
 
 // v6.9: 判断当前用户是否能管理某成员
@@ -2128,7 +2204,7 @@ function handlePublish() {
 </script>
 
 <style scoped>
-.cp-layout{display:flex;height:calc(100vh - 72px);background:#0a0814;overflow:hidden;position:relative}
+.cp-layout{display:flex;height:calc(100vh - 72px);background:rgba(10,8,20,0.78);overflow:hidden;position:relative}
 .cp-toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);padding:8px 24px;border-radius:12px;background:rgba(139,92,246,.15);backdrop-filter:blur(16px);border:1px solid rgba(139,92,246,.12);color:rgba(139,92,246,.9);font-size:12px;font-weight:600;z-index:300;white-space:nowrap}
 .toast-enter-active{transition:all .3s}.toast-leave-active{transition:all .25s}.toast-enter-from{opacity:0;transform:translateX(-50%) translateY(-14px)}.toast-leave-to{opacity:0}
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}.fade-enter-from,.fade-leave-to{opacity:0}
@@ -2373,10 +2449,12 @@ function handlePublish() {
 .cp-group-av.grid-2{grid-template-columns:1fr 1fr;align-items:center}
 .cp-group-av.grid-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
 .cp-group-av.grid-9{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr}
-.cp-gav-item{display:flex;align-items:center;justify-content:center;font-size:10px;border-radius:2px;background:rgba(139,92,246,.04);overflow:hidden;line-height:1}
-.cp-group-av.grid-2 .cp-gav-item{font-size:12px}
-.cp-group-av.grid-4 .cp-gav-item{font-size:10px}
-.cp-group-av.grid-9 .cp-gav-item{font-size:8px}
+.cp-gav-item{width:100%!important;height:100%!important;border-radius:2px!important;min-width:0;min-height:0}
+.cp-gav-item :deep(.sa-emoji){font-size:8px}
+.cp-group-av.grid-2 .cp-gav-item :deep(.sa-emoji){font-size:11px}
+.cp-group-av.grid-4 .cp-gav-item :deep(.sa-emoji){font-size:9px}
+.cp-gav-item :deep(.sa-letter){font-size:7px}
+.cp-group-av.grid-2 .cp-gav-item :deep(.sa-letter){font-size:9px}
 /* 已读状态优化 */
 .cp-read-status{font-size:10px;color:#94a3b8;flex-shrink:0;line-height:1;letter-spacing:-1px}.cp-read-status.read{color:#a855f7}
 /* 群管理样式 */
@@ -2654,4 +2732,31 @@ function handlePublish() {
   0%{background:rgba(139,92,246,.15);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
   100%{background:transparent;box-shadow:none}
 }
+
+/* ====== 头像放大预览 ====== */
+.cp-avatar-preview-overlay{z-index:9999;background:rgba(0,0,0,.85);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center}
+.cp-avatar-preview-box{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px}
+.cp-avatar-preview-img{width:240px;height:240px;border-radius:20px;object-fit:cover;box-shadow:0 8px 40px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.1)}
+.cp-avatar-preview-emoji{width:240px;height:240px;border-radius:20px;background:rgba(139,92,246,.08);border:2px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:80px}
+.cp-avatar-preview-name{font-size:18px;font-weight:700;color:rgba(255,255,255,.9)}
+.cp-avatar-preview-close{position:absolute;top:-50px;right:-50px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.cp-avatar-preview-close:hover{background:rgba(255,255,255,.15)}
+
+/* ====== 扫码功能 ====== */
+.cp-qr-tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid rgba(255,255,255,.04)}
+.cp-qr-tabs button{flex:1;padding:10px;background:none;border:none;color:rgba(255,255,255,.3);font-size:12px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.cp-qr-tabs button.active{color:rgba(139,92,246,.8);border-bottom-color:rgba(139,92,246,.6)}
+.cp-scan-area{padding:8px 0}
+.cp-scan-box{border:2px dashed rgba(139,92,246,.15);border-radius:16px;padding:32px 20px;text-align:center;transition:all .2s;cursor:pointer}
+.cp-scan-box.dragover{border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.04)}
+.cp-scan-icon{font-size:36px;margin-bottom:8px}
+.cp-scan-box p{font-size:12px;color:rgba(255,255,255,.3);margin:4px 0}
+.cp-scan-hint{font-size:10px!important;color:rgba(255,255,255,.15)!important}
+.cp-scan-upload-btn{margin-top:10px;padding:8px 20px;border-radius:8px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.cp-scan-upload-btn:hover{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.3)}
+.cp-scan-result{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin:8px 0;border-radius:10px;font-size:12px}
+.cp-scan-result.success{background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);color:rgba(16,185,129,.8)}
+.cp-scan-result.error{background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.1);color:rgba(239,68,68,.6)}
+.cp-scan-result button{padding:4px 12px;border-radius:6px;border:none;background:rgba(16,185,129,.12);color:rgba(16,185,129,.9);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+.cp-scan-result button:hover{background:rgba(16,185,129,.2)}
 </style>

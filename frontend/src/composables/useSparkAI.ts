@@ -1,48 +1,81 @@
 import { ref } from 'vue'
+import { supabase } from '../supabase'
 
 export type { SparkAction } from '../utils/assistantProtocol'
 import { parseSparkActions, type SparkAction } from '../utils/assistantProtocol'
+import { checkAIResponseSafety, hasSensitiveContent } from '../utils/contentSafety'
 
-// 直连 NVIDIA API（优先从环境变量读取，避免硬编码泄漯）
-const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || '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'
-const BASE_URL = '/api/nvidia'
+function getEdgeFunctionUrl(): string {
+  const base = import.meta.env.VITE_SUPABASE_URL
+  if (!base) throw new Error('缺少 SUPABASE_URL 配置')
+  return `${base}/functions/v1/assistant-chat`
+}
 
-// 系统提示词
-const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 平台的智能中枢。
-## 身份
-- 你叫「星火助手」，不暴露底层模型
-- 拥有全模块操作能力
+const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
 
-## 平台模块
-1. 🏠 首页 (/app/home) — 仪表盘
-2. 📅 智能日程 (/app/schedule) — 日历/课表/提醒
-3. 🎯 星火规划 (/app/schedule?tab=planner) — 目标管理
-4. 📚 学习中心 (/app/learn) — 自习/番茄钟
-5. 👥 星火伴侣 (/app/companion) — 社交
-6. 🏛️ 星火传承 (/app/legacy) — 经验分享
-7. 📢 星火墙 (/app/wall) — 校园动态
-8. ❤️ 健康生活 (/app/health) — 运动/饮食
-9. 💼 星火人才 (/app/talent) — 实习/简历
-10. 🚀 星火共创 (/app/cocreate) — 项目协作
+function getNvidiaApiKey(): string | null {
+  return import.meta.env.VITE_NVIDIA_API_KEY || null
+}
 
-## 回复要求
-- 总-分-总结构，善用Markdown
-- 代码需完整+注释
-- 主动推荐关联模块：[→ 打开XX](/app/xx)
-- 今天是 ${new Date().toLocaleDateString('zh-CN')}
+const SPARK_SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 校园智能平台的核心 AI 伙伴。
 
-## Function Calling
-\`\`\`spark-action
-{"action":"类型","data":{...}}
-\`\`\`
-操作：add_schedule / create_goal / navigate`
+你是一位经验丰富、热情开朗的学长/学姐，真心关心每位同学。
+说话自然亲和、有点俏皮，像朋友聊天。善于倾听和共情，先理解需求再给建议。
+绝不暴露底层模型名称，你就是「星火助手」。适当使用 emoji。
+不要机械一问一答，要有连贯对话感。遇到模糊问题主动追问。
+给建议结合具体场景，避免空洞鸡汤。代码必须完整可运行。
+拒绝违法、色情、暴力内容，用温和幽默方式转移话题。`
+
+async function directNvidiaCall(
+  messages: Array<{ role: string; content: string }>,
+  modelMode: ModelMode,
+  stream: boolean,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const apiKey = getNvidiaApiKey()
+  if (!apiKey) throw new Error('AI 服务密钥未配置')
+
+  const modelOpt = MODEL_OPTIONS[modelMode]
+  const modelsToTry = [modelOpt.id, ...modelOpt.fallbacks]
+  let lastError = ''
+
+  for (const modelId of modelsToTry) {
+    try {
+      const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          stream,
+          temperature: 0.75,
+          top_p: 0.9,
+          max_tokens: modelOpt.maxTokens,
+          messages: [
+            { role: 'system', content: SPARK_SYSTEM_PROMPT },
+            ...messages,
+          ],
+        }),
+        signal,
+      })
+      if (res.ok) return res
+      lastError = await res.text().catch(() => `HTTP ${res.status}`)
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') throw e
+      lastError = e instanceof Error ? e.message : String(e)
+    }
+  }
+  throw new Error(`AI 服务不可用: ${lastError.slice(0, 100)}`)
+}
 
 export type ModelMode = 'default' | 'thinking' | 'fast'
 
-export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallback: string; label: string; desc: string; icon: string; maxTokens: number }> = {
-  default: { id: 'deepseek-ai/deepseek-r1', fallback: 'meta/llama3-70b', label: '均衡', desc: 'DeepSeek R1 · 全能均衡', icon: '⚡', maxTokens: 4096 },
-  thinking: { id: 'z-ai/glm-5', fallback: 'deepseek-ai/deepseek-r1', label: '深度思考', desc: 'GLM-5 · 推理增强', icon: '🧠', maxTokens: 8192 },
-  fast: { id: 'minimaxai/minimax-m2.7', fallback: 'minimaxai/minimax-m2.5', label: '极速', desc: 'MiniMax M2.7 · 快速回复', icon: '🚀', maxTokens: 2048 },
+export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallbacks: string[]; label: string; desc: string; icon: string; maxTokens: number }> = {
+  default: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct', 'meta/llama3-70b-instruct'], label: '均衡', desc: 'DeepSeek R1 · 全能均衡', icon: '⚡', maxTokens: 4096 },
+  thinking: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct'], label: '深度思考', desc: 'DeepSeek R1 · 推理增强', icon: '🧠', maxTokens: 8192 },
+  fast: { id: 'meta/llama-3.1-8b-instruct', fallbacks: ['microsoft/phi-3-mini-128k-instruct'], label: '极速', desc: 'Llama 3.1 8B · 快速回复', icon: '🚀', maxTokens: 2048 },
 }
 
 export const ABILITY_TOOLS = [
@@ -204,6 +237,19 @@ export function useSparkAI() {
     attachments?: FileAttachment[],
   ) {
     const conversation = getCurrentConversation()
+
+    if (hasSensitiveContent(userMessage)) {
+      const safeReply = '这个话题不太合适哦，我们聊点别的吧！我可以帮你管理日程、辅导学习、规划目标 😊'
+      conversation.messages.push({ role: 'user', content: userMessage, attachments })
+      conversation.messages.push({ role: 'assistant', content: safeReply })
+      autoTitle(conversation)
+      conversation.updatedAt = new Date().toISOString()
+      saveConversations()
+      onChunk(safeReply)
+      onDone(safeReply, [], '')
+      return
+    }
+
     let composedUserMessage = userMessage
     if (attachments?.length) {
       for (const attachment of attachments) composedUserMessage += summarizeAttachment(attachment)
@@ -255,111 +301,132 @@ export function useSparkAI() {
       }
     }
 
-    const modelConfig = MODEL_OPTIONS[currentModel.value]
     const timeout = setTimeout(() => {
-      console.warn('[SparkAI] 请求超时，模型:', modelConfig.id)
+      console.warn('[SparkAI] 请求超时，模式:', currentModel.value)
       abortController.value?.abort()
       error.value = '响应超时，请稍后重试或切换模型'
       onError?.(error.value)
     }, 120000)
 
     try {
-      const apiMessages = [
-        { role: 'system' as const, content: SYSTEM_PROMPT },
-        ...contextMessages,
-      ]
+      let res: Response
 
-      async function tryFetch(modelId: string): Promise<Response> {
-        return fetch(`${BASE_URL}/chat/completions`, {
+      // 优先通过 Edge Function，失败则降级直连 NVIDIA API
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('NO_AUTH')
+
+        const edgeUrl = getEdgeFunctionUrl()
+        res = await fetch(edgeUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
           body: JSON.stringify({
-            model: modelId, messages: apiMessages, stream: true,
-            temperature: currentModel.value === 'thinking' ? 0.6 : 0.7,
-            top_p: 0.9, max_tokens: modelConfig.maxTokens,
+            assistant: 'spark',
+            mode: currentModel.value,
+            messages: contextMessages,
+            stream: true,
           }),
           signal: abortController.value!.signal,
         })
-      }
 
-      let res = await tryFetch(modelConfig.id)
-      console.log('[SparkAI] 请求模型:', modelConfig.id, '状态:', res.status)
+        if (!res.ok) {
+          if (res.status === 401) throw new Error('请先登录后再使用 AI 助手')
+          if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
+          throw new Error(`Edge Function 失败 (${res.status})`)
+        }
+        console.log('[SparkAI] Edge Function 成功')
+      } catch (edgeErr: unknown) {
+        if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
+        if (edgeErr instanceof Error && (edgeErr.message === '请先登录后再使用 AI 助手' || edgeErr.message === '请求过于频繁，请等待几秒后重试')) throw edgeErr
 
-      if (!res.ok && (res.status === 404 || res.status === 502 || res.status === 503) && modelConfig.fallback) {
-        console.warn('[SparkAI] 主模型不可用，尝试回退:', modelConfig.fallback)
-        res = await tryFetch(modelConfig.fallback)
-        console.log('[SparkAI] 回退模型:', modelConfig.fallback, '状态:', res.status)
-      }
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '')
-        console.error('[SparkAI] API错误:', res.status, body)
-        if (res.status === 401) throw new Error('API Key 无效或过期，请检查配置')
-        if (res.status === 429) throw new Error('请求频率过高，请稍后再试')
-        if (res.status === 404) throw new Error('当前模型暂不可用，请切换其他模式重试')
-        if (res.status === 502 || res.status === 503) throw new Error('AI 服务暂时不可用，请稍后重试')
-        throw new Error(`请求失败 (${res.status})，请稍后重试`)
+        console.warn('[SparkAI] Edge Function 不可用，降级直连 NVIDIA API:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
+        res = await directNvidiaCall(contextMessages, currentModel.value, true, abortController.value!.signal)
       }
 
       clearTimeout(timeout)
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('响应不可读')
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let firstContentToken = false
-      let isInThinkTag = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n'); buffer = lines.pop() || ''
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed === 'data: [DONE]' || !trimmed.startsWith('data: ')) continue
-          try {
-            const json = JSON.parse(trimmed.slice(6))
-            const delta = json.choices?.[0]?.delta
-            if (delta?.reasoning_content) { reasoningText += delta.reasoning_content; onThinking?.(reasoningText); continue }
-            const content = delta?.content
-            if (content) {
-              if (content.includes('<think>')) isInThinkTag = true
-              if (isInThinkTag) {
-                if (content.includes('</think>')) {
-                  const parts = content.split('</think>')
-                  reasoningText += parts[0].replace('<think>', ''); onThinking?.(reasoningText); isInThinkTag = false
-                  if (parts[1]) {
-                    if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
-                    rawText += parts[1]; for (const c of parts[1]) tokenQueue.push(c)
-                  }
-                } else { reasoningText += content.replace('<think>', ''); onThinking?.(reasoningText) }
-                continue
+      const contentType = res.headers.get('content-type') || ''
+      const isSSE = contentType.includes('text/event-stream') || contentType.includes('text/plain')
+
+      if (isSSE && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let firstContentToken = false
+        let isInThinkTag = false
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n'); buffer = lines.pop() || ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || trimmed === 'data: [DONE]' || !trimmed.startsWith('data: ')) continue
+            try {
+              const json = JSON.parse(trimmed.slice(6))
+              const delta = json.choices?.[0]?.delta
+              if (delta?.reasoning_content) { reasoningText += delta.reasoning_content; onThinking?.(reasoningText); continue }
+              const content = delta?.content
+              if (content) {
+                if (content.includes('<think>')) isInThinkTag = true
+                if (isInThinkTag) {
+                  if (content.includes('</think>')) {
+                    const parts = content.split('</think>')
+                    reasoningText += parts[0].replace('<think>', ''); onThinking?.(reasoningText); isInThinkTag = false
+                    if (parts[1]) {
+                      if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
+                      rawText += parts[1]; for (const c of parts[1]) tokenQueue.push(c)
+                    }
+                  } else { reasoningText += content.replace('<think>', ''); onThinking?.(reasoningText) }
+                  continue
+                }
+                if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
+                rawText += content; for (const c of content) tokenQueue.push(c)
               }
-              if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
-              rawText += content; for (const c of content) tokenQueue.push(c)
+            } catch { /* skip parse errors in SSE chunks */ }
+          }
+        }
+
+        await new Promise<void>((resolve) => {
+          const interval = setInterval(() => {
+            if (tokenQueue.length === 0 || displayedLength >= rawText.length) {
+              clearInterval(interval)
+              flushSmooth()
+              resolve()
             }
-          } catch { /* 跳过解析错误 */ }
+          }, 30)
+          setTimeout(() => { clearInterval(interval); flushSmooth(); resolve() }, 2000)
+        })
+      } else {
+        const data = await res.json().catch(() => ({}))
+        rawText = typeof data.content === 'string' ? data.content : (data.choices?.[0]?.message?.content ?? '')
+        reasoningText = typeof data.reasoning === 'string' ? data.reasoning : ''
+        if (rawText) {
+          streamPhase.value = 'streaming'
+          startSmooth()
+          for (const c of rawText) tokenQueue.push(c)
+          await new Promise<void>((resolve) => {
+            const interval = setInterval(() => {
+              if (tokenQueue.length === 0 || displayedLength >= rawText.length) {
+                clearInterval(interval); flushSmooth(); resolve()
+              }
+            }, 30)
+            setTimeout(() => { clearInterval(interval); flushSmooth(); resolve() }, 3000)
+          })
         }
       }
-
-      // 等待平滑输出完成
-      await new Promise<void>((resolve) => {
-        const interval = setInterval(() => {
-          if (tokenQueue.length === 0 || displayedLength >= rawText.length) {
-            clearInterval(interval)
-            flushSmooth()
-            resolve()
-          }
-        }, 30)
-        setTimeout(() => { clearInterval(interval); flushSmooth(); resolve() }, 2000)
-      })
 
       const { thinking, answer } = separateThinking(rawText)
       reasoningText = reasoningText || thinking
       rawText = answer || rawText
 
       const finalReasoning = reasoningText
-      const finalAnswer = rawText
+      const safetyCheck = checkAIResponseSafety(rawText)
+      const finalAnswer = safetyCheck.content
       const { cleanContent, actions } = parseSparkActions(finalAnswer)
 
       conversation.messages.push({

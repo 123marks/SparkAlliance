@@ -91,12 +91,12 @@
       <!-- 头像放大预览 -->
       <Transition name="pp-fade">
         <div v-if="showAvatarPreview" class="pp-avatar-preview" @click="showAvatarPreview = false">
-          <SparkAvatar
-            :avatar="profile.avatar"
-            :avatar-url="profile.avatar_url"
-            :name="profile.nickname"
-            size="xl"
-          />
+          <div class="pp-preview-content">
+            <img v-if="profile.avatar_url" :src="profile.avatar_url" class="pp-preview-img" alt="" />
+            <img v-else-if="profile.avatar?.startsWith('data:') || profile.avatar?.startsWith('http')" :src="profile.avatar" class="pp-preview-img" alt="" />
+            <div v-else class="pp-preview-emoji">{{ profile.avatar || profile.nickname?.charAt(0) || '?' }}</div>
+            <p class="pp-preview-name">{{ profile.nickname }}</p>
+          </div>
         </div>
       </Transition>
     </div>
@@ -206,7 +206,11 @@ function saveRemark() {
 .pp-act-icon{font-size:22px}
 
 /* 头像放大预览 */
-.pp-avatar-preview{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center}
+.pp-avatar-preview{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
+.pp-preview-content{display:flex;flex-direction:column;align-items:center;gap:16px}
+.pp-preview-img{width:280px;height:280px;border-radius:20px;object-fit:cover;box-shadow:0 12px 48px rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.1)}
+.pp-preview-emoji{width:280px;height:280px;border-radius:20px;background:rgba(139,92,246,.1);border:2px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:100px}
+.pp-preview-name{font-size:18px;font-weight:700;color:rgba(255,255,255,.9)}
 
 /* 动画 */
 .pp-fade-enter-active,.pp-fade-leave-active{transition:opacity .2s ease}

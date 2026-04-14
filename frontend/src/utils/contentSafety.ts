@@ -29,10 +29,24 @@ const XSS_PATTERNS = [
 /** 敏感内容关键词（中英混合） */
 const SENSITIVE_PATTERNS = [
   /(?:赌博|gambling|casino)/i,
-  /(?:色情|pornograph|xxx|nsfw)/i,
-  /(?:毒品|drug\s+deal|narcotic)/i,
-  /(?:暴力|terroris[mt]|bomb\s+threat)/i,
-  /(?:诈骗|phishing|scam)/i,
+  /(?:色情|pornograph|xxx|nsfw|黄色|裸体)/i,
+  /(?:毒品|drug\s+deal|narcotic|吸毒|贩毒)/i,
+  /(?:暴力|terroris[mt]|bomb\s+threat|恐怖袭击)/i,
+  /(?:诈骗|phishing|scam|骗钱|骗局)/i,
+  /(?:自杀|自残|自我伤害|suicide|self[- ]harm|割腕|跳楼)/i,
+  /(?:枪支|炸弹|爆炸物|武器制造|制毒)/i,
+  /(?:传销|非法集资|洗钱|高利贷)/i,
+  /(?:翻墙|VPN教程|科学上网方法)/i,
+  /(?:代写|代考|作弊|买答案|论文代做)/i,
+]
+
+/** AI 响应中需要过滤/替换的模式 */
+const AI_RESPONSE_FILTERS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /(?:我是.*(?:GPT|Claude|Gemini|LLaMA|DeepSeek|Llama|Mistral|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
+  { pattern: /(?:作为(?:一个)?(?:AI|人工智能|语言模型|大模型|机器人))/gi, replacement: '作为星火助手' },
+  { pattern: /(?:我(?:没有|无法拥有)(?:感情|情感|个人观点|意识))/gi, replacement: '这个话题挺有意思的' },
+  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Meta\s+AI|NVIDIA\s+NIM)/gi, replacement: '星火团队' },
+  { pattern: /(?:我的训练数据|我的知识截止)/gi, replacement: '我了解的信息' },
 ]
 
 /** 清洗单个文本字段 */
@@ -110,6 +124,36 @@ export function checkEventSafety(event: {
     sanitizedDescription,
     sanitizedLocation,
   }
+}
+
+/** 过滤 AI 响应内容（缓冲层） */
+export function sanitizeAIResponse(text: string): string {
+  if (!text) return ''
+  let result = text
+
+  for (const filter of AI_RESPONSE_FILTERS) {
+    result = result.replace(filter.pattern, filter.replacement)
+  }
+
+  for (const pattern of XSS_PATTERNS) {
+    result = result.replace(pattern, '')
+  }
+
+  return result
+}
+
+/** 检查 AI 响应是否包含敏感内容，返回安全版本 */
+export function checkAIResponseSafety(text: string): { safe: boolean; content: string } {
+  if (!text) return { safe: true, content: '' }
+
+  if (hasSensitiveContent(text)) {
+    return {
+      safe: false,
+      content: '抱歉，这个话题我不太方便展开讨论。换个问题聊聊？我可以帮你管理日程、辅导学习、规划目标等等 😊',
+    }
+  }
+
+  return { safe: true, content: sanitizeAIResponse(text) }
 }
 
 /** 批量安全检查和清洗导入事件 */

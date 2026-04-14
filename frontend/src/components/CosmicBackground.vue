@@ -4,9 +4,8 @@
 
 <script setup lang="ts">
 /**
- * CosmicBackground — 宇宙深空背景 v7.4
- * 柔和星尘 + 偶尔流星 + 低频陨石漂移
- * 星星稀疏、闪烁极慢、亮度柔和
+ * CosmicBackground — 宇宙深空背景 v8.0
+ * 适中密度星尘 + 大小分层 + 柔和闪烁 + 偶尔流星 + 星云光晕
  */
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
@@ -18,14 +17,12 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 let animationId: number
 let w = 0, h = 0
 
-// ====== 星尘 ======
 interface StarDust {
   x: number; y: number; size: number
   alpha: number; phase: number; speed: number
-  color: string
+  color: string; layer: 'far' | 'mid' | 'near'
 }
 
-// ====== 流星 ======
 interface Meteor {
   x: number; y: number
   length: number; speed: number
@@ -33,82 +30,76 @@ interface Meteor {
   color: string; life: number; maxLife: number
 }
 
-// ====== 陨石 ======
-interface Asteroid {
-  x: number; y: number
-  size: number; rotation: number; rotSpeed: number
-  vx: number; vy: number
-  alpha: number; sides: number
+interface Nebula {
+  x: number; y: number; radius: number
+  color: string; alpha: number
 }
 
 let dusts: StarDust[] = []
 let meteors: Meteor[] = []
-let asteroids: Asteroid[] = []
+let nebulae: Nebula[] = []
 
-// 柔和的星尘颜色
-const dustColors = ['#fff', '#bae6fd', '#fef08a', '#c4b5fd']
-const meteorColors = ['#60a5fa', '#a78bfa', '#f87171']
+const dustColors = ['#ffffff', '#bae6fd', '#fef08a', '#c4b5fd', '#fbcfe8', '#a5f3fc']
+const meteorColors = ['#60a5fa', '#a78bfa', '#f87171', '#fbbf24']
+const nebulaColors = ['rgba(139,92,246,0.015)', 'rgba(59,130,246,0.012)', 'rgba(236,72,153,0.01)', 'rgba(20,184,166,0.01)']
 
-// ====== 初始化 ======
 function init() {
-  dusts = []; meteors = []; asteroids = []
+  dusts = []; meteors = []; nebulae = []
 
-  // 星尘 — 极度稀疏，隐约可见
-  const dustCount = Math.floor((w * h) / 55000) // 1920x1080 ≈ 38颗
-  for (let i = 0; i < dustCount; i++) {
+  // 远景星 — 小而密，缓慢闪烁
+  const farCount = Math.floor((w * h) / 18000)
+  for (let i = 0; i < farCount; i++) {
     dusts.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 0.8 + 0.2, // 极小 0.2~1.0px
-      alpha: Math.random() * 0.08, phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.0005 + 0.0002, // 几乎不闪
-      color: dustColors[Math.floor(Math.random() * dustColors.length)]
+      size: Math.random() * 0.6 + 0.3,
+      alpha: Math.random() * 0.15 + 0.05,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.0008 + 0.0003,
+      color: dustColors[Math.floor(Math.random() * dustColors.length)],
+      layer: 'far'
     })
   }
 
-  // 陨石 — 极少，几乎不可见
-  const astCount = Math.min(Math.floor((w * h) / 500000), 3) // 最多3个
-  for (let i = 0; i < astCount; i++) {
-    asteroids.push({
+  // 中景星 — 适中大小，明显闪烁
+  const midCount = Math.floor((w * h) / 55000)
+  for (let i = 0; i < midCount; i++) {
+    dusts.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 12 + 3, // 3px ~ 15px，比之前小很多
-      rotation: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.003, // 更慢旋转
-      vx: (Math.random() - 0.3) * 0.1,
-      vy: Math.random() * 0.08 + 0.02, // 更慢漂移
-      alpha: Math.random() * 0.08 + 0.02, // 更透明
-      sides: Math.floor(Math.random() * 4) + 4
+      size: Math.random() * 1.0 + 0.6,
+      alpha: Math.random() * 0.2 + 0.1,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.0015 + 0.0005,
+      color: dustColors[Math.floor(Math.random() * dustColors.length)],
+      layer: 'mid'
+    })
+  }
+
+  // 近景亮星 — 少量大而亮，带光晕
+  const nearCount = Math.floor((w * h) / 250000)
+  for (let i = 0; i < nearCount; i++) {
+    dusts.push({
+      x: Math.random() * w, y: Math.random() * h,
+      size: Math.random() * 1.2 + 1.0,
+      alpha: Math.random() * 0.25 + 0.2,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.002 + 0.0008,
+      color: dustColors[Math.floor(Math.random() * dustColors.length)],
+      layer: 'near'
+    })
+  }
+
+  // 星云光晕 — 极淡的彩色雾气
+  const nebCount = Math.min(Math.floor((w * h) / 500000) + 1, 4)
+  for (let i = 0; i < nebCount; i++) {
+    nebulae.push({
+      x: Math.random() * w, y: Math.random() * h,
+      radius: Math.random() * 200 + 100,
+      color: nebulaColors[Math.floor(Math.random() * nebulaColors.length)],
+      alpha: Math.random() * 0.02 + 0.005
     })
   }
 }
 
-// ====== 绘制不规则多边形（陨石） ======
-function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid) {
-  ctx.save()
-  ctx.translate(a.x, a.y)
-  ctx.rotate(a.rotation)
-  ctx.globalAlpha = a.alpha
-  ctx.beginPath()
-  for (let i = 0; i < a.sides; i++) {
-    const angle = (Math.PI * 2 / a.sides) * i
-    const r = a.size * (0.7 + Math.sin(i * 2.3) * 0.3)
-    const px = Math.cos(angle) * r
-    const py = Math.sin(angle) * r
-    if (i === 0) ctx.moveTo(px, py)
-    else ctx.lineTo(px, py)
-  }
-  ctx.closePath()
-  // 陨石填充 — 暗灰带微光
-  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, a.size)
-  grad.addColorStop(0, 'rgba(80, 80, 100, 0.5)')
-  grad.addColorStop(0.6, 'rgba(40, 40, 55, 0.3)')
-  grad.addColorStop(1, 'rgba(20, 20, 30, 0.05)')
-  ctx.fillStyle = grad
-  ctx.fill()
-  ctx.globalAlpha = 1
-  ctx.restore()
-}
-
-// ====== 绘制流星 ======
 function drawMeteor(ctx: CanvasRenderingContext2D, m: Meteor) {
   const tailX = m.x - Math.cos(m.angle) * m.length
   const tailY = m.y - Math.sin(m.angle) * m.length
@@ -116,36 +107,62 @@ function drawMeteor(ctx: CanvasRenderingContext2D, m: Meteor) {
   grad.addColorStop(0, 'transparent')
   grad.addColorStop(1, m.color)
   ctx.save()
-  ctx.globalAlpha = m.alpha * (m.life / m.maxLife) * 0.6 // 流星也更柔和
+  const lifeRatio = 1 - Math.abs(m.life / m.maxLife - 0.5) * 2
+  ctx.globalAlpha = m.alpha * lifeRatio * 0.7
   ctx.beginPath()
   ctx.moveTo(tailX, tailY)
   ctx.lineTo(m.x, m.y)
   ctx.strokeStyle = grad
-  ctx.lineWidth = 1
-  ctx.shadowBlur = 4
+  ctx.lineWidth = 1.5
+  ctx.shadowBlur = 6
   ctx.shadowColor = m.color
   ctx.stroke()
-  // 头部亮点
   ctx.beginPath()
-  ctx.arc(m.x, m.y, 1.2, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.arc(m.x, m.y, 1.5, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'
   ctx.fill()
   ctx.shadowBlur = 0
   ctx.globalAlpha = 1
   ctx.restore()
 }
 
-// ====== 动画帧 ======
 function animate(ctx: CanvasRenderingContext2D) {
   ctx.clearRect(0, 0, w, h)
 
-  // 1. 星尘 — 极柔和闪烁
+  // 1. 星云光晕（最底层）
+  for (const n of nebulae) {
+    const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius)
+    grad.addColorStop(0, n.color)
+    grad.addColorStop(1, 'transparent')
+    ctx.globalAlpha = n.alpha
+    ctx.fillStyle = grad
+    ctx.fillRect(n.x - n.radius, n.y - n.radius, n.radius * 2, n.radius * 2)
+    ctx.globalAlpha = 1
+  }
+
+  // 2. 星尘 — 分层渲染
   for (const d of dusts) {
     d.phase += d.speed
-    // 透明度范围 0.03 ~ 0.12，非常柔和
-    const a = (Math.sin(d.phase) * 0.5 + 0.5) * 0.09 + 0.03
-    // 超慢漂移
-    d.y -= 0.02
+    const sineVal = Math.sin(d.phase) * 0.5 + 0.5
+
+    let a: number
+    let driftSpeed: number
+    switch (d.layer) {
+      case 'far':
+        a = sineVal * 0.2 + 0.06
+        driftSpeed = 0.015
+        break
+      case 'mid':
+        a = sineVal * 0.3 + 0.12
+        driftSpeed = 0.03
+        break
+      case 'near':
+        a = sineVal * 0.35 + 0.2
+        driftSpeed = 0.05
+        break
+    }
+
+    d.y -= driftSpeed
     if (d.y < -2) { d.y = h + 2; d.x = Math.random() * w }
 
     ctx.beginPath()
@@ -153,40 +170,31 @@ function animate(ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = d.color
     ctx.globalAlpha = a
     ctx.fill()
+
+    if (d.layer === 'near' && sineVal > 0.7) {
+      ctx.beginPath()
+      ctx.arc(d.x, d.y, d.size * 3, 0, Math.PI * 2)
+      ctx.fillStyle = d.color
+      ctx.globalAlpha = a * 0.08
+      ctx.fill()
+    }
     ctx.globalAlpha = 1
   }
 
-  // 2. 陨石漂移 + 旋转
-  for (const a of asteroids) {
-    a.x += a.vx
-    a.y += a.vy
-    a.rotation += a.rotSpeed
-    if (a.y > h + a.size * 2) {
-      a.y = -a.size * 2
-      a.x = Math.random() * w
-    }
-    if (a.x < -a.size * 2 || a.x > w + a.size * 2) {
-      a.x = Math.random() * w
-      a.y = -a.size * 2
-    }
-    drawAsteroid(ctx, a)
-  }
-
-  // 3. 流星 — 稀疏出现，每 ~6秒一颗
-  if (Math.random() < 0.003) {
-    const angle = Math.PI * 0.18 + Math.random() * 0.25
+  // 3. 流星 — 每 ~8秒一颗
+  if (Math.random() < 0.0022) {
+    const angle = Math.PI * 0.18 + Math.random() * 0.3
     meteors.push({
-      x: Math.random() * w * 0.8,
-      y: Math.random() * h * 0.3,
-      length: Math.random() * 80 + 30, // 更短的尾巴
-      speed: Math.random() * 5 + 3,
-      angle, alpha: Math.random() * 0.3 + 0.15, // 更低亮度
+      x: Math.random() * w * 0.85,
+      y: Math.random() * h * 0.35,
+      length: Math.random() * 100 + 40,
+      speed: Math.random() * 6 + 3,
+      angle, alpha: Math.random() * 0.4 + 0.2,
       color: meteorColors[Math.floor(Math.random() * meteorColors.length)],
-      life: 0, maxLife: Math.random() * 40 + 25
+      life: 0, maxLife: Math.random() * 50 + 30
     })
   }
 
-  // 更新并绘制流星
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]
     m.x += Math.cos(m.angle) * m.speed
@@ -254,12 +262,12 @@ onBeforeUnmount(() => {
   width: 100vw; height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.25; /* v7.5: 极柔和背景 */
-  animation: cosmicFadeIn 3s ease-out;
+  opacity: 0.85;
+  animation: cosmicFadeIn 2.5s ease-out;
 }
 
 @keyframes cosmicFadeIn {
   from { opacity: 0; }
-  to { opacity: 0.25; }
+  to { opacity: 0.85; }
 }
 </style>

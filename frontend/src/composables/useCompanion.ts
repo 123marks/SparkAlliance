@@ -512,13 +512,24 @@ export function useCompanion() {
   function updateProfile(updates: Partial<SparkProfile>) {
     if (!myProfile.value) return
     Object.assign(myProfile.value, updates)
-    // 更新统计
     myProfile.value.friend_count = friends.value.length
     myProfile.value.group_count = groups.value.length
     myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
     saveData(STORAGE_KEYS.profile, myProfile.value)
 
-    // 同步到Supabase（异步）
+    // 同步群成员中自己的头像和昵称
+    if (updates.avatar || updates.avatar_url || updates.nickname) {
+      for (const g of groups.value) {
+        const me = g.members.find(m => m.spark_id === myProfile.value?.spark_id)
+        if (me) {
+          if (updates.avatar !== undefined) me.avatar = updates.avatar
+          if (updates.avatar_url !== undefined) me.avatar_url = updates.avatar_url
+          if (updates.nickname !== undefined && !me.group_nickname) me.nickname = updates.nickname
+        }
+      }
+      saveData(STORAGE_KEYS.groups, groups.value)
+    }
+
     syncProfileToSupabase(updates)
   }
 
@@ -604,13 +615,25 @@ export function useCompanion() {
 
   /** 获取二维码数据（JSON字符串） */
   function getQRData(sparkId?: string, type: 'user' | 'group' = 'user', groupId?: string): string {
+    if (type === 'group') {
+      const g = groups.value.find(g => g.id === groupId)
+      return JSON.stringify({
+        platform: 'SparkAlliance',
+        type: 'group',
+        id: groupId,
+        name: g?.name || '未知群聊',
+        memberCount: g?.members.length || 0,
+        ts: Date.now(),
+      })
+    }
     return JSON.stringify({
       platform: 'SparkAlliance',
-      type,
-      id: type === 'group' ? groupId : (sparkId || myProfile.value?.spark_id),
-      name: type === 'group'
-        ? groups.value.find(g => g.id === groupId)?.name
-        : myProfile.value?.nickname,
+      type: 'user',
+      id: sparkId || myProfile.value?.spark_id,
+      name: myProfile.value?.nickname,
+      avatar: myProfile.value?.avatar || '',
+      avatar_url: myProfile.value?.avatar_url || '',
+      bio: myProfile.value?.bio || '',
       ts: Date.now(),
     })
   }
@@ -688,21 +711,29 @@ export function useCompanion() {
   function addFriendByQR(qrData: string): { ok: boolean; msg: string } {
     try {
       const data = JSON.parse(qrData)
-      if (data.platform !== 'SparkAlliance') return { ok: false, msg: '无效的二维码' }
+      if (data.platform !== 'SparkAlliance') return { ok: false, msg: '非星火联盟二维码' }
+      if (data.id === myProfile.value?.spark_id) return { ok: false, msg: '不能添加自己为好友' }
       if (data.type === 'group') {
-        // 加入群聊
         const g = groups.value.find(g => g.id === data.id)
         if (g) {
-          if (g.members.some(m => m.spark_id === myProfile.value?.spark_id)) return { ok: false, msg: '已在群聊中' }
-          g.members.push({ spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname, avatar: myProfile.value!.avatar, role: 'member' })
+          if (g.members.some(m => m.spark_id === myProfile.value?.spark_id)) return { ok: false, msg: '你已在该群聊中' }
+          g.members.push({
+            spark_id: myProfile.value!.spark_id, nickname: myProfile.value!.nickname,
+            avatar: myProfile.value!.avatar, avatar_url: myProfile.value!.avatar_url,
+            role: 'member'
+          })
           saveData(STORAGE_KEYS.groups, groups.value)
           return { ok: true, msg: `已加入群聊「${g.name}」` }
         }
-        return { ok: false, msg: '群聊不存在' }
+        return { ok: false, msg: '群聊不存在或已解散' }
       }
-      // 添加好友
-      return addFriend({ spark_id: data.id, nickname: data.name || data.id, avatar: '👤', bio: '' })
-    } catch { return { ok: false, msg: '二维码格式错误' } }
+      return addFriend({
+        spark_id: data.id,
+        nickname: data.name || data.id,
+        avatar: data.avatar || '👤',
+        bio: data.bio || '',
+      })
+    } catch { return { ok: false, msg: '二维码数据格式无效' } }
   }
 
   function removeFriend(sparkId: string) {
@@ -1066,25 +1097,59 @@ export function useCompanion() {
   }
 
   // ------ AI 通信 ------
+  const AI_COMPANION_PROMPT = `你是「星火AI伙伴」，一个温暖贴心的校园社交助手。
+你的性格活泼开朗、善解人意，像一个贴心的朋友。
+回复自然随意，不要太正式，可以用 emoji。
+简短回复优先，不要长篇大论。聊天就像跟朋友发微信一样。
+涉及敏感话题时温和转移。今天是${new Date().toLocaleDateString('zh-CN')}。`
+
   async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
-    const scopedMessages = extraSystem
-      ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
-      : messages.slice(-20)
-    const response = await requestAssistantChat({
-      assistant: 'companion',
-      mode: 'fast',
-      messages: scopedMessages,
-    })
-    const res = {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        choices: [{ message: { content: response.content } }],
-      }),
+    try {
+      const scopedMessages = extraSystem
+        ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
+        : messages.slice(-20)
+      const response = await requestAssistantChat({
+        assistant: 'companion',
+        mode: 'fast',
+        messages: scopedMessages,
+      })
+      if (response.content) return response.content
+    } catch {
+      // Edge Function 不可用，回退到 NVIDIA API
     }
-    if (!res.ok) throw new Error(`AI请求失败 (${res.status})`)
-    const data = await res.json()
-    return data.choices?.[0]?.message?.content || '抱歉，我暂时无法回复 🤔'
+
+    const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY
+    if (!API_KEY) return '抱歉，AI 服务暂时不可用，请稍后再试 🤔'
+
+    const systemMsg = extraSystem
+      ? `${AI_COMPANION_PROMPT}\n${extraSystem}`
+      : AI_COMPANION_PROMPT
+    const apiMessages = [
+      { role: 'system' as const, content: systemMsg },
+      ...messages.slice(-15),
+    ]
+
+    const modelsToTry = ['deepseek-ai/deepseek-r1', 'meta/llama-3.1-70b-instruct', 'meta/llama-3.1-8b-instruct']
+    for (const modelId of modelsToTry) {
+      try {
+        const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+          body: JSON.stringify({
+            model: modelId,
+            messages: apiMessages,
+            stream: false,
+            temperature: 0.8,
+            max_tokens: 1024,
+          }),
+        })
+        if (!res.ok) continue
+        const data = await res.json()
+        const content = data.choices?.[0]?.message?.content
+        if (content) return content
+      } catch { continue }
+    }
+    return '网络不太好，让我歇会儿再回你~ 🤔'
   }
 
   /** 发消息给AI伴侣（独立聊天，非群聊/私聊） */
