@@ -5,6 +5,15 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
+    // 禁止浏览器缓存，确保每次加载最新代码
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+    hmr: {
+      overlay: true, // 错误弹窗
+    },
     proxy: {
       // NVIDIA GLM5 API 代理（绕过 CORS）
       '/api/nvidia': {
