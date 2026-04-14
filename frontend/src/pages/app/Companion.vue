@@ -201,7 +201,19 @@
               </template>
             </div>
           </template>
-          <div v-if="isAiTyping" class="cp-msg ai"><span class="cp-msg-av">🌟</span><div class="cp-msg-body"><div class="cp-msg-meta"><span class="cp-msg-name">星火AI</span></div><div class="cp-bubble"><span class="typing-dots"><span></span><span></span><span></span></span></div></div></div>
+          <!-- v7.1: AI思考中动画（升级版） -->
+          <div v-if="isAiTyping && activeChat?.type==='ai'" class="cp-msg ai">
+            <div class="cp-ai-thinking-avatar">🌟</div>
+            <div class="cp-msg-body">
+              <div class="cp-msg-meta"><span class="cp-msg-name">星火AI伴侣</span></div>
+              <div class="cp-bubble cp-ai-thinking-bubble">
+                <div class="cp-ai-thinking-content">
+                  <span class="cp-ai-thinking-text">{{ aiTypingText || '正在思考...' }}</span>
+                  <span class="typing-dots"><span></span><span></span><span></span></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- 右侧聊天设置面板(仿微信) -->
         <Transition name="fade">
@@ -754,7 +766,7 @@ import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
 
 const {
-  myProfile, friends, groups, moments, isAiTyping, getQRData,
+  myProfile, friends, groups, moments, isAiTyping, aiTypingText, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
   commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
@@ -1187,17 +1199,17 @@ function formatVoiceDuration(sec: number): string {
   return `${m}:${s.toString().padStart(2,'0')}`
 }
 
-// v7.0: 语音气泡宽度根据时长动态计算（短→窄，长→宽，最大不超过容器60%）
+// v7.1: 语音气泡宽度大幅加大（短语音也要有足够视觉宽度）
 function getVoiceBubbleWidth(duration: number): number {
-  // 3秒=100px, 10秒=150px, 30秒=220px, 60秒=300px
-  const minW = 100, maxW = 300
+  // 3秒=160px, 6秒=200px, 10秒=240px, 30秒=320px, 60秒=380px
+  const minW = 140, maxW = 380
   const t = Math.min(Math.max(duration, 1), 60) / 60 // 0~1
   return Math.round(minW + (maxW - minW) * Math.sqrt(t))
 }
-// v7.0: 波浪条数量根据时长动态计算
+// v7.1: 波浪条数量翻倍（视觉效果更丰富）
 function getVoiceBarCount(duration: number): number {
-  // 3秒=5条, 10秒=10条, 30秒=20条, 60秒=30条
-  return Math.min(Math.max(Math.round(duration * 0.5), 4), 30)
+  // 3秒=6条, 6秒=8条, 10秒=12条, 30秒=25条, 60秒=35条
+  return Math.min(Math.max(Math.round(duration * 1.2), 5), 35)
 }
 // ====== v6.9: 语音系统核心重写 ======
 // 核心思路：录音时同步开启SpeechRecognition并行收集文字
@@ -2239,6 +2251,13 @@ function handlePublish() {
 .cp-pf-send{padding:3px 12px;border-radius:6px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;font-size:10px;font-weight:600;cursor:pointer;transition:all .12s}.cp-pf-send:hover{opacity:.85}
 .typing-dots{display:flex;gap:4px;padding:4px 0}.typing-dots span{width:5px;height:5px;border-radius:50%;background:rgba(139,92,246,.3);animation:dot 1.4s infinite}.typing-dots span:nth-child(2){animation-delay:.2s}.typing-dots span:nth-child(3){animation-delay:.4s}
 @keyframes dot{0%,80%,100%{transform:scale(.6);opacity:.3}40%{transform:scale(1);opacity:.8}}
+/* v7.1: AI思考动画 */
+.cp-ai-thinking-avatar{font-size:28px;animation:aiPulse 2s ease-in-out infinite;flex-shrink:0}
+@keyframes aiPulse{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.15);filter:brightness(1.4) drop-shadow(0 0 8px rgba(139,92,246,.5))}}
+.cp-ai-thinking-bubble{background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(99,102,241,.06))!important;border:1px solid rgba(139,92,246,.12)!important;animation:thinkingGlow 3s ease-in-out infinite}
+@keyframes thinkingGlow{0%,100%{box-shadow:0 0 0 rgba(139,92,246,0)}50%{box-shadow:0 0 12px rgba(139,92,246,.15)}}
+.cp-ai-thinking-content{display:flex;align-items:center;gap:8px}
+.cp-ai-thinking-text{color:rgba(139,92,246,.6);font-size:12px;font-style:italic}
 /* 输入区 */
 .cp-input-area{padding:8px 14px 12px;border-top:1px solid rgba(255,255,255,.03);flex-shrink:0;background:rgba(8,6,18,.6);backdrop-filter:blur(16px);position:relative}
 .cp-emoji-panel{position:absolute;bottom:100%;left:0;right:0;background:rgba(20,18,34,.98);border:1px solid rgba(255,255,255,.05);border-radius:12px 12px 0 0;padding:10px;display:flex;flex-wrap:wrap;gap:2px;max-height:160px;overflow-y:auto}
@@ -2548,7 +2567,7 @@ function handlePublish() {
 .cp-multi-bar button.del:hover{background:rgba(239,68,68,.12);color:rgba(239,68,68,.7)}
 
 /* ====== 语音消息气泡（v6.7重做） ====== */
-.cp-voice-wrapper{display:flex;flex-direction:column;gap:4px;max-width:320px}
+.cp-voice-wrapper{display:flex;flex-direction:column;gap:4px;max-width:400px}
 .cp-voice-bubble{display:flex;align-items:center;gap:8px;padding:8px 14px;min-width:80px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.08);border-radius:16px;cursor:pointer;transition:all .15s}
 .cp-voice-bubble:hover{background:rgba(139,92,246,.1)}
 .cp-voice-bubble.playing{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.2)}

@@ -361,6 +361,7 @@ export function useCompanion() {
   const friendPermissions = ref<Record<string, FriendPermissions>>({})
   const loading = ref(false)
   const isAiTyping = ref(false)
+  const aiTypingText = ref('')  // v7.1: AI思考状态文字（'正在思考...' / '正在生成回复...'）
 
   // ====== 私聊内存缓存层（消除高频 localStorage 解析） ======
   let _privateChatCache: Record<string, ChatMsg[]> | null = null
@@ -1090,26 +1091,42 @@ export function useCompanion() {
   async function sendToAI(content: string): Promise<string> {
     aiChatHistory.value.push({
       id: uid(), sender_id: myProfile.value!.spark_id, sender_name: myProfile.value!.nickname,
-      sender_avatar: myProfile.value!.avatar, sender_type: 'user',
+      sender_avatar: myProfile.value!.avatar, sender_avatar_url: myProfile.value!.avatar_url,
+      sender_type: 'user',
       content, type: 'text', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
 
     isAiTyping.value = true
+    aiTypingText.value = '正在思考...'
     try {
       const history = aiChatHistory.value.slice(-20).map(m => ({
         role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }))
+      aiTypingText.value = '正在生成回复...'
       const reply = await callAI(history)
       const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
         sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
       }
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
       return reply
-    } finally { isAiTyping.value = false }
+    } catch (err: any) {
+      // v7.1: 失败时插入错误消息气泡，而非静默失败
+      const errorText = err?.message || 'AI服务暂时不可用'
+      const errorMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        sender_type: 'ai', content: `⚠️ ${errorText}\n\n请稍后再试，或检查网络连接。`, type: 'text', is_read: true, created_at: now(),
+      }
+      aiChatHistory.value.push(errorMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return errorText
+    } finally {
+      isAiTyping.value = false
+      aiTypingText.value = ''
+    }
   }
 
   function clearAIChat() {
@@ -1208,8 +1225,20 @@ export function useCompanion() {
   function getMemberRole(groupId: string, sparkId: string): 'owner' | 'admin' | 'member' | null {
     const g = groups.value.find(g => g.id === groupId)
     if (!g) return null
+    // v7.1: 精确匹配成员spark_id
     const m = g.members.find(m => m.spark_id === sparkId)
-    return m?.role || null
+    if (m?.role) return m.role
+    // v7.1兜底: 如果成员列表里没匹配到但owner_id匹配，说明spark_id曾被修改，自动修复
+    if (g.owner_id === sparkId) {
+      // 自动修复：将owner成员的spark_id更新为当前值
+      const ownerMember = g.members.find(m => m.role === 'owner')
+      if (ownerMember && ownerMember.spark_id !== sparkId) {
+        ownerMember.spark_id = sparkId
+        saveData(STORAGE_KEYS.groups, groups.value)
+      }
+      return 'owner'
+    }
+    return null
   }
 
   /** 设置/取消管理员（仅群主） */
@@ -1443,7 +1472,7 @@ export function useCompanion() {
     // 数据
     myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
     friendTags, blacklist, friendPermissions,
-    loading, isAiTyping, totalUnreadMessages,
+    loading, isAiTyping, aiTypingText, totalUnreadMessages,
     // 档案
     updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
     // 好友
