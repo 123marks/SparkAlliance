@@ -185,8 +185,11 @@
                     </button>
                     <div v-if="voiceConvertedTexts[msg.id]" class="cp-voice-text-result">{{ voiceConvertedTexts[msg.id] }}</div>
                   </div>
-                  <!-- 普通文本消息 -->
-                  <div v-else class="cp-bubble" v-html="renderMsgContent(msg.content)"></div>
+                  <!-- 普通文本消息（v7.1: AI打字机效果） -->
+                  <div v-else class="cp-bubble" :class="{'cp-ai-typing-msg': msg.id === typewriterMsgId}">
+                    <span v-html="renderMsgContent(getDisplayContent(msg))"></span>
+                    <span v-if="msg.id === typewriterMsgId" class="cp-typewriter-cursor">|</span>
+                  </div>
                   <!-- 翻译结果（微信风格） -->
                   <div v-if="translatedMessages[msg.id]" class="cp-translate-result">
                     <p class="cp-translate-text">{{ translatedMessages[msg.id] }}</p>
@@ -803,6 +806,10 @@ const profilePopupIsSelf = ref(false)
 const msgCtx = reactive<{show:boolean;x:number;y:number;msgId:string;canRecall:boolean}>({show:false,x:0,y:0,msgId:'',canRecall:false})
 // 通讯录分组折叠
 const contactGroupExpand = reactive({friends:true,groups:true})
+// v7.1: AI回复打字机效果
+const typewriterMsgId = ref('')    // 正在打字机显示的消息ID
+const typewriterText = ref('')     // 当前已显示的文字
+let typewriterTimer: ReturnType<typeof setTimeout> | null = null
 const showSearchModal = ref(false)
 const showAddFriendModal = ref(false)
 const showQRModal = ref(false)
@@ -1031,7 +1038,13 @@ async function handleChatSend(){
   // 构建引用消息数据
   const quoteData = quoteMsg.value ? { sender_name: quoteMsg.value.sender_name, content: quoteMsg.value.content } : undefined
   quoteMsg.value = null
-  if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}
+  if(activeChat.value?.type==='ai'){
+    await sendToAI(text)
+    // v7.1: AI回复后启动打字机效果
+    const lastMsg = aiChatHistory.value[aiChatHistory.value.length - 1]
+    if (lastMsg && lastMsg.sender_type === 'ai') startTypewriter(lastMsg.id, lastMsg.content)
+    scrollChat()
+  }
   else if(activeChat.value?.type==='group'){
     if(mentionIds.value.length>0){sendGroupMsgWithMentions(activeChat.value.id,text,[...mentionIds.value]);mentionIds.value=[]}
     else{sendGroupMsg(activeChat.value.id,text)}
@@ -1046,6 +1059,36 @@ async function handleChatSend(){
   }
 }
 function formatMsgTime(s:string){return formatMsgTimeUtil(s)}
+// v7.1: AI回复打字机效果 —— 逐字渐显
+function startTypewriter(msgId: string, fullText: string) {
+  if (typewriterTimer) clearTimeout(typewriterTimer)
+  typewriterMsgId.value = msgId
+  typewriterText.value = ''
+  let idx = 0
+  const step = () => {
+    if (idx >= fullText.length) {
+      // 打字完成
+      typewriterMsgId.value = ''
+      typewriterText.value = ''
+      typewriterTimer = null
+      return
+    }
+    // 每次显示1~3个字符（模拟自然输入速度）
+    const chunk = Math.min(Math.floor(Math.random() * 2) + 1, fullText.length - idx)
+    idx += chunk
+    typewriterText.value = fullText.slice(0, idx)
+    scrollChat()
+    // 速度：20~50ms/字（快速但可见）
+    typewriterTimer = setTimeout(step, 20 + Math.random() * 30)
+  }
+  step()
+}
+
+// v7.1: 获取消息显示内容（打字机效果期间显示部分文字）
+function getDisplayContent(msg: { id: string; content: string }): string {
+  if (msg.id === typewriterMsgId.value) return typewriterText.value
+  return msg.content
+}
 // v7.0: 菜单位置边界检测（防止溢出屏幕）
 function clampMenuPos(x: number, y: number, menuW = 155, menuH = 280): { x: number; y: number } {
   const vw = window.innerWidth, vh = window.innerHeight
@@ -2258,6 +2301,10 @@ function handlePublish() {
 @keyframes thinkingGlow{0%,100%{box-shadow:0 0 0 rgba(139,92,246,0)}50%{box-shadow:0 0 12px rgba(139,92,246,.15)}}
 .cp-ai-thinking-content{display:flex;align-items:center;gap:8px}
 .cp-ai-thinking-text{color:rgba(139,92,246,.6);font-size:12px;font-style:italic}
+/* v7.1: AI打字机效果 */
+.cp-typewriter-cursor{color:rgba(139,92,246,.7);font-weight:300;animation:cursorBlink .8s infinite}
+@keyframes cursorBlink{0%,100%{opacity:1}50%{opacity:0}}
+.cp-ai-typing-msg{min-height:20px}
 /* 输入区 */
 .cp-input-area{padding:8px 14px 12px;border-top:1px solid rgba(255,255,255,.03);flex-shrink:0;background:rgba(8,6,18,.6);backdrop-filter:blur(16px);position:relative}
 .cp-emoji-panel{position:absolute;bottom:100%;left:0;right:0;background:rgba(20,18,34,.98);border:1px solid rgba(255,255,255,.05);border-radius:12px 12px 0 0;padding:10px;display:flex;flex-wrap:wrap;gap:2px;max-height:160px;overflow-y:auto}
