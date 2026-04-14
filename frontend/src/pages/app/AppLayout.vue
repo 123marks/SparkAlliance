@@ -345,7 +345,7 @@ const handleLogout = async () => {
   flex-direction: column;
   height: 100vh;
   width: 100%;
-  background: var(--color-bg-primary);
+  background: transparent; /* v7.3: 透明让星空背景穿透 */
   color: var(--color-text-primary);
   overflow: hidden;
 }
@@ -355,7 +355,7 @@ const handleLogout = async () => {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: 56px;
-  background: var(--color-bg-secondary);
+  background: rgba(10, 10, 15, 0.75); /* v7.3: 半透明让星空微透 */
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--color-border);
@@ -558,7 +558,9 @@ const handleLogout = async () => {
 /* ====== 侧边栏 ====== */
 .sidebar {
   width: 220px;
-  background: var(--color-bg-secondary);
+  background: rgba(10, 10, 15, 0.65); /* v7.3: 半透明星空微透 */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;

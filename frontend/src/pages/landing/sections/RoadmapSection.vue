@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .roadmap-section {
   padding: 120px 40px;
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
 }
 
 .roadmap-container {
@@ -149,7 +149,7 @@ onBeforeUnmount(() => {
   width: 14px; height: 14px;
   border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.2);
-  background: var(--color-bg-primary);
+  background: transparent;
   z-index: 2;
   margin-bottom: 24px;
   position: relative;

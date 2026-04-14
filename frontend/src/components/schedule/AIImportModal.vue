@@ -69,7 +69,7 @@
 
           <div v-else-if="step === 'confirm'" class="ai-confirm">
             <div class="ai-confirm-header">
-              <span>识别到 {{ recognizedEvents.length }} 个事件</span>
+              <span>识别到 {{ recognizedEvents.length }} 个事件，按日期分组预览</span>
               <label class="ai-select-all">
                 <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" />
                 全选
@@ -79,46 +79,64 @@
             <div v-if="noticeMessage" class="ai-warning-note">{{ noticeMessage }}</div>
 
             <div class="ai-event-list">
-              <div
-                v-for="(evt, index) in recognizedEvents"
-                :key="`${evt.title}-${evt.start_time}-${index}`"
-                class="ai-event-card"
-                :class="{ selected: evt.selected, 'low-confidence': evt.confidence < 0.7 }"
-              >
-                <div class="ai-event-check">
-                  <input type="checkbox" v-model="evt.selected" />
+              <template v-for="(group, dateKey) in groupedByDate" :key="dateKey">
+                <div class="ai-date-header">📅 {{ formatDateLabel(dateKey as string) }}（{{ group.length }} 项）</div>
+                <div
+                  v-for="evt in group"
+                  :key="`${evt.title}-${evt.start_time}-${evt._gIdx}`"
+                  class="ai-event-card"
+                  :class="{ selected: evt.selected, 'low-confidence': evt.confidence < 0.7 }"
+                >
+                  <div class="ai-event-check">
+                    <input type="checkbox" v-model="recognizedEvents[evt._gIdx].selected" />
+                  </div>
+                  <div class="ai-event-body">
+                    <!-- 编辑模式 -->
+                    <template v-if="editingIndex === evt._gIdx">
+                      <div class="ai-inline-edit">
+                        <input v-model="recognizedEvents[evt._gIdx].title" class="ai-edit-input" placeholder="标题" />
+                        <div class="ai-edit-row">
+                          <select v-model="recognizedEvents[evt._gIdx].event_type" class="ai-edit-select">
+                            <option v-for="(cfg, key) in EVENT_TYPES" :key="key" :value="key">{{ cfg.icon }} {{ cfg.label }}</option>
+                          </select>
+                          <input v-model="recognizedEvents[evt._gIdx].location" class="ai-edit-input" placeholder="地点" />
+                        </div>
+                        <div class="ai-edit-row">
+                          <input type="datetime-local" v-model="recognizedEvents[evt._gIdx].start_time" class="ai-edit-input" />
+                          <span class="ai-edit-sep">→</span>
+                          <input type="datetime-local" v-model="recognizedEvents[evt._gIdx].end_time" class="ai-edit-input" />
+                        </div>
+                        <button class="ai-edit-done" @click="editingIndex = -1">✓ 完成编辑</button>
+                      </div>
+                    </template>
+                    <!-- 预览模式 -->
+                    <template v-else>
+                      <div class="ai-event-top">
+                        <span class="ai-event-type" :style="{ background: `${getTypeColor(evt.event_type)}20`, color: getTypeColor(evt.event_type) }">
+                          {{ getTypeIcon(evt.event_type) }} {{ getTypeLabel(evt.event_type) }}
+                        </span>
+                        <span class="ai-event-title">{{ evt.title }}</span>
+                        <span v-if="evt.recurrence_type === 'weekly'" class="ai-recurrence-tag">🔁 每周</span>
+                        <button class="ai-edit-btn" @click="editingIndex = evt._gIdx" title="编辑">✏️</button>
+                      </div>
+                      <div class="ai-event-meta">
+                        <span>🕒 {{ formatEventTime(evt) }}</span>
+                        <span v-if="evt.location">📍 {{ evt.location }}</span>
+                      </div>
+                      <div v-if="evt.confidence < 0.5 || !evt.start_time || !evt.end_time" class="ai-incomplete-warn">
+                        ⚠️ 信息不完整，请点击编辑补充时间等关键字段
+                      </div>
+                      <div class="ai-confidence">
+                        <div class="ai-conf-bar">
+                          <div class="ai-conf-fill" :style="{ width: `${evt.confidence * 100}%`, background: evt.confidence >= 0.7 ? '#10b981' : '#f59e0b' }"></div>
+                        </div>
+                        <span class="ai-conf-text" :style="{ color: evt.confidence >= 0.7 ? '#10b981' : '#f59e0b' }">{{ Math.round(evt.confidence * 100) }}%</span>
+                        <span v-if="evt.confidence < 0.7" class="ai-conf-warn">需确认</span>
+                      </div>
+                    </template>
+                  </div>
                 </div>
-                <div class="ai-event-body">
-                  <div class="ai-event-top">
-                    <span
-                      class="ai-event-type"
-                      :style="{ background: `${getTypeColor(evt.event_type)}20`, color: getTypeColor(evt.event_type) }"
-                    >
-                      {{ getTypeIcon(evt.event_type) }} {{ getTypeLabel(evt.event_type) }}
-                    </span>
-                    <span class="ai-event-title">{{ evt.title }}</span>
-                  </div>
-                  <div class="ai-event-meta">
-                    <span>🕒 {{ formatEventTime(evt) }}</span>
-                    <span v-if="evt.location">📍 {{ evt.location }}</span>
-                  </div>
-                  <div class="ai-confidence">
-                    <div class="ai-conf-bar">
-                      <div
-                        class="ai-conf-fill"
-                        :style="{
-                          width: `${evt.confidence * 100}%`,
-                          background: evt.confidence >= 0.7 ? '#10b981' : '#f59e0b',
-                        }"
-                      ></div>
-                    </div>
-                    <span class="ai-conf-text" :style="{ color: evt.confidence >= 0.7 ? '#10b981' : '#f59e0b' }">
-                      {{ Math.round(evt.confidence * 100) }}%
-                    </span>
-                    <span v-if="evt.confidence < 0.7" class="ai-conf-warn">需确认</span>
-                  </div>
-                </div>
-              </div>
+              </template>
             </div>
 
             <div class="ai-confirm-actions">
@@ -168,6 +186,7 @@ import {
 import { extractDocumentText } from './documentImport'
 import { dedupeImportedEvents } from './importDedup'
 import { parseStructuredImportFile, type StructuredImportEvent } from './structuredImport'
+import { sanitizeImportedEvents } from '../../utils/contentSafety'
 
 const props = defineProps<{
   visible: boolean
@@ -190,6 +209,9 @@ interface RecognizedEvent {
   confidence: number
   description: string
   selected: boolean
+  recurrence_type: string
+  recurrence_days: number[]
+  recurrence_end: string
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -208,6 +230,35 @@ const quotaLimit = ref(5)
 const recognizedEvents = ref<RecognizedEvent[]>([])
 const selectAll = ref(true)
 const importedCount = ref(0)
+const editingIndex = ref(-1)
+
+interface GroupedEvent extends RecognizedEvent {
+  _gIdx: number
+}
+
+const groupedByDate = computed(() => {
+  const groups: Record<string, GroupedEvent[]> = {}
+  recognizedEvents.value.forEach((evt, idx) => {
+    const dateKey = evt.start_time ? evt.start_time.slice(0, 10) : '未定'
+    if (!groups[dateKey]) groups[dateKey] = []
+    groups[dateKey].push({ ...evt, _gIdx: idx })
+  })
+  // 排序：有日期的在前，未定在后
+  const sorted: Record<string, GroupedEvent[]> = {}
+  Object.keys(groups).sort((a, b) => {
+    if (a === '未定') return 1
+    if (b === '未定') return -1
+    return a.localeCompare(b)
+  }).forEach(k => { sorted[k] = groups[k] })
+  return sorted
+})
+
+const formatDateLabel = (dateKey: string): string => {
+  if (dateKey === '未定') return '日期待定'
+  const d = new Date(dateKey + 'T00:00:00')
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`
+}
 
 const quotaExceeded = computed(() => quota.value !== null && quota.value >= quotaLimit.value)
 const selectedCount = computed(() => recognizedEvents.value.filter(event => event.selected).length)
@@ -324,11 +375,20 @@ const normalizeStructuredEvents = (events: StructuredImportEvent[]): RecognizedE
   events.map(event => ({
     ...event,
     selected: true,
+    recurrence_type: 'none',
+    recurrence_days: [],
+    recurrence_end: '',
   }))
 
 const normalizeEvents = (events: unknown[]): RecognizedEvent[] => {
   return events.map((event) => {
     const item = event as Record<string, unknown>
+    // 保留 AI 返回的重复规则
+    const recurrence = (item.recurrence as string) || 'none'
+    const recurrenceDays = Array.isArray(item.recurrence_days)
+      ? (item.recurrence_days as number[])
+      : []
+    const recurrenceEnd = (item.recurrence_end as string) || ''
     return {
       title: (item.title as string) || '未命名事件',
       start_time: (item.start_time as string) || '',
@@ -338,6 +398,9 @@ const normalizeEvents = (events: unknown[]): RecognizedEvent[] => {
       confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
       description: (item.description as string) || '',
       selected: true,
+      recurrence_type: recurrence === 'weekly' ? 'weekly' : 'none',
+      recurrence_days: recurrenceDays,
+      recurrence_end: recurrenceEnd,
     }
   })
 }
@@ -466,7 +529,13 @@ const startRecognition = async () => {
       warnings.push(`已自动合并 ${allRecognized.length - dedupedEvents.length} 条重复事件`)
     }
 
-    recognizedEvents.value = dedupedEvents
+    // 内容安全过滤
+    const { events: safeEvents, totalWarnings: safetyWarnings } = sanitizeImportedEvents(dedupedEvents)
+    if (safetyWarnings.length > 0) {
+      warnings.push(...safetyWarnings)
+    }
+
+    recognizedEvents.value = safeEvents
     selectAll.value = true
     noticeMessage.value = warnings.join('；')
     step.value = 'confirm'
@@ -495,9 +564,9 @@ const confirmImport = () => {
     event_type: event.event_type as EventFormData['event_type'],
     event_subtype: '',
     color: '',
-    recurrence_type: 'none',
-    recurrence_days: [],
-    recurrence_end: '',
+    recurrence_type: event.recurrence_type || 'none',
+    recurrence_days: event.recurrence_days || [],
+    recurrence_end: event.recurrence_end || '',
     reminders: [],
     priority: 0,
   }))
@@ -688,6 +757,55 @@ const handleClose = () => {
 .ai-conf-warn { font-size: 11px; color: #f59e0b; }
 
 .ai-confirm-actions { display: flex; gap: 12px; margin-top: 16px; }
+
+.ai-date-header {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7);
+  padding: 8px 4px 4px; margin-top: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ai-date-header:first-child { margin-top: 0; }
+
+.ai-recurrence-tag {
+  font-size: 11px; color: #a78bfa; background: rgba(139,92,246,0.15);
+  padding: 2px 8px; border-radius: 10px; flex-shrink: 0;
+}
+
+.ai-edit-btn {
+  background: transparent; border: none; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; opacity: 0.5; transition: opacity 0.15s;
+  margin-left: auto; flex-shrink: 0;
+}
+.ai-edit-btn:hover { opacity: 1; }
+
+.ai-inline-edit {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ai-edit-input {
+  width: 100%; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+  padding: 7px 10px; color: white; font-size: 13px;
+  outline: none; font-family: inherit;
+}
+.ai-edit-input:focus { border-color: var(--color-brand-blue); }
+.ai-edit-select {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 7px 10px; color: white; font-size: 13px;
+  outline: none; min-width: 120px;
+}
+.ai-edit-row { display: flex; gap: 8px; align-items: center; }
+.ai-edit-sep { color: rgba(255,255,255,0.3); font-size: 14px; flex-shrink: 0; }
+.ai-edit-done {
+  align-self: flex-end; background: rgba(16,185,129,0.15); color: #34d399;
+  border: none; border-radius: 8px; padding: 5px 14px; font-size: 12px;
+  cursor: pointer; font-weight: 500;
+}
+.ai-edit-done:hover { background: rgba(16,185,129,0.25); }
+
+.ai-incomplete-warn {
+  margin: 4px 0; padding: 6px 10px; border-radius: 8px;
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.15);
+  color: #fbbf24; font-size: 11px;
+}
 
 .ai-done, .ai-error {
   display: flex; flex-direction: column; align-items: center;

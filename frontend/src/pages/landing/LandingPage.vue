@@ -32,7 +32,7 @@ import FooterSection from './sections/FooterSection.vue'
 .landing-page {
   width: 100%;
   min-height: 100vh;
-  background-color: var(--color-bg-primary);
+  background-color: transparent; /* v7.3: 透明让星空背景穿透 */
   position: relative;
 }
 </style>

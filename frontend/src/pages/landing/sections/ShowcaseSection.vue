@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.showcase-section { padding: 120px 40px; background-color: var(--color-bg-secondary); position: relative; }
+.showcase-section { padding: 120px 40px; background-color: transparent; position: relative; }
 .container { max-width: 1280px; margin: 0 auto; }
 
 .showcase-header { text-align: center; margin-bottom: 64px; opacity: 0; transform: translateY(40px); transition: all 0.6s ease-out; }

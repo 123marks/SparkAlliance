@@ -44,6 +44,19 @@
               <button class="ev-btn ev-btn-edit" @click="$emit('edit', event)">✏️ 编辑</button>
               <button class="ev-btn ev-btn-danger" @click="$emit('delete', event)">🗑️ 删除</button>
             </div>
+            <div class="ev-view-extras">
+              <button class="ev-btn ev-btn-extra" @click="$emit('pushToPlanner', event)" title="将此事件同步为规划任务">
+                🚀 推送到规划
+              </button>
+              <button
+                v-if="event.event_type === 'life'"
+                class="ev-btn ev-btn-extra"
+                @click="$emit('shareToWall', event)"
+                title="分享到校园墙"
+              >
+                📢 分享到校园墙
+              </button>
+            </div>
           </div>
 
           <!-- 创建/编辑表单 -->
@@ -194,6 +207,8 @@ const emit = defineEmits<{
   save: [data: EventFormData]
   edit: [event: ScheduleEvent]
   delete: [event: ScheduleEvent]
+  pushToPlanner: [event: ScheduleEvent]
+  shareToWall: [event: ScheduleEvent]
 }>()
 
 // 表单数据
@@ -479,6 +494,15 @@ const handleSave = () => {
 }
 
 .ev-form-actions { display: flex; gap: 12px; margin-top: 8px; }
+
+.ev-view-extras {
+  display: flex; gap: 10px; margin-top: 10px;
+}
+.ev-btn-extra {
+  background: rgba(79,142,247,0.08); color: rgba(255,255,255,0.65);
+  font-size: 12px; padding: 8px 14px; flex: 1; text-align: center;
+}
+.ev-btn-extra:hover { background: rgba(79,142,247,0.15); color: white; }
 
 /* 过渡动画 */
 .modal-fade-enter-active, .modal-fade-leave-active { transition: all 0.25s ease; }

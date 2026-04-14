@@ -422,12 +422,12 @@ onBeforeUnmount(() => {
   width: 100vw; height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.4; /* v7.1: 进一步降低，确保不干扰前景 */
+  opacity: 0.7; /* v7.3: 提升至0.7让星空更可见 */
   animation: cosmicFadeIn 3s ease-out;
 }
 
 @keyframes cosmicFadeIn {
   from { opacity: 0; }
-  to { opacity: 0.4; }
+  to { opacity: 0.7; }
 }
 </style>

@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .pricing-section {
   padding: 120px 40px;
-  background: var(--color-bg-secondary);
+  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;

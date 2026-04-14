@@ -174,7 +174,7 @@ onBeforeUnmount(() => { observer?.disconnect() })
 <style scoped>
 .testimonials-section {
   padding: 120px 0;
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
   overflow: hidden;
 }
 

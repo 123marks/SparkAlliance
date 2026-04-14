@@ -9,6 +9,7 @@
  */
 import { ref, computed } from 'vue'
 import { supabase } from '../supabase'
+import { expandRecurringEvents } from './useRecurrence'
 
 // 从 useCalendar 导入纯函数
 export { getMonthGrid, getWeekDays, isSameDay, formatTime, formatDate, toLocalDateStr } from './useCalendar'
@@ -208,14 +209,19 @@ export function useSchedule() {
 
   // ====== 冲突检测 ======
 
-  /** 检测新事件与已有事件的时间冲突（非阻断式） */
+  /** 检测新事件与已有事件的时间冲突（非阻断式，含重复事件展开实例） */
   const detectConflicts = (startTime: string, endTime: string, excludeId?: string): Conflict[] => {
     const newStart = new Date(startTime).getTime()
     const newEnd = new Date(endTime).getTime()
     const conflicts: Conflict[] = []
 
-    for (const evt of events.value) {
-      if (evt.id === excludeId || evt.status !== 'active') continue
+    // 展开重复事件：以新事件前后1天为窗口
+    const rangeStart = new Date(newStart - 86400000)
+    const rangeEnd = new Date(newEnd + 86400000)
+    const expandedEvents = expandRecurringEvents(events.value, rangeStart, rangeEnd)
+
+    for (const evt of expandedEvents) {
+      if (evt.id === excludeId || (excludeId && evt.id.startsWith(excludeId + '_r_')) || evt.status !== 'active') continue
       const eStart = new Date(evt.start_time).getTime()
       const eEnd = evt.end_time ? new Date(evt.end_time).getTime() : eStart + 3600000
 

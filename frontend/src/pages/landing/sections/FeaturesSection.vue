@@ -185,7 +185,7 @@ onBeforeUnmount(() => { observer?.disconnect() })
 <style scoped>
 .features-section {
   padding: 120px 40px;
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
 }
 
 .features-container {

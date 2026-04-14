@@ -120,6 +120,8 @@
       @save="handleSave"
       @edit="handleEdit"
       @delete="handleDelete"
+      @pushToPlanner="handlePushToPlanner"
+      @shareToWall="handleShareToWall"
     />
 
     <AIImportModal
@@ -146,6 +148,7 @@ import CalendarDay from '../../components/schedule/CalendarDay.vue'
 import EventModal from '../../components/schedule/EventModal.vue'
 import UpcomingSidebar from '../../components/schedule/UpcomingSidebar.vue'
 import AIImportModal from '../../components/schedule/AIImportModal.vue'
+import { supabase } from '../../supabase'
 import {
   useSchedule,
   EVENT_TYPES,
@@ -248,6 +251,7 @@ const titleText = computed(() => {
 const syncToUrl = () => {
   router.replace({
     query: {
+      ...route.query,
       view: currentView.value,
       date: toLocalDateStr(selectedDate.value),
     },
@@ -361,6 +365,49 @@ const handleDelete = async (event: ScheduleEvent) => {
   showToast('事件已删除', 'success')
   modalVisible.value = false
   await refreshEvents()
+}
+
+const handlePushToPlanner = async (event: ScheduleEvent) => {
+  try {
+    const { data: session } = await supabase.auth.getSession()
+    if (!session.session) {
+      showToast('请先登录', 'error')
+      return
+    }
+    // 创建规划任务
+    const { error: err } = await supabase.from('planner_tasks').insert({
+      user_id: session.session.user.id,
+      title: event.title,
+      description: event.description || `从日程同步: ${event.start_time}`,
+      due_date: event.start_time.slice(0, 10),
+      status: 'pending',
+      is_completed: false,
+    })
+    if (err) throw err
+    showToast(`「${event.title}」已推送到规划`, 'success')
+  } catch {
+    showToast('推送失败，请稍后重试', 'error')
+  }
+}
+
+const handleShareToWall = async (event: ScheduleEvent) => {
+  try {
+    const { data: session } = await supabase.auth.getSession()
+    if (!session.session) {
+      showToast('请先登录', 'error')
+      return
+    }
+    const content = `📅 ${event.title}\n🕒 ${event.start_time.replace('T', ' ').slice(0, 16)}${event.location ? `\n📍 ${event.location}` : ''}${event.description ? `\n${event.description}` : ''}`
+    const { error: err } = await supabase.from('posts').insert({
+      author_id: session.session.user.id,
+      content,
+      is_anonymous: false,
+    })
+    if (err) throw err
+    showToast('已分享到校园墙', 'success')
+  } catch {
+    showToast('分享失败，请稍后重试', 'error')
+  }
 }
 
 const refreshEvents = async () => {

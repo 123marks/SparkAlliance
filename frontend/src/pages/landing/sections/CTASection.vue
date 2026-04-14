@@ -84,7 +84,7 @@ onBeforeUnmount(() => { observer?.disconnect() })
 <style scoped>
 .cta-section {
   padding: 100px 40px;
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
   display: flex;
   justify-content: center;
 }

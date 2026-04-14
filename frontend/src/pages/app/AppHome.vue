@@ -50,13 +50,18 @@
           <router-link to="/app/schedule" class="more-link">管理 →</router-link>
         </div>
         <div class="list">
-          <div v-for="event in todaySchedule" :key="event.id" class="list-item">
+          <router-link
+            v-for="event in todaySchedule"
+            :key="event.id"
+            :to="`/app/schedule?view=day&date=${getLocalDate()}`"
+            class="list-item list-item-link"
+          >
             <span class="dot" :class="event.kind"></span>
             <div>
               <strong>{{ event.title }}</strong>
               <span>{{ event.time }}</span>
             </div>
-          </div>
+          </router-link>
           <p v-if="todaySchedule.length === 0" class="empty">今天还没有安排，去日程页规划一下吧。</p>
         </div>
       </div>
@@ -851,6 +856,17 @@ watch(
   display: flex;
   align-items: flex-start;
   gap: 12px;
+}
+
+.list-item-link {
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: -8px -10px;
+  transition: background 0.15s;
+}
+.list-item-link:hover {
+  background: var(--color-bg-card-hover);
 }
 
 .dot {

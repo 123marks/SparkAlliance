@@ -98,7 +98,7 @@ import HeroSocialProof from './components/HeroSocialProof.vue'
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background-color: var(--color-bg-primary);
+  background-color: transparent; /* v7.3: 透明让星空透出 */
 }
 
 .hero-bg {
