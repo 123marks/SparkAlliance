@@ -24,7 +24,7 @@
       </div>
     </Transition>
 
-    <!-- 右侧浮动辅助入口 -->
+    <!-- 底部浮动辅助入口（避免遮挡侧栏统计数据） -->
     <div class="ss-aux-fab">
       <button
         class="ss-aux-btn planner-btn"
@@ -32,7 +32,7 @@
         title="星火规划"
         @click="togglePanel('planner')"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
         <span class="ss-aux-label">规划</span>
@@ -43,7 +43,7 @@
         title="每日灵感"
         @click="togglePanel('tarot')"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10" />
           <path d="M12 16v-4" /><path d="M12 8h.01" />
         </svg>
@@ -142,63 +142,62 @@ if (routeModule === 'planner' || routeModule === 'tarot') {
   overflow: hidden;
 }
 
-/* ===== 右侧浮动辅助入口 ===== */
+/* ===== 底部浮动辅助入口（水平排列，不遮挡侧栏） ===== */
 .ss-aux-fab {
   position: fixed;
-  right: 18px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  gap: 8px;
   z-index: 100;
+  padding: 6px;
+  background: rgba(15, 12, 30, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
 .ss-aux-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 10px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  background: rgba(15, 12, 30, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  color: rgba(255, 255, 255, 0.45);
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  min-width: 52px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 }
 
 .ss-aux-btn:hover {
-  transform: scale(1.06);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .ss-aux-btn.planner-btn:hover,
 .ss-aux-btn.planner-btn.active {
-  border-color: rgba(139, 92, 246, 0.35);
+  border-color: rgba(139, 92, 246, 0.3);
   background: rgba(139, 92, 246, 0.12);
   color: #a78bfa;
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2);
 }
 
 .ss-aux-btn.tarot-btn:hover,
 .ss-aux-btn.tarot-btn.active {
-  border-color: rgba(251, 191, 36, 0.35);
+  border-color: rgba(251, 191, 36, 0.3);
   background: rgba(251, 191, 36, 0.1);
   color: #fbbf24;
-  box-shadow: 0 4px 20px rgba(251, 191, 36, 0.15);
 }
 
 .ss-aux-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 /* ===== 侧滑面板 ===== */
@@ -284,14 +283,14 @@ if (routeModule === 'planner' || routeModule === 'tarot') {
 /* 响应式 */
 @media (max-width: 640px) {
   .ss-aux-fab {
-    right: 10px;
-    gap: 6px;
+    bottom: 16px;
+    padding: 4px;
+    gap: 4px;
   }
   .ss-aux-btn {
-    padding: 8px 6px;
-    min-width: 44px;
+    padding: 7px 12px;
   }
-  .ss-aux-label { font-size: 9px; }
+  .ss-aux-label { font-size: 11px; }
   .ss-panel { width: 100vw; }
 }
 </style>

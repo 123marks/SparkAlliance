@@ -360,9 +360,9 @@ const handleLogout = async () => {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: 56px;
-  background: rgba(10, 10, 15, 0.75); /* v7.3: 半透明让星空微透 */
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background: rgba(8, 6, 18, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
@@ -565,9 +565,9 @@ const handleLogout = async () => {
 /* ====== 侧边栏 ====== */
 .sidebar {
   width: 220px;
-  background: rgba(10, 10, 15, 0.65); /* v7.3: 半透明星空微透 */
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(8, 6, 18, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;

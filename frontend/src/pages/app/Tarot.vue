@@ -579,14 +579,26 @@ function typeWriter(text: string) {
 async function saveReading() {
   if (!user.value || !pickedCard.value) return
   try {
+    const { data: cardRow } = await supabase
+      .from('tarot_cards')
+      .select('id')
+      .eq('card_no', pickedCard.value.no)
+      .single()
+
+    if (!cardRow) {
+      console.warn('找不到对应的卡牌记录, card_no:', pickedCard.value.no)
+      return
+    }
+
     await supabase.from('tarot_readings').insert({
       user_id: user.value.id,
-      card_id: pickedCard.value.no,
+      card_id: cardRow.id,
+      reading_mode: mode.value,
       is_reversed: isReversed.value,
       user_question: mode.value === 'question' ? question.value.trim() : null,
       ai_reading: readingText.value,
     })
-    loadHistory() // 刷新
+    loadHistory()
   } catch (e) { console.warn('保存记录失败:', e) }
 }
 
@@ -614,12 +626,18 @@ function resetAll() {
 async function loadHistory() {
   if (!user.value) return
   const { data } = await supabase.from('tarot_readings')
-    .select('id, card_id, is_reversed, user_question, ai_reading, created_at')
+    .select('id, card_id, is_reversed, user_question, ai_reading, created_at, tarot_cards(card_no, name_zh)')
     .eq('user_id', user.value.id)
     .order('created_at', { ascending: false }).limit(20)
   historyList.value = (data || []).map((r: any) => {
-    const card = TAROT_CARDS.find(c => c.no === r.card_id)
-    return { ...r, card_name: card?.nameZh || '未知', card_no: r.card_id, _followups: [] }
+    const cardNo = r.tarot_cards?.card_no
+    const card = typeof cardNo === 'number' ? TAROT_CARDS.find(c => c.no === cardNo) : null
+    return {
+      ...r,
+      card_name: card?.nameZh || r.tarot_cards?.name_zh || '未知',
+      card_no: cardNo ?? 0,
+      _followups: [],
+    }
   })
 }
 
@@ -628,13 +646,22 @@ function shareToWall() { shareCaption.value = ''; shareShowQ.value = false; show
 async function doShare() {
   if (!user.value || !pickedCard.value) return
   try {
+    const { data: profile } = await supabase.from('profiles')
+      .select('nickname').eq('id', user.value.id).maybeSingle()
+    const authorName = profile?.nickname || user.value.email?.split('@')[0] || '同学'
+
     const content = [
       `🔮 ${pickedCard.value.nameZh} ${isReversed.value ? '(逆位)' : '(正位)'}`,
       shareShowQ.value && question.value ? `💭 ${question.value}` : '',
       `🤖 ${readingText.value.slice(0, 120)}...`,
       shareCaption.value ? `💬 ${shareCaption.value}` : '',
     ].filter(Boolean).join('\n')
-    await supabase.from('posts').insert({ user_id: user.value.id, content, category: 'tarot' })
+    await supabase.from('posts').insert({
+      author_id: user.value.id,
+      author_name: authorName,
+      content,
+      category: 'tarot',
+    })
     showShareModal.value = false; showToast('已分享到校园墙 ✨')
   } catch { showToast('分享失败', 'error') }
 }

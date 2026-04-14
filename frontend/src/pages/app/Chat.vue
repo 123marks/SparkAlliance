@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="chat-layout" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <!-- 宇宙深空动态背景 -->
     <!-- 拖拽遮罩 -->
@@ -102,13 +102,23 @@
             <span class="pf-name">{{ f.name }}</span><button class="pf-x" @click="pendingFiles.splice(i,1)">×</button>
           </div>
         </div>
-        <div class="ibox" :class="{ focus: iFocus }">
+        <div v-if="isRec" class="voice-rec-bar">
+          <button class="voice-cancel" @click="cancelVoice" title="取消">✕</button>
+          <div class="voice-wave-wrap">
+            <canvas ref="waveCanvas" class="voice-wave" width="320" height="32"></canvas>
+            <span class="voice-dur">{{ recDuration }}s</span>
+          </div>
+          <button class="voice-done" @click="finishVoice" title="完成">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div v-else class="ibox" :class="{ focus: iFocus }">
           <div class="itools">
             <button class="itool" @click="fileInput?.click()" title="上传文件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
-            <button class="itool" :class="{ rec: isRec }" @click="toggleVoice" title="语音"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></button>
+            <button class="itool" @click="toggleVoice" title="语音"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></button>
           </div>
           <input ref="fileInput" type="file" multiple accept="*/*" @change="onFileInput" style="display:none">
-          <textarea ref="inputRef" v-model="inputText" :placeholder="isRec ? '🎙️ 正在听...' : '输入你的问题...'" rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste"></textarea>
+          <textarea ref="inputRef" v-model="inputText" placeholder="输入你的问题..." rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste"></textarea>
           <button v-if="isStreaming" class="send stop-mode" @click="stopGenerating" title="停止"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
           <button v-else class="send" :disabled="!inputText.trim() && !pendingFiles.length" @click="handleSend" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
         </div>
@@ -403,15 +413,103 @@ function onPaste(e:ClipboardEvent) {
   for (const item of Array.from(items)) { if(item.type.startsWith('image/')){e.preventDefault(); const file=item.getAsFile(); if(file) pendingFiles.value.push({ type:'image', name:`粘贴图片_${Date.now()}.png`, url:URL.createObjectURL(file), size:formatFileSize(file.size) })} }
 }
 
+const waveCanvas = ref<HTMLCanvasElement|null>(null)
+const recDuration = ref('0.0')
 let recognition: any = null
-function toggleVoice() {
-  if (isRec.value) { recognition?.stop(); isRec.value=false; return }
+let audioCtx: AudioContext | null = null
+let analyser: AnalyserNode | null = null
+let mediaStream: MediaStream | null = null
+let waveAnimId = 0
+let recStartTime = 0
+let recTimer: ReturnType<typeof setInterval> | null = null
+
+function drawWaveform() {
+  if (!analyser || !waveCanvas.value) return
+  const canvas = waveCanvas.value
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const bufLen = analyser.frequencyBinCount
+  const dataArr = new Uint8Array(bufLen)
+  analyser.getByteTimeDomainData(dataArr)
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.lineWidth = 1.5
+  ctx.strokeStyle = 'rgba(139,92,246,0.6)'
+  ctx.beginPath()
+  const sliceWidth = canvas.width / bufLen
+  let x = 0
+  for (let i = 0; i < bufLen; i++) {
+    const v = dataArr[i] / 128.0
+    const y = (v * canvas.height) / 2
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+    x += sliceWidth
+  }
+  ctx.lineTo(canvas.width, canvas.height / 2)
+  ctx.stroke()
+  waveAnimId = requestAnimationFrame(drawWaveform)
+}
+
+async function toggleVoice() {
+  if (isRec.value) { finishVoice(); return }
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) { alert('请用 Chrome/Edge'); return }
-  recognition = new SR(); recognition.lang='zh-CN'; recognition.continuous=true; recognition.interimResults=true
-  recognition.onresult = (e:any) => { let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; inputText.value=t }
-  recognition.onerror = () => { isRec.value=false }; recognition.onend = () => { isRec.value=false }
-  recognition.start(); isRec.value=true
+  if (!SR) { toast('请使用 Chrome 或 Edge 浏览器'); return }
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch {
+    toast('无法获取麦克风权限'); return
+  }
+
+  audioCtx = new AudioContext()
+  const source = audioCtx.createMediaStreamSource(mediaStream)
+  analyser = audioCtx.createAnalyser()
+  analyser.fftSize = 256
+  source.connect(analyser)
+
+  recognition = new SR()
+  recognition.lang = 'zh-CN'
+  recognition.continuous = true
+  recognition.interimResults = true
+  recognition.maxAlternatives = 3
+  recognition.onresult = (e: any) => {
+    let t = ''
+    for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript
+    inputText.value = t
+  }
+  recognition.onerror = () => { cleanupVoice() }
+  recognition.onend = () => { if (isRec.value) { try { recognition.start() } catch { cleanupVoice() } } }
+  recognition.start()
+
+  isRec.value = true
+  recStartTime = Date.now()
+  recDuration.value = '0.0'
+  recTimer = setInterval(() => {
+    recDuration.value = ((Date.now() - recStartTime) / 1000).toFixed(1)
+  }, 100)
+
+  nextTick(() => { drawWaveform() })
+}
+
+function finishVoice() {
+  recognition?.stop()
+  cleanupVoice()
+  if (inputText.value.trim()) handleSend()
+}
+
+function cancelVoice() {
+  recognition?.stop()
+  cleanupVoice()
+  inputText.value = ''
+}
+
+function cleanupVoice() {
+  isRec.value = false
+  cancelAnimationFrame(waveAnimId)
+  if (recTimer) { clearInterval(recTimer); recTimer = null }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
+  if (audioCtx) { audioCtx.close(); audioCtx = null }
+  analyser = null
 }
 
 function handleQuick(t: string) { inputText.value=t; handleSend() }
@@ -435,7 +533,7 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .drop-overlay { position:absolute; inset:0; z-index:100; background:rgba(139,92,246,.06); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; }
 .drop-box { text-align:center; padding:40px 60px; border:2px dashed rgba(139,92,246,.25); border-radius:20px; } .drop-icon { font-size:36px; margin-bottom:8px; } .drop-text { font-size:15px; font-weight:700; color:rgba(139,92,246,.7); } .drop-hint { font-size:11px; color:rgba(255,255,255,.2); margin-top:4px; }
 
-.chat-sidebar { width:250px; background:rgba(8,6,18,.98); border-right:1px solid rgba(255,255,255,.03); display:flex; flex-direction:column; flex-shrink:0; position:relative; z-index:1; }
+.chat-sidebar { width:250px; background:rgba(8,6,18,.92); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-right:1px solid rgba(255,255,255,.03); display:flex; flex-direction:column; flex-shrink:0; position:relative; z-index:1; }
 .sb-top { padding:10px; } .new-btn { width:100%; height:36px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.06); border-radius:8px; color:rgba(139,92,246,.5); font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:center; gap:4px; cursor:pointer; } .new-btn:hover { background:rgba(139,92,246,.08); }
 .sb-list { flex:1; overflow-y:auto; padding:0 4px 8px; } .sb-list::-webkit-scrollbar { width:2px; } .sb-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.03); }
 .sb-group { margin-bottom:4px; } .sb-label { font-size:9px; color:rgba(255,255,255,.1); padding:5px 8px 1px; font-weight:700; letter-spacing:1px; }
@@ -537,8 +635,16 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .ibox.focus { border-color:rgba(139,92,246,.1); box-shadow:0 0 0 2px rgba(139,92,246,.02); }
 .itools { display:flex; gap:1px; padding-bottom:3px; }
 .itool { width:30px; height:30px; border-radius:7px; border:none; background:none; color:rgba(255,255,255,.2); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; } .itool:hover { color:rgba(255,255,255,.35); background:rgba(255,255,255,.015); }
-.itool.rec { color:rgba(239,68,68,.5); animation:prec 1.5s infinite; }
-@keyframes prec { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} 50%{box-shadow:0 0 0 3px rgba(239,68,68,.04)} }
+/* 录音波形条 */
+.voice-rec-bar { display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(239,68,68,.04); border:1px solid rgba(239,68,68,.12); border-radius:14px; animation:recPulse 2s infinite; }
+@keyframes recPulse { 0%,100%{border-color:rgba(239,68,68,.12)} 50%{border-color:rgba(239,68,68,.25)} }
+.voice-cancel { width:30px; height:30px; border-radius:50%; border:none; background:rgba(239,68,68,.08); color:rgba(239,68,68,.5); cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; transition:all .15s; }
+.voice-cancel:hover { background:rgba(239,68,68,.15); color:rgba(239,68,68,.8); }
+.voice-wave-wrap { flex:1; display:flex; align-items:center; gap:8px; min-width:0; }
+.voice-wave { flex:1; height:32px; border-radius:6px; }
+.voice-dur { font-size:11px; color:rgba(239,68,68,.5); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.voice-done { width:32px; height:32px; border-radius:9px; border:none; background:linear-gradient(135deg,#8b5cf6,#6d28d9); color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; flex-shrink:0; }
+.voice-done:hover { transform:scale(1.05); box-shadow:0 3px 10px rgba(139,92,246,.15); }
 .ibox textarea { flex:1; background:none; border:none; color:white; font-family:inherit; font-size:13px; resize:none; padding:6px 3px; outline:none; max-height:180px; line-height:1.5; min-height:20px; }
 .ibox textarea::placeholder { color:rgba(255,255,255,.1); }
 .send { width:32px; height:32px; border-radius:9px; border:none; background:linear-gradient(135deg,#8b5cf6,#6d28d9); color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; flex-shrink:0; margin-bottom:1px; }

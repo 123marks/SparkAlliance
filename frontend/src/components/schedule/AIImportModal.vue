@@ -8,9 +8,10 @@
             <span class="ai-quota" v-if="quota !== null">
               今日剩余 {{ Math.max(0, quotaLimit - quota) }}/{{ quotaLimit }} 次
             </span>
-            <button class="ai-close" @click="handleClose">×</button>
+            <button class="ai-close" @click="handleClose">&times;</button>
           </div>
 
+          <!-- ======== Step 1: 上传 + 用户描述 ======== -->
           <div v-if="step === 'upload'" class="ai-upload-area">
             <div
               class="ai-dropzone"
@@ -42,8 +43,26 @@
                 <span class="ai-file-icon">{{ getFileIcon(file) }}</span>
                 <span class="ai-file-name">{{ file.name }}</span>
                 <span class="ai-file-size">{{ formatFileSize(file.size) }}</span>
-                <button class="ai-file-remove" @click="removeFile(index)">×</button>
+                <button class="ai-file-remove" @click="removeFile(index)">&times;</button>
               </div>
+            </div>
+
+            <!-- 用户描述/提示词区域 -->
+            <div v-if="selectedFiles.length" class="ai-prompt-section">
+              <div class="ai-prompt-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" /><path d="M12 8h.01" />
+                </svg>
+                <span>AI 提示词</span>
+                <span class="ai-prompt-optional">可选，帮助 AI 更精确</span>
+              </div>
+              <textarea
+                v-model="userPrompt"
+                class="ai-prompt-input"
+                rows="3"
+                placeholder="描述文件内容或补充信息，例如：&#10;• 这是大三下学期课表，周一到周五&#10;• 时间段是第1-2节 8:00-9:40，第3-4节 10:00-11:40&#10;• 地点在教学楼A"
+              ></textarea>
             </div>
 
             <button
@@ -52,35 +71,99 @@
               :disabled="isProcessing || quotaExceeded"
               @click="startRecognition"
             >
-              <template v-if="quotaExceeded">
-                今日次数已用完
-              </template>
+              <template v-if="quotaExceeded">今日次数已用完</template>
               <template v-else>
-                开始识别（{{ selectedFiles.length }} 个文件）
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z" />
+                  <path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z" />
+                </svg>
+                开始智能识别（{{ selectedFiles.length }} 个文件）
               </template>
             </button>
           </div>
 
+          <!-- ======== Step 2: 处理中 ======== -->
           <div v-else-if="step === 'processing'" class="ai-processing">
-            <div class="ai-proc-spinner"></div>
+            <div class="ai-proc-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="ai-ring-bg" cx="40" cy="40" r="34" />
+                <circle class="ai-ring-fg" cx="40" cy="40" r="34" :stroke-dashoffset="processRingOffset" />
+              </svg>
+              <span class="ai-ring-pct">{{ processPercent }}%</span>
+            </div>
             <p class="ai-proc-text">{{ processingText }}</p>
-            <p class="ai-proc-hint">CSV/ICS 会优先走结构化解析，其他文件再走 AI 识别。</p>
+            <p class="ai-proc-hint">CSV/ICS 优先走结构化解析，其余文件走 AI 识别</p>
           </div>
 
+          <!-- ======== Step 3: 确认 + AI 对话精炼 ======== -->
           <div v-else-if="step === 'confirm'" class="ai-confirm">
             <div class="ai-confirm-header">
-              <span>识别到 {{ recognizedEvents.length }} 个事件，按日期分组预览</span>
-              <label class="ai-select-all">
-                <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" />
-                全选
-              </label>
+              <span>识别到 {{ recognizedEvents.length }} 个事件</span>
+              <div class="ai-confirm-actions-top">
+                <button class="ai-refine-toggle" :class="{ active: showRefineChat }" @click="showRefineChat = !showRefineChat">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  AI 对话精炼
+                </button>
+                <label class="ai-select-all">
+                  <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" />
+                  全选
+                </label>
+              </div>
             </div>
 
             <div v-if="noticeMessage" class="ai-warning-note">{{ noticeMessage }}</div>
 
+            <!-- AI 对话精炼面板 -->
+            <Transition name="refine-slide">
+              <div v-if="showRefineChat" class="ai-refine-panel">
+                <div class="ai-refine-messages" ref="refineMessagesRef">
+                  <div class="ai-refine-msg ai-msg-system">
+                    <p>我已识别出 {{ recognizedEvents.length }} 个事件。你可以告诉我：</p>
+                    <ul>
+                      <li>补充缺失的时间、地点</li>
+                      <li>修改事件类型或标题</li>
+                      <li>合并或拆分事件</li>
+                      <li>添加遗漏的事件</li>
+                    </ul>
+                  </div>
+                  <div
+                    v-for="(msg, i) in refineMessages"
+                    :key="i"
+                    class="ai-refine-msg"
+                    :class="msg.role === 'user' ? 'ai-msg-user' : 'ai-msg-assistant'"
+                  >
+                    <p>{{ msg.content }}</p>
+                  </div>
+                  <div v-if="isRefining" class="ai-refine-msg ai-msg-assistant ai-msg-typing">
+                    <span class="ai-typing-dot"></span>
+                    <span class="ai-typing-dot"></span>
+                    <span class="ai-typing-dot"></span>
+                  </div>
+                </div>
+                <div class="ai-refine-input-row">
+                  <input
+                    v-model="refineInput"
+                    class="ai-refine-input"
+                    placeholder="告诉 AI 如何完善这些事件..."
+                    @keydown.enter.prevent="sendRefineMessage"
+                    :disabled="isRefining"
+                  />
+                  <button class="ai-refine-send" @click="sendRefineMessage" :disabled="!refineInput.trim() || isRefining">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </Transition>
+
+            <!-- 事件列表 -->
             <div class="ai-event-list">
               <template v-for="(group, dateKey) in groupedByDate" :key="dateKey">
-                <div class="ai-date-header">📅 {{ formatDateLabel(dateKey as string) }}（{{ group.length }} 项）</div>
+                <div class="ai-date-header">{{ formatDateLabel(dateKey as string) }}（{{ group.length }} 项）</div>
                 <div
                   v-for="evt in group"
                   :key="`${evt.title}-${evt.start_time}-${evt._gIdx}`"
@@ -91,7 +174,6 @@
                     <input type="checkbox" v-model="recognizedEvents[evt._gIdx].selected" />
                   </div>
                   <div class="ai-event-body">
-                    <!-- 编辑模式 -->
                     <template v-if="editingIndex === evt._gIdx">
                       <div class="ai-inline-edit">
                         <input v-model="recognizedEvents[evt._gIdx].title" class="ai-edit-input" placeholder="标题" />
@@ -103,13 +185,12 @@
                         </div>
                         <div class="ai-edit-row">
                           <input type="datetime-local" v-model="recognizedEvents[evt._gIdx].start_time" class="ai-edit-input" />
-                          <span class="ai-edit-sep">→</span>
+                          <span class="ai-edit-sep">&rarr;</span>
                           <input type="datetime-local" v-model="recognizedEvents[evt._gIdx].end_time" class="ai-edit-input" />
                         </div>
-                        <button class="ai-edit-done" @click="editingIndex = -1">✓ 完成编辑</button>
+                        <button class="ai-edit-done" @click="editingIndex = -1">&check; 完成编辑</button>
                       </div>
                     </template>
-                    <!-- 预览模式 -->
                     <template v-else>
                       <div class="ai-event-top">
                         <span class="ai-event-type" :style="{ background: `${getTypeColor(evt.event_type)}20`, color: getTypeColor(evt.event_type) }">
@@ -117,14 +198,14 @@
                         </span>
                         <span class="ai-event-title">{{ evt.title }}</span>
                         <span v-if="evt.recurrence_type === 'weekly'" class="ai-recurrence-tag">🔁 每周</span>
-                        <button class="ai-edit-btn" @click="editingIndex = evt._gIdx" title="编辑">✏️</button>
+                        <button class="ai-edit-btn" @click="editingIndex = evt._gIdx" title="编辑">&#9998;</button>
                       </div>
                       <div class="ai-event-meta">
                         <span>🕒 {{ formatEventTime(evt) }}</span>
                         <span v-if="evt.location">📍 {{ evt.location }}</span>
                       </div>
                       <div v-if="evt.confidence < 0.5 || !evt.start_time || !evt.end_time" class="ai-incomplete-warn">
-                        ⚠️ 信息不完整，请点击编辑补充时间等关键字段
+                        ⚠️ 信息不完整，点击编辑补充或使用 AI 对话精炼
                       </div>
                       <div class="ai-confidence">
                         <div class="ai-conf-bar">
@@ -147,16 +228,20 @@
             </div>
           </div>
 
+          <!-- ======== Step 4: 完成 ======== -->
           <div v-else-if="step === 'done'" class="ai-done">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <div class="ai-done-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            </div>
             <h4>导入成功</h4>
-            <p>已导入 {{ importedCount }} 个事件到日历</p>
+            <p>已导入 {{ importedCount }} 个事件到日历，其他模块已同步更新</p>
             <button class="ai-btn ai-btn-primary" @click="handleClose">完成</button>
           </div>
 
+          <!-- ======== Step 5: 错误 ======== -->
           <div v-else-if="step === 'error'" class="ai-error">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.5">
               <circle cx="12" cy="12" r="10" />
@@ -173,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { supabase } from '../../supabase'
 import { EVENT_TYPES, type EventFormData } from '../../composables/useSchedule'
 import { toLocalDateStr } from '../../composables/useCalendar'
@@ -214,6 +299,11 @@ interface RecognizedEvent {
   recurrence_end: string
 }
 
+interface RefineMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_FILES = 5
 
@@ -223,6 +313,7 @@ const selectedFiles = ref<File[]>([])
 const isDragover = ref(false)
 const isProcessing = ref(false)
 const processingText = ref('正在准备文件...')
+const processPercent = ref(0)
 const errorMessage = ref('')
 const noticeMessage = ref('')
 const quota = ref<number | null>(null)
@@ -231,6 +322,19 @@ const recognizedEvents = ref<RecognizedEvent[]>([])
 const selectAll = ref(true)
 const importedCount = ref(0)
 const editingIndex = ref(-1)
+const userPrompt = ref('')
+
+// AI 对话精炼相关
+const showRefineChat = ref(false)
+const refineMessages = ref<RefineMessage[]>([])
+const refineInput = ref('')
+const isRefining = ref(false)
+const refineMessagesRef = ref<HTMLElement | null>(null)
+
+const processRingOffset = computed(() => {
+  const circumference = 2 * Math.PI * 34
+  return circumference - (processPercent.value / 100) * circumference
+})
 
 interface GroupedEvent extends RecognizedEvent {
   _gIdx: number
@@ -243,7 +347,6 @@ const groupedByDate = computed(() => {
     if (!groups[dateKey]) groups[dateKey] = []
     groups[dateKey].push({ ...evt, _gIdx: idx })
   })
-  // 排序：有日期的在前，未定在后
   const sorted: Record<string, GroupedEvent[]> = {}
   Object.keys(groups).sort((a, b) => {
     if (a === '未定') return 1
@@ -254,10 +357,10 @@ const groupedByDate = computed(() => {
 })
 
 const formatDateLabel = (dateKey: string): string => {
-  if (dateKey === '未定') return '日期待定'
+  if (dateKey === '未定') return '📅 日期待定'
   const d = new Date(dateKey + 'T00:00:00')
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`
+  return `📅 ${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`
 }
 
 const quotaExceeded = computed(() => quota.value !== null && quota.value >= quotaLimit.value)
@@ -317,20 +420,10 @@ const uploadTempFile = async (file: File) => {
   const { error } = await supabase.storage
     .from('ai-temp')
     .upload(filePath, file, { contentType: file.type || undefined })
-
-  if (error) {
-    throw new Error(`文件上传失败: ${error.message}`)
-  }
-
+  if (error) throw new Error(`文件上传失败: ${error.message}`)
   const { data } = supabase.storage.from('ai-temp').getPublicUrl(filePath)
-  if (!data?.publicUrl) {
-    throw new Error('临时文件 URL 获取失败')
-  }
-
-  return {
-    filePath,
-    publicUrl: data.publicUrl,
-  }
+  if (!data?.publicUrl) throw new Error('临时文件 URL 获取失败')
+  return { filePath, publicUrl: data.publicUrl }
 }
 
 const removeTempFile = async (filePath: string | null) => {
@@ -345,6 +438,7 @@ const invokeRecognition = async (
     fileText?: string
     today: string
     semesterStart: string
+    userPrompt?: string
   },
 ) => {
   const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-schedule-import`, {
@@ -383,7 +477,6 @@ const normalizeStructuredEvents = (events: StructuredImportEvent[]): RecognizedE
 const normalizeEvents = (events: unknown[]): RecognizedEvent[] => {
   return events.map((event) => {
     const item = event as Record<string, unknown>
-    // 保留 AI 返回的重复规则
     const recurrence = (item.recurrence as string) || 'none'
     const recurrenceDays = Array.isArray(item.recurrence_days)
       ? (item.recurrence_days as number[])
@@ -413,24 +506,9 @@ const startRecognition = async () => {
   errorMessage.value = ''
   noticeMessage.value = ''
   recognizedEvents.value = []
-
-  const loadingTexts = [
-    '正在准备文件...',
-    'AI 正在分析内容...',
-    '正在提取时间和地点...',
-    '正在整理识别结果...',
-    '即将完成...',
-  ]
-
-  let timer: ReturnType<typeof setInterval> | null = null
+  processPercent.value = 0
 
   try {
-    let copyIndex = 0
-    timer = setInterval(() => {
-      copyIndex = Math.min(copyIndex + 1, loadingTexts.length - 1)
-      processingText.value = loadingTexts[copyIndex]
-    }, 3000)
-
     const { data: sessionData } = await supabase.auth.getSession()
     const token = sessionData.session?.access_token
     if (!token) throw new Error('请先登录')
@@ -439,26 +517,34 @@ const startRecognition = async () => {
     const semesterStart = props.semesterStart || '2026-02-23'
     const allRecognized: RecognizedEvent[] = []
     const warnings: string[] = []
+    const totalFiles = selectedFiles.value.length
 
     for (const [index, file] of selectedFiles.value.entries()) {
-      processingText.value = `正在处理 ${index + 1}/${selectedFiles.value.length}: ${file.name}`
+      const basePercent = (index / totalFiles) * 90
+      processPercent.value = Math.round(basePercent)
+      processingText.value = `正在处理 ${index + 1}/${totalFiles}: ${file.name}`
 
       const kind = detectImportFileKind(file)
       let tempFilePath: string | null = null
 
       try {
         if (kind === 'text') {
+          processPercent.value = Math.round(basePercent + 10)
           const fileText = await readImportFileText(file)
           const structuredEvents = await parseStructuredImportFile(file.name, fileText)
           if (structuredEvents.length > 0) {
             allRecognized.push(...normalizeStructuredEvents(structuredEvents))
+            processPercent.value = Math.round(basePercent + (90 / totalFiles))
             continue
           }
 
+          processingText.value = `AI 正在分析: ${file.name}`
+          processPercent.value = Math.round(basePercent + 30)
           const result = await invokeRecognition(token, {
             fileText,
             today,
             semesterStart,
+            userPrompt: userPrompt.value.trim() || undefined,
           })
 
           quota.value = typeof result.usage === 'number' ? result.usage : quota.value
@@ -475,12 +561,17 @@ const startRecognition = async () => {
         }
 
         if (kind === 'document') {
+          processingText.value = `正在提取文档内容: ${file.name}`
+          processPercent.value = Math.round(basePercent + 15)
           const extractedText = await extractDocumentText(file)
           if (extractedText.trim()) {
+            processingText.value = `AI 正在分析文档: ${file.name}`
+            processPercent.value = Math.round(basePercent + 40)
             const result = await invokeRecognition(token, {
               fileText: extractedText,
               today,
               semesterStart,
+              userPrompt: userPrompt.value.trim() || undefined,
             })
 
             quota.value = typeof result.usage === 'number' ? result.usage : quota.value
@@ -494,13 +585,18 @@ const startRecognition = async () => {
           }
         }
 
+        processingText.value = `正在上传: ${file.name}`
+        processPercent.value = Math.round(basePercent + 20)
         const upload = await uploadTempFile(file)
         tempFilePath = upload.filePath
 
+        processingText.value = `AI 正在识别图像: ${file.name}`
+        processPercent.value = Math.round(basePercent + 50)
         const result = await invokeRecognition(token, {
           imageUrl: upload.publicUrl,
           today,
           semesterStart,
+          userPrompt: userPrompt.value.trim() || undefined,
         })
 
         quota.value = typeof result.usage === 'number' ? result.usage : quota.value
@@ -520,6 +616,9 @@ const startRecognition = async () => {
       }
     }
 
+    processPercent.value = 95
+    processingText.value = '正在整理识别结果...'
+
     if (allRecognized.length === 0) {
       throw new Error(warnings[0] || '未能识别出任何事件，请尝试更清晰的文件')
     }
@@ -529,22 +628,111 @@ const startRecognition = async () => {
       warnings.push(`已自动合并 ${allRecognized.length - dedupedEvents.length} 条重复事件`)
     }
 
-    // 内容安全过滤
     const { events: safeEvents, totalWarnings: safetyWarnings } = sanitizeImportedEvents(dedupedEvents)
     if (safetyWarnings.length > 0) {
       warnings.push(...safetyWarnings)
     }
 
+    processPercent.value = 100
     recognizedEvents.value = safeEvents
     selectAll.value = true
     noticeMessage.value = warnings.join('；')
+
+    // 如果有低置信度事件，自动展开 AI 对话精炼
+    const hasLowConfidence = safeEvents.some(e => e.confidence < 0.7 || !e.start_time || !e.end_time)
+    showRefineChat.value = hasLowConfidence
+    refineMessages.value = []
+
     step.value = 'confirm'
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '识别过程出错'
     step.value = 'error'
   } finally {
-    if (timer) clearInterval(timer)
     isProcessing.value = false
+  }
+}
+
+/** AI 对话精炼：用户发消息让 AI 修正识别结果 */
+const sendRefineMessage = async () => {
+  const msg = refineInput.value.trim()
+  if (!msg || isRefining.value) return
+
+  refineMessages.value.push({ role: 'user', content: msg })
+  refineInput.value = ''
+  isRefining.value = true
+
+  await nextTick()
+  scrollRefineToBottom()
+
+  try {
+    const eventsContext = recognizedEvents.value.map((e, i) => (
+      `[${i + 1}] ${e.title} | 类型:${e.event_type} | 时间:${e.start_time || '未定'}~${e.end_time || '未定'} | 地点:${e.location || '未定'} | 置信度:${Math.round(e.confidence * 100)}%`
+    )).join('\n')
+
+    const systemPrompt = `你是智能日程助手。用户通过 AI 识别得到了以下事件列表：
+${eventsContext}
+
+用户现在要求你修改这些事件。请严格按 JSON 格式返回修改后的**完整事件列表**。
+格式：{"events":[{"title":"...","start_time":"YYYY-MM-DDTHH:mm","end_time":"YYYY-MM-DDTHH:mm","event_type":"course|exam|task|life|reminder|holiday","location":"...","confidence":0.95,"description":"..."}],"reply":"你对用户说的话"}
+只返回 JSON，不要返回其他内容。今天是 ${toLocalDateStr(new Date())}。`
+
+    const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || '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'
+    const conversationHistory = refineMessages.value.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+
+    const res = await fetch('/api/nvidia/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+      body: JSON.stringify({
+        model: 'moonshotai/kimi-k2.5',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...conversationHistory,
+        ],
+        temperature: 0.3,
+        max_tokens: 4096,
+      }),
+    })
+
+    if (!res.ok) throw new Error('AI 服务响应异常')
+
+    const data = await res.json()
+    const aiContent = data.choices?.[0]?.message?.content || ''
+
+    // 尝试解析 JSON 返回
+    const jsonMatch = aiContent.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0])
+        if (Array.isArray(parsed.events) && parsed.events.length > 0) {
+          recognizedEvents.value = normalizeEvents(parsed.events)
+          selectAll.value = true
+        }
+        const reply = parsed.reply || '已根据你的要求更新了事件列表。'
+        refineMessages.value.push({ role: 'assistant', content: reply })
+      } catch {
+        refineMessages.value.push({ role: 'assistant', content: aiContent.slice(0, 500) })
+      }
+    } else {
+      refineMessages.value.push({ role: 'assistant', content: aiContent.slice(0, 500) })
+    }
+  } catch (err) {
+    refineMessages.value.push({
+      role: 'assistant',
+      content: `抱歉，精炼请求失败：${err instanceof Error ? err.message : '未知错误'}。你可以手动点击编辑按钮修改事件。`,
+    })
+  } finally {
+    isRefining.value = false
+    await nextTick()
+    scrollRefineToBottom()
+  }
+}
+
+const scrollRefineToBottom = () => {
+  if (refineMessagesRef.value) {
+    refineMessagesRef.value.scrollTop = refineMessagesRef.value.scrollHeight
   }
 }
 
@@ -574,6 +762,11 @@ const confirmImport = () => {
   importedCount.value = formEvents.length
   emit('imported', formEvents)
   step.value = 'done'
+
+  // 广播导入完成事件，触发其他模块同步
+  window.dispatchEvent(new CustomEvent('schedule-import-sync', {
+    detail: { count: formEvents.length, events: formEvents },
+  }))
 }
 
 const getTypeColor = (type: string) => EVENT_TYPES[type as keyof typeof EVENT_TYPES]?.color || '#4f8ef7'
@@ -596,11 +789,17 @@ const resetState = () => {
   selectedFiles.value = []
   recognizedEvents.value = []
   processingText.value = '正在准备文件...'
+  processPercent.value = 0
   errorMessage.value = ''
   noticeMessage.value = ''
   importedCount.value = 0
   selectAll.value = true
   isDragover.value = false
+  userPrompt.value = ''
+  showRefineChat.value = false
+  refineMessages.value = []
+  refineInput.value = ''
+  isRefining.value = false
 }
 
 const handleClose = () => {
@@ -618,7 +817,7 @@ const handleClose = () => {
 }
 
 .ai-modal {
-  width: 560px; max-height: 85vh; overflow-y: auto;
+  width: 620px; max-height: 88vh; overflow-y: auto;
   background: rgba(20,20,30,0.95);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px; padding: 24px;
@@ -643,6 +842,7 @@ const handleClose = () => {
 }
 .ai-close:hover { color: white; }
 
+/* ===== Upload Area ===== */
 .ai-dropzone {
   border: 2px dashed rgba(255,255,255,0.1);
   border-radius: 14px; padding: 40px 20px;
@@ -672,52 +872,188 @@ const handleClose = () => {
 }
 .ai-file-remove:hover { color: #f87171; }
 
+/* ===== 用户提示词区域 ===== */
+.ai-prompt-section {
+  margin-top: 14px; padding: 14px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.06), rgba(79,142,247,0.04));
+  border: 1px solid rgba(139,92,246,0.12);
+  border-radius: 12px;
+}
+.ai-prompt-header {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px; font-size: 13px; font-weight: 600;
+  color: rgba(255,255,255,0.7);
+}
+.ai-prompt-header svg { color: #a78bfa; }
+.ai-prompt-optional { font-weight: 400; font-size: 11px; color: rgba(255,255,255,0.3); margin-left: auto; }
+.ai-prompt-input {
+  width: 100%; resize: none;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 10px 12px;
+  color: white; font-size: 13px; line-height: 1.5;
+  font-family: inherit; outline: none;
+}
+.ai-prompt-input::placeholder { color: rgba(255,255,255,0.25); }
+.ai-prompt-input:focus { border-color: rgba(139,92,246,0.3); }
+
 .ai-start-btn {
   width: 100%; margin-top: 16px; padding: 12px;
   background: linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple, #8b5cf6));
   border: none; border-radius: 12px;
   color: white; font-size: 14px; font-weight: 600;
   cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .ai-start-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
 .ai-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ===== Processing Ring ===== */
 .ai-processing {
   display: flex; flex-direction: column; align-items: center;
-  gap: 16px; padding: 60px 0;
+  gap: 16px; padding: 40px 0;
 }
-.ai-proc-spinner {
-  width: 40px; height: 40px; border-radius: 50%;
-  border: 3px solid rgba(255,255,255,0.1);
-  border-top-color: var(--color-brand-blue);
-  animation: ai-spin 0.8s linear infinite;
+.ai-proc-ring {
+  position: relative; width: 80px; height: 80px;
 }
-@keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-proc-ring svg { width: 100%; height: 100%; }
+.ai-ring-bg {
+  fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 6;
+}
+.ai-ring-fg {
+  fill: none; stroke: var(--color-brand-blue, #4f8ef7); stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 213.63;
+  transform: rotate(-90deg); transform-origin: center;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.ai-ring-pct {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: white;
+}
 .ai-proc-text { font-size: 15px; color: white; font-weight: 500; }
 .ai-proc-hint { font-size: 12px; color: rgba(255,255,255,0.35); text-align: center; }
 
+/* ===== Confirm Area ===== */
 .ai-confirm-header {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 12px; font-size: 14px; color: rgba(255,255,255,0.6);
 }
+.ai-confirm-actions-top { display: flex; gap: 12px; align-items: center; }
 .ai-select-all {
   display: flex; align-items: center; gap: 6px;
   font-size: 13px; color: rgba(255,255,255,0.5); cursor: pointer;
 }
 .ai-select-all input { accent-color: var(--color-brand-blue); }
 
-.ai-warning-note {
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  font-size: 12px;
+.ai-refine-toggle {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 8px;
+  background: rgba(139,92,246,0.08);
+  border: 1px solid rgba(139,92,246,0.15);
+  color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+}
+.ai-refine-toggle:hover, .ai-refine-toggle.active {
+  background: rgba(139,92,246,0.15);
+  border-color: rgba(139,92,246,0.3);
+  color: #c4b5fd;
 }
 
+.ai-warning-note {
+  margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24; font-size: 12px;
+}
+
+/* ===== AI 对话精炼面板 ===== */
+.ai-refine-panel {
+  margin-bottom: 14px; padding: 12px;
+  background: rgba(139,92,246,0.04);
+  border: 1px solid rgba(139,92,246,0.12);
+  border-radius: 12px;
+}
+.ai-refine-messages {
+  max-height: 200px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 10px; padding-right: 4px;
+  scrollbar-width: thin;
+}
+.ai-refine-messages::-webkit-scrollbar { width: 3px; }
+.ai-refine-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.ai-refine-msg {
+  padding: 10px 12px; border-radius: 10px;
+  font-size: 13px; line-height: 1.5;
+}
+.ai-refine-msg p { margin: 0; }
+.ai-refine-msg ul { margin: 6px 0 0; padding-left: 18px; }
+.ai-refine-msg li { margin-bottom: 2px; }
+.ai-msg-system {
+  background: rgba(139,92,246,0.08);
+  color: rgba(255,255,255,0.65);
+  border: 1px solid rgba(139,92,246,0.1);
+}
+.ai-msg-user {
+  background: rgba(79,142,247,0.12);
+  color: rgba(255,255,255,0.85);
+  align-self: flex-end; max-width: 85%;
+  border: 1px solid rgba(79,142,247,0.15);
+}
+.ai-msg-assistant {
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.75);
+  align-self: flex-start; max-width: 85%;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.ai-msg-typing {
+  display: flex; gap: 6px; padding: 14px 16px;
+}
+.ai-typing-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.35);
+  animation: ai-dot-bounce 1.2s infinite;
+}
+.ai-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.ai-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ai-dot-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
+
+.ai-refine-input-row {
+  display: flex; gap: 8px;
+}
+.ai-refine-input {
+  flex: 1; padding: 9px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white; font-size: 13px; outline: none;
+  font-family: inherit;
+}
+.ai-refine-input::placeholder { color: rgba(255,255,255,0.25); }
+.ai-refine-input:focus { border-color: rgba(139,92,246,0.3); }
+.ai-refine-send {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(139,92,246,0.15); border: none;
+  color: #c4b5fd; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.ai-refine-send:hover:not(:disabled) { background: rgba(139,92,246,0.25); color: white; }
+.ai-refine-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.refine-slide-enter-active { transition: all 0.3s ease; }
+.refine-slide-leave-active { transition: all 0.2s ease; }
+.refine-slide-enter-from, .refine-slide-leave-to {
+  opacity: 0; max-height: 0; margin-bottom: 0; padding: 0; overflow: hidden;
+}
+
+/* ===== Event List ===== */
 .ai-event-list {
-  max-height: 400px; overflow-y: auto;
+  max-height: 360px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 8px;
   scrollbar-width: thin;
 }
@@ -777,9 +1113,7 @@ const handleClose = () => {
 }
 .ai-edit-btn:hover { opacity: 1; }
 
-.ai-inline-edit {
-  display: flex; flex-direction: column; gap: 8px;
-}
+.ai-inline-edit { display: flex; flex-direction: column; gap: 8px; }
 .ai-edit-input {
   width: 100%; background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
@@ -807,9 +1141,15 @@ const handleClose = () => {
   color: #fbbf24; font-size: 11px;
 }
 
+/* ===== Done & Error ===== */
 .ai-done, .ai-error {
   display: flex; flex-direction: column; align-items: center;
   gap: 12px; padding: 40px 0; text-align: center;
+}
+.ai-done-icon {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: rgba(16,185,129,0.08);
+  display: flex; align-items: center; justify-content: center;
 }
 .ai-done h4 { font-size: 18px; color: #10b981; margin: 0; }
 .ai-done p, .ai-error p { font-size: 14px; color: rgba(255,255,255,0.6); margin: 0; }

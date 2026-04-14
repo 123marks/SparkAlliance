@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="cp-layout">
     <Transition name="toast"><div v-if="toast.show" class="cp-toast">{{ toast.msg }}</div></Transition>
 
@@ -47,10 +47,10 @@
         <h2 class="cp-logo">💬 伴侣</h2>
         <div class="cp-sb-actions">
           <button @click="showSearchModal=true" class="cp-sb-btn" title="搜索">🔍</button>
-          <button @click="showAddMenu=!showAddMenu" class="cp-sb-btn" title="添加">➕</button>
+          <button @click.stop="showAddMenu=!showAddMenu" class="cp-sb-btn" title="添加">➕</button>
         </div>
         <Transition name="fade">
-          <div v-if="showAddMenu" class="cp-add-menu">
+          <div v-if="showAddMenu" class="cp-add-menu" @click.stop>
             <button @click="showAddFriendModal=true;showAddMenu=false">👤 添加好友</button>
             <button @click="showCreateModal=true;showAddMenu=false">👥 创建群聊</button>
             <button @click="showQRModal=true;showAddMenu=false">📱 扫码/名片</button>

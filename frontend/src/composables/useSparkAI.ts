@@ -39,10 +39,10 @@ const SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 平台的智能
 
 export type ModelMode = 'default' | 'thinking' | 'fast'
 
-export const MODEL_OPTIONS: Record<ModelMode, { id: string; label: string; desc: string; icon: string; maxTokens: number }> = {
-  default: { id: 'moonshotai/kimi-k2.5', label: '均衡', desc: 'Kimi K2.5 · 全能均衡', icon: '⚡', maxTokens: 4096 },
-  thinking: { id: 'z-ai/glm5', label: '深度思考', desc: 'GLM5 · 推理增强', icon: '🧠', maxTokens: 8192 },
-  fast: { id: 'minimaxai/minimax-m2.5', label: '极速', desc: 'MiniMax M2.5 · 快速回复', icon: '🚀', maxTokens: 2048 },
+export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallback: string; label: string; desc: string; icon: string; maxTokens: number }> = {
+  default: { id: 'deepseek-ai/deepseek-r1', fallback: 'meta/llama3-70b', label: '均衡', desc: 'DeepSeek R1 · 全能均衡', icon: '⚡', maxTokens: 4096 },
+  thinking: { id: 'z-ai/glm-5', fallback: 'deepseek-ai/deepseek-r1', label: '深度思考', desc: 'GLM-5 · 推理增强', icon: '🧠', maxTokens: 8192 },
+  fast: { id: 'minimaxai/minimax-m2.7', fallback: 'minimaxai/minimax-m2.5', label: '极速', desc: 'MiniMax M2.7 · 快速回复', icon: '🚀', maxTokens: 2048 },
 }
 
 export const ABILITY_TOOLS = [
@@ -269,26 +269,36 @@ export function useSparkAI() {
         ...contextMessages,
       ]
 
-      const res = await fetch(`${BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
-        body: JSON.stringify({
-          model: modelConfig.id, messages: apiMessages, stream: true,
-          temperature: currentModel.value === 'thinking' ? 0.6 : 0.7,
-          top_p: 0.9, max_tokens: modelConfig.maxTokens,
-        }),
-        signal: abortController.value.signal,
-      })
+      async function tryFetch(modelId: string): Promise<Response> {
+        return fetch(`${BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+          body: JSON.stringify({
+            model: modelId, messages: apiMessages, stream: true,
+            temperature: currentModel.value === 'thinking' ? 0.6 : 0.7,
+            top_p: 0.9, max_tokens: modelConfig.maxTokens,
+          }),
+          signal: abortController.value!.signal,
+        })
+      }
 
+      let res = await tryFetch(modelConfig.id)
       console.log('[SparkAI] 请求模型:', modelConfig.id, '状态:', res.status)
+
+      if (!res.ok && (res.status === 404 || res.status === 502 || res.status === 503) && modelConfig.fallback) {
+        console.warn('[SparkAI] 主模型不可用，尝试回退:', modelConfig.fallback)
+        res = await tryFetch(modelConfig.fallback)
+        console.log('[SparkAI] 回退模型:', modelConfig.fallback, '状态:', res.status)
+      }
+
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         console.error('[SparkAI] API错误:', res.status, body)
-        if (res.status === 401) throw new Error('API Key 无效')
-        if (res.status === 429) throw new Error('请求频率过高，稍后再试')
-        if (res.status === 404) throw new Error(`模型 ${modelConfig.id} 不存在，请切换其他模式`)
-        if (res.status === 502 || res.status === 503) throw new Error('当前模型服务不可用，请切换')
-        throw new Error(`请求失败 (${res.status}): ${body.slice(0, 200)}`)
+        if (res.status === 401) throw new Error('API Key 无效或过期，请检查配置')
+        if (res.status === 429) throw new Error('请求频率过高，请稍后再试')
+        if (res.status === 404) throw new Error('当前模型暂不可用，请切换其他模式重试')
+        if (res.status === 502 || res.status === 503) throw new Error('AI 服务暂时不可用，请稍后重试')
+        throw new Error(`请求失败 (${res.status})，请稍后重试`)
       }
 
       clearTimeout(timeout)
@@ -367,9 +377,14 @@ export function useSparkAI() {
       clearTimeout(timeout)
       flushSmooth()
 
-      const message = err instanceof Error
-        ? (err.name === 'AbortError' ? (error.value || '已停止生成') : err.message)
-        : '未知错误'
+      let message: string
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') message = error.value || '已停止生成'
+        else if (err instanceof TypeError && err.message.includes('fetch')) message = '网络连接失败，请检查网络后重试'
+        else message = err.message
+      } else {
+        message = '未知错误，请重试'
+      }
       console.error('[SparkAI] 错误:', message, err)
 
       if (!error.value) error.value = message

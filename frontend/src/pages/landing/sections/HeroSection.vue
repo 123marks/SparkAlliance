@@ -128,7 +128,7 @@ import HeroSocialProof from './components/HeroSocialProof.vue'
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   width: 60vw; height: 60vh;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(10, 10, 15, 0) 70%);
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.06) 0%, rgba(10, 10, 15, 0) 70%);
   z-index: 2;
   pointer-events: none;
 }

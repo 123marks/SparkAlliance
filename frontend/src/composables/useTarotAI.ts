@@ -9,28 +9,21 @@
  */
 import { ref } from 'vue'
 import { TAROT_CARDS, type TarotCard } from '../data/tarotCards'
+import { requestAssistantChat } from '../utils/assistantApi'
 
-// 小米 MiMO API Key（开发阶段，上线后移到后端）
-const MIMO_KEY = 'sk-ciutc0oltih4fzkbanhm38fortsbgznjtngrlf3ovqt8bjcs'
-
-// ====== 通用 AI 调用 ======
-async function callMiMO(prompt: string, maxTokens = 512): Promise<string> {
-  const res = await fetch('/api/mimo/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MIMO_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'MiMo-7B-RL',
+// ====== 通用 AI 调用（通过统一 assistant-chat 接口）======
+async function callTarotAI(prompt: string): Promise<string> {
+  try {
+    const res = await requestAssistantChat({
+      assistant: 'spark',
+      mode: 'fast',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    }),
-  })
-  if (!res.ok) throw new Error(`MiMO (${res.status})`)
-  const data = await res.json()
-  return (data.choices?.[0]?.message?.content || '').trim()
+    })
+    return (res.content || '').trim()
+  } catch (e: any) {
+    console.warn('AI 服务调用失败:', e?.message)
+    throw e
+  }
 }
 
 // ====== 问题拆分 ======
@@ -58,7 +51,7 @@ export async function analyzeQuestion(question: string): Promise<QuestionBreakdo
 其中 options 仅在问题包含"还是""或者"等选择时提取，否则为空数组。`
 
   try {
-    const raw = await callMiMO(prompt, 256)
+    const raw = await callTarotAI(prompt)
     const m = raw.match(/\{[\s\S]*\}/)
     if (m) return JSON.parse(m[0]) as QuestionBreakdown
   } catch (e) {
@@ -168,7 +161,7 @@ ${optionsHint}
 5. 最后加：（仅供娱乐参考 ✨）`
 
   try {
-    return await callMiMO(prompt)
+    return await callTarotAI(prompt)
   } catch (e) {
     console.warn('AI解读失败:', e)
     return localReading(card, isReversed, question, options)
@@ -195,7 +188,7 @@ export async function generateDailyGuidance(card: TarotCard, isReversed: boolean
 5. 结尾用一句话总结今日能量关键词`
 
   try {
-    return await callMiMO(prompt, 300)
+    return await callTarotAI(prompt)
   } catch (e) {
     console.warn('今日指引AI失败:', e)
     return `${period}好！${card.nameZh}以${orient}带来今日指引——${meaning} 在校园里，${card.campusContext}。今天的能量关键词是「${card.keywords[0]}」，不妨${period === '清晨' || period === '上午' ? '用一杯温水开启这一天' : period === '夜晚' || period === '深夜' ? '在睡前写下三个小确幸' : '给自己一个十分钟的放空时间'}。✨（仅供参考）`
@@ -214,7 +207,7 @@ export async function askFollowUp(
 请基于之前的牌面和解读，给出 100-150 字的补充解答。语气温暖，贴近大学生。`
 
   try {
-    return await callMiMO(prompt, 256)
+    return await callTarotAI(prompt)
   } catch (e) {
     return `关于你的追问——回到${cardName}的能量场景中，它想告诉你的核心信息没有变：保持开放的心态，一步一步来。每个选择都没有绝对的对错，重要的是你在做选择时的内心状态。✨（仅供参考）`
   }

@@ -50,10 +50,9 @@ const initParticles = (canvas: HTMLCanvasElement) => {
   particles = [];
   stars = [];
   
-  // 1. Initialize Network Particles (less dense to give stars space)
-  const particleCount = Math.floor((canvas.width * canvas.height) / 15000); 
+  const particleCount = Math.floor((canvas.width * canvas.height) / 45000);
   for (let i = 0; i < particleCount; i++) {
-    const size = Math.random() * 2 + 1;
+    const size = Math.random() * 1.2 + 0.4;
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
     const density = Math.random() * 30 + 1;
@@ -64,13 +63,12 @@ const initParticles = (canvas: HTMLCanvasElement) => {
     });
   }
 
-  // 2. Initialize Twinkling Stars
-  const starCount = Math.floor((canvas.width * canvas.height) / 4000); // Increased density
+  const starCount = Math.floor((canvas.width * canvas.height) / 25000);
   for (let i = 0; i < starCount; i++) {
-    const size = Math.random() * 1.5 + 0.5;
+    const size = Math.random() * 0.8 + 0.2;
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
-    const twinkleSpeed = Math.random() * 0.05 + 0.01; // Faster twinkle
+    const twinkleSpeed = Math.random() * 0.015 + 0.003;
     const phase = Math.random() * Math.PI * 2;
     const color = starColors[Math.floor(Math.random() * starColors.length)];
 
@@ -87,24 +85,21 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
   for (let i = 0; i < stars.length; i++) {
     let s = stars[i];
     s.phase += s.twinkleSpeed;
-    // Opacity pulses between 0.0 and 1
-    const alpha = Math.abs(Math.sin(s.phase));
-    const isGlowing = alpha > 0.85;
+    const alpha = Math.abs(Math.sin(s.phase)) * 0.35;
+    const isGlowing = alpha > 0.28;
     
-    // Very subtle slow drift for stars
-    s.y -= 0.15;
+    s.y -= 0.06;
     if (s.y < 0) {
       s.y = canvas.height;
       s.x = Math.random() * canvas.width;
     }
 
     ctx.beginPath();
-    ctx.arc(s.x, s.y, isGlowing ? s.size * 1.8 : s.size, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, isGlowing ? s.size * 1.2 : s.size, 0, Math.PI * 2);
     ctx.fillStyle = s.color;
     ctx.globalAlpha = alpha;
     
-    // Glowing effect
-    ctx.shadowBlur = isGlowing ? 20 : 5;
+    ctx.shadowBlur = isGlowing ? 4 : 1;
     ctx.shadowColor = s.color;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -157,11 +152,12 @@ const animate = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     ctx.closePath();
     ctx.fillStyle = p.color;
     
-    // Draw with soft glow
-    ctx.shadowBlur = 12;
+    ctx.globalAlpha = 0.5;
+    ctx.shadowBlur = 3;
     ctx.shadowColor = p.color;
     ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
   }
   
   // Draw connecting lines based on proximity
@@ -182,7 +178,7 @@ const connectParticles = (ctx: CanvasRenderingContext2D) => {
       
       if (distance < maxDistance) {
         opacityValue = 1 - (distance / maxDistance);
-        ctx.strokeStyle = `rgba(255, 255, 255, ${opacityValue * 0.12})`;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${opacityValue * 0.05})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(particles[a].x, particles[a].y);
