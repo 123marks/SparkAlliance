@@ -53,20 +53,20 @@ const meteorColors = ['#60a5fa', '#a78bfa', '#f87171']
 function init() {
   dusts = []; meteors = []; asteroids = []
 
-  // 星尘 — 数量大幅减少，稀疏分布
-  const dustCount = Math.floor((w * h) / 25000) // 1920x1080 ≈ 83颗
+  // 星尘 — 极度稀疏，隐约可见
+  const dustCount = Math.floor((w * h) / 55000) // 1920x1080 ≈ 38颗
   for (let i = 0; i < dustCount; i++) {
     dusts.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.0 + 0.3, // 更小的星星 0.3~1.3px
-      alpha: Math.random() * 0.15, phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.001 + 0.0005, // 极极慢闪烁
+      size: Math.random() * 0.8 + 0.2, // 极小 0.2~1.0px
+      alpha: Math.random() * 0.08, phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.0005 + 0.0002, // 几乎不闪
       color: dustColors[Math.floor(Math.random() * dustColors.length)]
     })
   }
 
-  // 陨石 — 更小更少，低调漂移
-  const astCount = Math.min(Math.floor((w * h) / 200000), 6) // 最多6个
+  // 陨石 — 极少，几乎不可见
+  const astCount = Math.min(Math.floor((w * h) / 500000), 3) // 最多3个
   for (let i = 0; i < astCount; i++) {
     asteroids.push({
       x: Math.random() * w, y: Math.random() * h,
@@ -254,12 +254,12 @@ onBeforeUnmount(() => {
   width: 100vw; height: 100vh;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.5; /* v7.4: 单颗星亮度降低，整体opacity恢复正常 */
+  opacity: 0.25; /* v7.5: 极柔和背景 */
   animation: cosmicFadeIn 3s ease-out;
 }
 
 @keyframes cosmicFadeIn {
   from { opacity: 0; }
-  to { opacity: 0.5; }
+  to { opacity: 0.25; }
 }
 </style>
