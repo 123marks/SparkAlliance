@@ -4,10 +4,26 @@
 
       <!-- Feed 顶栏 -->
       <div class="feed-header">
-        <h1 class="page-title">校园墙</h1>
+        <h1 class="page-title">星火墙</h1>
         <div class="tabs">
           <button v-for="tab in tabList" :key="tab" class="tab" :class="{ active: activeTab === tab }" @click="switchTab(tab)">{{ tab }}</button>
         </div>
+      </div>
+
+      <!-- 星火墙数据概览 -->
+      <div v-if="!isLoading && posts.length > 0" class="wall-stats-bar">
+        <div class="ws-item"><span class="ws-num">{{ wallStats.totalPosts }}</span><span class="ws-label">全部</span></div>
+        <div class="ws-item"><span class="ws-num">{{ wallStats.todayPosts }}</span><span class="ws-label">今日</span></div>
+        <div class="ws-item"><span class="ws-num">{{ wallStats.totalLikes }}</span><span class="ws-label">点赞</span></div>
+        <div class="ws-item"><span class="ws-num">{{ wallStats.totalComments }}</span><span class="ws-label">评论</span></div>
+      </div>
+
+      <!-- 热门标签 -->
+      <div v-if="!isLoading && trendingTags.length > 0" class="wall-trending">
+        <span class="wt-label">🔥 热门</span>
+        <button v-for="t in trendingTags.slice(0, 8)" :key="t.tag" class="wt-tag" @click="activeTab='推荐'">
+          #{{ t.tag }} <span class="wt-count">{{ t.count }}</span>
+        </button>
       </div>
 
       <!-- 骨架屏加载 -->
@@ -504,7 +520,7 @@ const avatarInitial = computed(() => {
 })
 
 // ====== Tab 筛选 ======
-const tabList = ['推荐', '最新', '关注', '热议表白']
+const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白']
 const activeTab = ref('推荐')
 
 const switchTab = (tab: string) => {
@@ -824,12 +840,58 @@ onBeforeUnmount(() => {
 })
 
 // ====== 发布权限 ======
-const canPost = computed(() => activeTab.value === '推荐' || activeTab.value === '最新')
+const canPost = computed(() => ['推荐', '最新', '本校', '同城'].includes(activeTab.value))
+
+// ====== 用户学校/地区信息（从 useCompanion 获取） ======
+const mySchool = computed(() => {
+  const meta = user.value?.user_metadata
+  return meta?.university || meta?.school || ''
+})
+const myRegion = computed(() => {
+  const meta = user.value?.user_metadata
+  return meta?.region || meta?.city || ''
+})
+
+// ====== 热门标签统计 ======
+const trendingTags = computed(() => {
+  const tagCount: Record<string, number> = {}
+  for (const p of posts.value) {
+    for (const t of p.tags) {
+      tagCount[t] = (tagCount[t] || 0) + 1
+    }
+  }
+  return Object.entries(tagCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([tag, count]) => ({ tag, count }))
+})
+
+// ====== 帖子统计 ======
+const wallStats = computed(() => ({
+  totalPosts: posts.value.length,
+  todayPosts: posts.value.filter(p => {
+    const d = new Date(p.createdAt)
+    const now = new Date()
+    return d.toDateString() === now.toDateString()
+  }).length,
+  totalLikes: posts.value.reduce((s, p) => s + p.likes, 0),
+  totalComments: posts.value.reduce((s, p) => s + p.comments, 0),
+}))
 
 // ====== Tab 筛选逻辑 ======
 const filteredPosts = computed(() => {
   switch (activeTab.value) {
     case '最新':
+      return [...posts.value].sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    case '本校':
+      // TODO: 后端添加 school 字段后匹配，当前展示全部
+      return [...posts.value].sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    case '同城':
+      // TODO: 后端添加 region 字段后匹配，当前展示全部
       return [...posts.value].sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )
@@ -841,12 +903,10 @@ const filteredPosts = computed(() => {
       return posts.value.filter(p => followingIds.value.has(p.authorId))
     case '推荐':
     default:
-      // 按热度排序（点赞×2 + 评论×3，越高越前）
       return [...posts.value].sort((a, b) => {
         const heatA = a.likes * 2 + a.comments * 3
         const heatB = b.likes * 2 + b.comments * 3
         if (heatB !== heatA) return heatB - heatA
-        // 热度相同按时间新性排
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       })
   }
@@ -2202,5 +2262,45 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
 }
 .text-muted {
   opacity: 0.5; text-decoration: line-through;
+}
+
+/* ====== 星火墙数据概览 ====== */
+.wall-stats-bar {
+  display: flex; gap: 16px; padding: 10px 16px; margin: 0 auto 10px;
+  max-width: 640px; border-radius: 12px;
+  background: rgba(139,92,246,0.03); border: 1px solid rgba(139,92,246,0.06);
+}
+.ws-item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1;
+}
+.ws-num {
+  font-size: 16px; font-weight: 700; color: rgba(139,92,246,0.6);
+  font-variant-numeric: tabular-nums;
+}
+.ws-label {
+  font-size: 9px; color: rgba(255,255,255,0.2); letter-spacing: 0.5px;
+}
+
+/* ====== 热门标签 ====== */
+.wall-trending {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 16px; margin: 0 auto 12px; max-width: 640px;
+}
+.wt-label {
+  font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 600;
+  white-space: nowrap;
+}
+.wt-tag {
+  padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(139,92,246,0.08);
+  background: rgba(139,92,246,0.03); color: rgba(139,92,246,0.5);
+  font-size: 10px; cursor: pointer; transition: all 0.12s;
+  white-space: nowrap;
+}
+.wt-tag:hover {
+  background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.15);
+  color: rgba(139,92,246,0.7);
+}
+.wt-count {
+  font-size: 9px; color: rgba(255,255,255,0.15); margin-left: 2px;
 }
 </style>
