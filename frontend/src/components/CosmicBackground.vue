@@ -4,8 +4,8 @@
 
 <script setup lang="ts">
 /**
- * CosmicBackground — 宇宙深空背景 v10.0
- * 超高密度星尘(5层) + 十字星芒 + 星云光晕 + 高频流星 + 脉冲星 + 微粒漂浮
+ * CosmicBackground — 深邃星空 v11
+ * 自然深空：柔和星尘 + 缓慢闪烁 + 偶尔流星 + 远景行星 + 淡雅星云
  */
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
@@ -16,384 +16,281 @@ const props = withDefaults(defineProps<{
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let animationId: number
 let w = 0, h = 0
-let frameCount = 0
 
-interface StarDust {
+interface Star {
   x: number; y: number; size: number
-  alpha: number; phase: number; speed: number
-  color: string; layer: 'dust' | 'far' | 'mid' | 'near' | 'bright'
-  twinkleSpeed: number
+  baseAlpha: number; phase: number
+  twinkleSpeed: number; color: string
+  layer: 'dim' | 'normal' | 'bright'
 }
 
 interface Meteor {
-  x: number; y: number
-  length: number; speed: number
-  angle: number; alpha: number
-  color: string; life: number; maxLife: number
-  width: number
-  particles: { x: number; y: number; alpha: number; size: number; vx: number; vy: number }[]
+  x: number; y: number; length: number; speed: number
+  angle: number; alpha: number; color: string
+  life: number; maxLife: number; width: number
+  trail: { x: number; y: number; a: number }[]
 }
 
 interface Nebula {
   x: number; y: number; radius: number
   color: string; alpha: number
   driftX: number; driftY: number
-  pulsePhase: number; pulseSpeed: number
 }
 
-interface PulseStar {
-  x: number; y: number; baseSize: number
-  phase: number; speed: number; color: string
-  maxRing: number
+interface Planet {
+  x: number; y: number; radius: number
+  color: string; glowColor: string; alpha: number
+  ringRadius?: number; ringAlpha?: number
 }
 
-let dusts: StarDust[] = []
+let stars: Star[] = []
 let meteors: Meteor[] = []
 let nebulae: Nebula[] = []
-let pulseStars: PulseStar[] = []
+let planets: Planet[] = []
 
-const dustColors = ['#ffffff', '#bae6fd', '#fef08a', '#c4b5fd', '#fbcfe8', '#a5f3fc', '#d4d4d8', '#e2e8f0', '#fde68a', '#ddd6fe']
-const meteorColors = ['#60a5fa', '#a78bfa', '#f87171', '#fbbf24', '#34d399', '#f472b6', '#818cf8', '#fb923c']
-const nebulaColors = [
-  'rgba(139,92,246,0.035)', 'rgba(59,130,246,0.03)',
-  'rgba(236,72,153,0.025)', 'rgba(20,184,166,0.02)',
-  'rgba(251,191,36,0.018)', 'rgba(99,102,241,0.03)',
-  'rgba(244,114,182,0.02)', 'rgba(52,211,153,0.018)'
-]
+const starColors = ['#ffffff', '#c8d6e5', '#dfe6e9', '#a5b8cc', '#e8d5b7', '#b8c5d6']
+const meteorColors = ['#8ab4f8', '#a78bfa', '#fbbf24', '#34d399']
 
 function init() {
-  dusts = []; meteors = []; nebulae = []; pulseStars = []
+  stars = []; meteors = []; nebulae = []; planets = []
   const area = w * h
 
-  const dustCount = Math.floor(area / 400)
-  for (let i = 0; i < dustCount; i++) {
-    dusts.push({
+  const dimCount = Math.floor(area / 2000)
+  for (let i = 0; i < dimCount; i++) {
+    stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 0.8 + 0.3,
-      alpha: Math.random() * 0.35 + 0.1,
+      size: Math.random() * 0.6 + 0.2,
+      baseAlpha: Math.random() * 0.12 + 0.04,
       phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.003 + 0.001,
-      twinkleSpeed: Math.random() * 0.8 + 0.3,
-      color: dustColors[Math.floor(Math.random() * dustColors.length)],
-      layer: 'dust'
+      twinkleSpeed: Math.random() * 0.3 + 0.1,
+      color: starColors[Math.floor(Math.random() * starColors.length)],
+      layer: 'dim'
     })
   }
 
-  const farCount = Math.floor(area / 600)
-  for (let i = 0; i < farCount; i++) {
-    dusts.push({
+  const normalCount = Math.floor(area / 5000)
+  for (let i = 0; i < normalCount; i++) {
+    stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.4 + 0.6,
-      alpha: Math.random() * 0.5 + 0.2,
+      size: Math.random() * 1.0 + 0.5,
+      baseAlpha: Math.random() * 0.2 + 0.1,
       phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.004 + 0.0015,
-      twinkleSpeed: Math.random() * 1.0 + 0.4,
-      color: dustColors[Math.floor(Math.random() * dustColors.length)],
-      layer: 'far'
+      twinkleSpeed: Math.random() * 0.5 + 0.2,
+      color: starColors[Math.floor(Math.random() * starColors.length)],
+      layer: 'normal'
     })
   }
 
-  const midCount = Math.floor(area / 1800)
-  for (let i = 0; i < midCount; i++) {
-    dusts.push({
-      x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 2.0 + 1.0,
-      alpha: Math.random() * 0.6 + 0.3,
-      phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.006 + 0.003,
-      twinkleSpeed: Math.random() * 1.4 + 0.6,
-      color: dustColors[Math.floor(Math.random() * dustColors.length)],
-      layer: 'mid'
-    })
-  }
-
-  const nearCount = Math.floor(area / 6000) + 35
-  for (let i = 0; i < nearCount; i++) {
-    dusts.push({
-      x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 2.5 + 1.6,
-      alpha: Math.random() * 0.6 + 0.4,
-      phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.008 + 0.003,
-      twinkleSpeed: Math.random() * 1.8 + 0.7,
-      color: dustColors[Math.floor(Math.random() * dustColors.length)],
-      layer: 'near'
-    })
-  }
-
-  const brightCount = Math.floor(area / 20000) + 25
+  const brightCount = Math.floor(area / 30000) + 8
   for (let i = 0; i < brightCount; i++) {
-    dusts.push({
+    stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 3.2 + 2.2,
-      alpha: Math.random() * 0.65 + 0.5,
+      size: Math.random() * 1.5 + 1.0,
+      baseAlpha: Math.random() * 0.25 + 0.2,
       phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.008 + 0.004,
-      twinkleSpeed: Math.random() * 1.8 + 0.8,
-      color: dustColors[Math.floor(Math.random() * 4)],
+      twinkleSpeed: Math.random() * 0.8 + 0.3,
+      color: starColors[Math.floor(Math.random() * 3)],
       layer: 'bright'
     })
   }
 
-  const nebCount = Math.min(Math.floor(area / 50000) + 12, 24)
+  const nebCount = Math.min(Math.floor(area / 120000) + 3, 6)
   for (let i = 0; i < nebCount; i++) {
     nebulae.push({
       x: Math.random() * w, y: Math.random() * h,
-      radius: Math.random() * 600 + 250,
-      color: nebulaColors[Math.floor(Math.random() * nebulaColors.length)],
-      alpha: Math.random() * 0.1 + 0.04,
-      driftX: (Math.random() - 0.5) * 0.15,
-      driftY: (Math.random() - 0.5) * 0.1,
-      pulsePhase: Math.random() * Math.PI * 2,
-      pulseSpeed: Math.random() * 0.003 + 0.001
+      radius: Math.random() * 400 + 200,
+      color: ['rgba(80,60,160,', 'rgba(40,70,140,', 'rgba(100,50,120,', 'rgba(30,80,100,'][Math.floor(Math.random() * 4)],
+      alpha: Math.random() * 0.015 + 0.005,
+      driftX: (Math.random() - 0.5) * 0.04,
+      driftY: (Math.random() - 0.5) * 0.03
     })
   }
 
-  const pulseCount = Math.floor(area / 100000) + 5
-  for (let i = 0; i < pulseCount; i++) {
-    pulseStars.push({
-      x: Math.random() * w, y: Math.random() * h,
-      baseSize: Math.random() * 2.5 + 1.5,
-      phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.015 + 0.008,
-      color: dustColors[Math.floor(Math.random() * 4)],
-      maxRing: Math.random() * 25 + 15
+  const planetColors = [
+    { color: '#3a2520', glow: 'rgba(180,100,60,0.06)' },
+    { color: '#1a2a3a', glow: 'rgba(80,120,180,0.05)' },
+    { color: '#2a1a2a', glow: 'rgba(140,80,160,0.04)' },
+  ]
+  const pCount = Math.floor(Math.random() * 2) + 1
+  for (let i = 0; i < pCount; i++) {
+    const pc = planetColors[Math.floor(Math.random() * planetColors.length)]
+    const hasRing = Math.random() > 0.6
+    planets.push({
+      x: Math.random() * w * 0.8 + w * 0.1,
+      y: Math.random() * h * 0.5 + h * 0.1,
+      radius: Math.random() * 20 + 10,
+      color: pc.color, glowColor: pc.glow,
+      alpha: Math.random() * 0.12 + 0.06,
+      ringRadius: hasRing ? Math.random() * 12 + 8 : undefined,
+      ringAlpha: hasRing ? 0.04 : undefined,
     })
   }
-
-  for (let i = 0; i < 5; i++) spawnMeteor()
 }
 
-function drawCrossSpike(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, alpha: number, color: string) {
-  ctx.save()
-  ctx.globalAlpha = alpha * 0.7
-  ctx.strokeStyle = color
-  ctx.lineWidth = 1.0
-  const len = size * 6
+function drawStar(ctx: CanvasRenderingContext2D, s: Star, time: number) {
+  const twinkle = Math.sin(s.phase + time * s.twinkleSpeed) * 0.5 + 0.5
+  const a = s.baseAlpha * (0.4 + twinkle * 0.6)
+
+  ctx.globalAlpha = a
+  ctx.fillStyle = s.color
   ctx.beginPath()
-  ctx.moveTo(x - len, y); ctx.lineTo(x + len, y)
-  ctx.moveTo(x, y - len); ctx.lineTo(x, y + len)
-  ctx.stroke()
-  ctx.globalAlpha = alpha * 0.3
-  ctx.lineWidth = 0.6
-  const dLen = len * 0.65
-  ctx.beginPath()
-  ctx.moveTo(x - dLen, y - dLen); ctx.lineTo(x + dLen, y + dLen)
-  ctx.moveTo(x + dLen, y - dLen); ctx.lineTo(x - dLen, y + dLen)
-  ctx.stroke()
-  ctx.restore()
+  ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
+  ctx.fill()
+
+  if (s.layer === 'bright' && twinkle > 0.6) {
+    ctx.globalAlpha = a * 0.15
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.globalAlpha = a * 0.35
+    ctx.strokeStyle = s.color
+    ctx.lineWidth = 0.4
+    const len = s.size * 3
+    ctx.beginPath()
+    ctx.moveTo(s.x - len, s.y); ctx.lineTo(s.x + len, s.y)
+    ctx.moveTo(s.x, s.y - len); ctx.lineTo(s.x, s.y + len)
+    ctx.stroke()
+  }
+
+  if (s.layer === 'normal' && twinkle > 0.75) {
+    ctx.globalAlpha = a * 0.1
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, s.size * 2.5, 0, Math.PI * 2)
+    ctx.fill()
+  }
 }
 
 function drawMeteor(ctx: CanvasRenderingContext2D, m: Meteor) {
+  const lifeRatio = 1 - Math.abs(m.life / m.maxLife - 0.4) * 2.5
+  const effectiveAlpha = Math.max(0, m.alpha * Math.min(1, lifeRatio)) * 0.7
+
   const tailX = m.x - Math.cos(m.angle) * m.length
   const tailY = m.y - Math.sin(m.angle) * m.length
   const grad = ctx.createLinearGradient(tailX, tailY, m.x, m.y)
   grad.addColorStop(0, 'transparent')
-  grad.addColorStop(0.5, m.color + '40')
-  grad.addColorStop(0.8, m.color)
+  grad.addColorStop(0.7, m.color)
   grad.addColorStop(1, '#ffffff')
+
   ctx.save()
-  const lifeRatio = 1 - Math.abs(m.life / m.maxLife - 0.5) * 2
-  ctx.globalAlpha = m.alpha * lifeRatio * 0.9
+  ctx.globalAlpha = effectiveAlpha
+  ctx.strokeStyle = grad
+  ctx.lineWidth = m.width
+  ctx.shadowBlur = 6
+  ctx.shadowColor = m.color
   ctx.beginPath()
   ctx.moveTo(tailX, tailY)
   ctx.lineTo(m.x, m.y)
-  ctx.strokeStyle = grad
-  ctx.lineWidth = m.width
-  ctx.shadowBlur = 15
-  ctx.shadowColor = m.color
   ctx.stroke()
 
-  ctx.shadowBlur = 8
-  ctx.beginPath()
-  ctx.arc(m.x, m.y, m.width + 1, 0, Math.PI * 2)
+  ctx.shadowBlur = 3
+  ctx.globalAlpha = effectiveAlpha * 1.2
   ctx.fillStyle = '#ffffff'
-  ctx.globalAlpha = m.alpha * lifeRatio
+  ctx.beginPath()
+  ctx.arc(m.x, m.y, m.width * 0.8, 0, Math.PI * 2)
   ctx.fill()
 
   ctx.shadowBlur = 0
-  for (const p of m.particles) {
-    p.alpha *= 0.92
-    p.x += p.vx
-    p.y += p.vy
-    p.vx *= 0.98
-    p.vy *= 0.98
-    if (p.alpha > 0.02) {
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+  for (const t of m.trail) {
+    t.a *= 0.93
+    if (t.a > 0.01) {
+      ctx.globalAlpha = t.a * effectiveAlpha * 0.5
       ctx.fillStyle = m.color
-      ctx.globalAlpha = p.alpha * lifeRatio
+      ctx.beginPath()
+      ctx.arc(t.x + (Math.random() - 0.5) * 0.5, t.y + (Math.random() - 0.5) * 0.5, 0.6, 0, Math.PI * 2)
       ctx.fill()
     }
   }
-  ctx.globalAlpha = 1
   ctx.restore()
 }
 
-function drawPulseStar(ctx: CanvasRenderingContext2D, ps: PulseStar) {
-  ps.phase += ps.speed
-  const pulse = Math.sin(ps.phase) * 0.5 + 0.5
-  const coreAlpha = 0.6 + pulse * 0.4
-
+function drawPlanet(ctx: CanvasRenderingContext2D, p: Planet) {
   ctx.save()
-  ctx.globalAlpha = coreAlpha
-  ctx.fillStyle = ps.color
+  ctx.globalAlpha = p.alpha
+  const grad = ctx.createRadialGradient(
+    p.x - p.radius * 0.3, p.y - p.radius * 0.3, 0,
+    p.x, p.y, p.radius
+  )
+  grad.addColorStop(0, p.color.replace(')', ',0.8)').replace('#', 'rgba(').replace(/rgba\(([0-9a-f]{6})/i, (_, hex) => {
+    const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16)
+    return `rgba(${r},${g},${b}`
+  }))
+  grad.addColorStop(1, 'transparent')
+
+  ctx.fillStyle = p.glowColor
   ctx.beginPath()
-  ctx.arc(ps.x, ps.y, ps.baseSize, 0, Math.PI * 2)
+  ctx.arc(p.x, p.y, p.radius * 2.5, 0, Math.PI * 2)
   ctx.fill()
 
-  const ringRadius = ps.baseSize + pulse * ps.maxRing
-  ctx.globalAlpha = (1 - pulse) * 0.15
-  ctx.strokeStyle = ps.color
-  ctx.lineWidth = 1.2
+  ctx.globalAlpha = p.alpha * 1.5
+  ctx.fillStyle = p.color
   ctx.beginPath()
-  ctx.arc(ps.x, ps.y, ringRadius, 0, Math.PI * 2)
-  ctx.stroke()
-
-  ctx.globalAlpha = coreAlpha * 0.25
-  ctx.fillStyle = ps.color
-  ctx.beginPath()
-  ctx.arc(ps.x, ps.y, ps.baseSize * 4, 0, Math.PI * 2)
+  ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)
   ctx.fill()
 
-  drawCrossSpike(ctx, ps.x, ps.y, ps.baseSize * 0.8, coreAlpha * 0.6, ps.color)
+  if (p.ringRadius && p.ringAlpha) {
+    ctx.globalAlpha = p.ringAlpha
+    ctx.strokeStyle = 'rgba(200,200,220,0.15)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.ellipse(p.x, p.y, p.radius + p.ringRadius, (p.radius + p.ringRadius) * 0.35, Math.PI * 0.15, 0, Math.PI * 2)
+    ctx.stroke()
+  }
   ctx.restore()
 }
 
 function spawnMeteor() {
-  const angle = Math.PI * 0.1 + Math.random() * 0.5
+  const angle = Math.PI * 0.12 + Math.random() * 0.35
   meteors.push({
-    x: Math.random() * w * 1.1 - w * 0.05,
-    y: Math.random() * h * 0.6 - h * 0.1,
-    length: Math.random() * 220 + 100,
-    speed: Math.random() * 11 + 5,
-    angle, alpha: Math.random() * 0.7 + 0.5,
+    x: Math.random() * w * 0.9, y: Math.random() * h * 0.4,
+    length: Math.random() * 120 + 60, speed: Math.random() * 6 + 3,
+    angle, alpha: Math.random() * 0.4 + 0.3,
     color: meteorColors[Math.floor(Math.random() * meteorColors.length)],
-    life: 0, maxLife: Math.random() * 90 + 50,
-    width: Math.random() * 2.5 + 1.5,
-    particles: []
+    life: 0, maxLife: Math.random() * 60 + 35,
+    width: Math.random() * 1.2 + 0.6, trail: []
   })
 }
 
+let time = 0
 function animate(ctx: CanvasRenderingContext2D) {
   ctx.clearRect(0, 0, w, h)
-  frameCount++
+  time += 0.016
 
   for (const n of nebulae) {
-    n.x += n.driftX
-    n.y += n.driftY
-    n.pulsePhase += n.pulseSpeed
+    n.x += n.driftX; n.y += n.driftY
     if (n.x < -n.radius) n.x = w + n.radius
     if (n.x > w + n.radius) n.x = -n.radius
     if (n.y < -n.radius) n.y = h + n.radius
     if (n.y > h + n.radius) n.y = -n.radius
-    const pulseFactor = Math.sin(n.pulsePhase) * 0.3 + 1
-    const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius * pulseFactor)
-    grad.addColorStop(0, n.color)
-    grad.addColorStop(0.7, n.color.replace(/[\d.]+\)$/, (m) => `${parseFloat(m) * 0.3})`))
+    const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius)
+    grad.addColorStop(0, n.color + n.alpha + ')')
     grad.addColorStop(1, 'transparent')
-    ctx.globalAlpha = n.alpha * (0.8 + Math.sin(n.pulsePhase) * 0.2)
+    ctx.globalAlpha = 1
     ctx.fillStyle = grad
-    const r = n.radius * pulseFactor
-    ctx.fillRect(n.x - r, n.y - r, r * 2, r * 2)
-    ctx.globalAlpha = 1
+    ctx.fillRect(n.x - n.radius, n.y - n.radius, n.radius * 2, n.radius * 2)
   }
 
-  for (const d of dusts) {
-    d.phase += d.speed
-    const sineVal = Math.sin(d.phase * d.twinkleSpeed) * 0.5 + 0.5
+  for (const p of planets) drawPlanet(ctx, p)
+  for (const s of stars) drawStar(ctx, s, time)
 
-    let a: number
-    let driftSpeed: number
-    switch (d.layer) {
-      case 'dust':
-        a = sineVal * 0.2 + 0.08
-        driftSpeed = 0.015
-        break
-      case 'far':
-        a = sineVal * 0.45 + 0.2
-        driftSpeed = 0.04
-        break
-      case 'mid':
-        a = sineVal * 0.55 + 0.3
-        driftSpeed = 0.07
-        break
-      case 'near':
-        a = sineVal * 0.6 + 0.4
-        driftSpeed = 0.1
-        break
-      case 'bright':
-        a = sineVal * 0.5 + 0.55
-        driftSpeed = 0.04
-        break
-    }
-
-    d.y -= driftSpeed
-    d.x += Math.sin(d.phase * 0.4) * 0.03
-    if (d.y < -5) { d.y = h + 5; d.x = Math.random() * w }
-
-    ctx.beginPath()
-    ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2)
-    ctx.fillStyle = d.color
-    ctx.globalAlpha = a
-    ctx.fill()
-
-    if ((d.layer === 'mid' && sineVal > 0.4) || d.layer === 'near') {
-      ctx.beginPath()
-      ctx.arc(d.x, d.y, d.size * 4, 0, Math.PI * 2)
-      ctx.fillStyle = d.color
-      ctx.globalAlpha = a * 0.2
-      ctx.fill()
-    }
-
-    if (d.layer === 'bright') {
-      ctx.beginPath()
-      ctx.arc(d.x, d.y, d.size * 6, 0, Math.PI * 2)
-      ctx.fillStyle = d.color
-      ctx.globalAlpha = a * 0.22
-      ctx.fill()
-      drawCrossSpike(ctx, d.x, d.y, d.size, a, d.color)
-    }
-
-    if (d.layer === 'near' && sineVal > 0.6) {
-      drawCrossSpike(ctx, d.x, d.y, d.size * 0.7, a * 0.55, d.color)
-    }
-
-    ctx.globalAlpha = 1
-  }
-
-  for (const ps of pulseStars) {
-    drawPulseStar(ctx, ps)
-  }
-
-  if (Math.random() < 0.05) spawnMeteor()
-  if (Math.random() < 0.012) { spawnMeteor(); spawnMeteor() }
-  if (Math.random() < 0.003) { spawnMeteor(); spawnMeteor(); spawnMeteor() }
+  if (Math.random() < 0.003) spawnMeteor()
 
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]
     m.x += Math.cos(m.angle) * m.speed
     m.y += Math.sin(m.angle) * m.speed
     m.life++
-    if (m.life % 1 === 0) {
-      const spread = Math.random() * 2 - 1
-      m.particles.push({
-        x: m.x - Math.cos(m.angle) * Math.random() * 15,
-        y: m.y - Math.sin(m.angle) * Math.random() * 15,
-        alpha: 0.5 + Math.random() * 0.4,
-        size: Math.random() * 1.5 + 0.4,
-        vx: (Math.random() - 0.5) * 1.2 + spread * 0.3,
-        vy: (Math.random() - 0.5) * 1.2
-      })
+    if (m.life % 3 === 0) {
+      m.trail.push({ x: m.x, y: m.y, a: 0.3 })
     }
-    m.particles = m.particles.filter(p => p.alpha > 0.02)
-    if (m.life >= m.maxLife || m.x > w + 80 || m.y > h + 80) {
-      meteors.splice(i, 1)
-      continue
+    m.trail = m.trail.filter(t => t.a > 0.01)
+    if (m.life >= m.maxLife || m.x > w + 50 || m.y > h + 50) {
+      meteors.splice(i, 1); continue
     }
     drawMeteor(ctx, m)
   }
 
+  ctx.globalAlpha = 1
   animationId = requestAnimationFrame(() => animate(ctx))
 }
 
@@ -410,21 +307,14 @@ onMounted(() => {
   if (!ctx) return
   w = canvasRef.value.width = window.innerWidth
   h = canvasRef.value.height = window.innerHeight
-
-  if (props.enabled) {
-    init()
-    animate(ctx)
-  }
-
+  if (props.enabled) { init(); animate(ctx) }
   window.addEventListener('resize', handleResize)
-
   watch(() => props.enabled, (enabled) => {
     if (enabled) {
       if (!canvasRef.value) return
       const c = canvasRef.value.getContext('2d')
       if (!c) return
-      init()
-      animate(c)
+      init(); animate(c)
     } else {
       cancelAnimationFrame(animationId)
       if (canvasRef.value) {
@@ -449,7 +339,7 @@ onBeforeUnmount(() => {
   z-index: 0;
   pointer-events: none;
   opacity: 1;
-  animation: cosmicFadeIn 2s ease-out;
+  animation: cosmicFadeIn 2.5s ease-out;
 }
 
 @keyframes cosmicFadeIn {
