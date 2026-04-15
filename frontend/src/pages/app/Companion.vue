@@ -520,34 +520,41 @@
       <div v-if="sideTab==='moments'" class="cp-moments-dual" :class="{'is-dragging':isDraggingDivider}">
         <!-- 左栏：我的专区（置顶+个人信息） -->
         <div class="cp-ml" :style="{width: momentLeftWidth+'%', minWidth:'220px'}">
-          <!-- 背景图区域 -->
-          <div class="cp-ml-bg">
-            <div v-if="customBgUrl" class="cp-ml-bg-img" :style="{backgroundImage:'url('+customBgUrl+')'}"></div>
+          <!-- 背景区域 -->
+          <div class="cp-ml-bg" @click="toggleBgVideo">
+            <video v-if="customBgType==='video'&&customBgUrl" ref="bgVideoRef" :src="customBgUrl" class="cp-ml-bg-video" loop playsinline preload="metadata" @click.stop="toggleBgVideo"></video>
+            <div v-if="customBgType==='video'&&customBgUrl&&!bgVideoPlaying" class="cp-ml-bg-play-hint">▶ 点击播放</div>
+            <div v-else-if="customBgUrl" class="cp-ml-bg-img" :style="{backgroundImage:'url('+customBgUrl+')'}"></div>
             <div v-else class="cp-ml-bg-default" :class="'preset-'+bgPresetIdx"></div>
             <div class="cp-ml-bg-overlay"></div>
-            <div class="cp-ml-bg-actions">
-              <button class="cp-ml-bg-btn" @click.stop="showBgSettings=!showBgSettings" title="背景设置">📷</button>
+            <div class="cp-ml-bg-actions" @click.stop>
+              <button class="cp-ml-bg-btn" @click.stop="bgFileInput?.click()" title="上传背景图片/视频">📷</button>
+              <button class="cp-ml-bg-btn" @click.stop="showBgSettings=!showBgSettings" title="背景预设">🎨</button>
+              <button v-if="customBgUrl" class="cp-ml-bg-btn" @click.stop="confirmResetBg" title="恢复默认">↩</button>
             </div>
-            <input ref="bgFileInput" type="file" accept="image/*" @change="onBgFileSelect" style="display:none">
-            <!-- 背景设置浮层 -->
+            <input ref="bgFileInput" type="file" accept="image/*,video/mp4,video/webm" @change="onBgFileSelect" style="display:none">
+            <!-- 背景预设浮层 -->
             <Transition name="fade">
               <div v-if="showBgSettings" class="cp-bg-panel" @click.stop>
-                <h4>背景设置</h4>
+                <h4>背景预设</h4>
                 <div class="cp-bg-presets">
                   <div v-for="(p,i) in bgPresets" :key="i" class="cp-bg-preset" :class="['preset-'+i, {active:!customBgUrl&&bgPresetIdx===i}]" @click="selectBgPreset(i)" :title="p.name"></div>
-                </div>
-                <div class="cp-bg-btns">
-                  <button class="cp-bg-btn-upload" @click="bgFileInput?.click()">上传图片</button>
-                  <button v-if="customBgUrl" class="cp-bg-btn-reset" @click="resetBg">恢复默认</button>
                 </div>
               </div>
             </Transition>
           </div>
           <!-- 用户信息卡片（半浮在背景上） -->
           <div class="cp-ml-profile">
-            <SparkAvatar :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="lg" clickable @click="showSelfProfile" />
+            <div class="cp-ml-avatar-wrap">
+              <SparkAvatar :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="lg" clickable @click="showSelfProfile" />
+              <span v-if="currentStatus" class="cp-status-dot" :title="currentStatus.label">{{ currentStatus.emoji }}</span>
+            </div>
             <div class="cp-ml-pinfo">
               <b>{{ myProfile?.nickname || '未设置昵称' }}</b>
+              <div v-if="currentStatus" class="cp-status-display" @click.stop="showStatusPicker=true">
+                <span>{{ currentStatus.emoji }} {{ currentStatus.label }}</span>
+              </div>
+              <button v-else class="cp-status-set-btn" @click.stop="showStatusPicker=true">设置状态</button>
               <div v-if="editingBio" class="cp-bio-edit" @click.stop>
                 <input v-model="bioEditInput" class="cp-bio-input" placeholder="写一句个性签名..." maxlength="60" @keydown.enter="saveBio" @keydown.escape="editingBio=false" @blur="saveBio" ref="bioInputRef">
                 <span class="cp-bio-count">{{ bioEditInput.length }}/60</span>
@@ -611,10 +618,48 @@
         <div class="cp-mr">
           <div class="cp-mr-header">
             <h3 class="cp-mr-title">星火域</h3>
+            <button class="cp-interact-btn" :class="{active:showInteractPanel}" @click="showInteractPanel=!showInteractPanel" title="全部互动">
+              🔔 <span v-if="interactionCount>0" class="cp-interact-dot">{{ interactionCount>99?'99+':interactionCount }}</span>
+            </button>
             <button class="cp-publish-btn-sm" @click="showPublishModal=true">✨ 发布</button>
             <SparkAvatar :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable @click="showSelfProfile" />
           </div>
-          <div v-for="m in allMoments" :key="m.id" class="cp-feed-card" :class="{'is-pinned':m.is_pinned}">
+          <!-- 全部互动面板 -->
+          <Transition name="fade">
+            <div v-if="showInteractPanel" class="cp-interact-panel">
+              <div class="cp-interact-hdr">
+                <h4>全部互动</h4>
+                <button @click="showInteractPanel=false">✕</button>
+              </div>
+              <div v-if="!interactionList.length" class="cp-interact-empty">暂无互动消息</div>
+              <div v-for="(it,idx) in interactionList" :key="idx" class="cp-interact-item" @click="expandedComments[it.momentId]=true;showInteractPanel=false">
+                <span class="cp-interact-icon">{{ it.type==='like'?'❤️':'💬' }}</span>
+                <div class="cp-interact-body">
+                  <b>{{ it.userName }}</b>
+                  <span>{{ it.type==='like'?'赞了你的动态':'评论了你的动态' }}</span>
+                  <p v-if="it.content" class="cp-interact-preview">{{ it.content }}</p>
+                </div>
+                <small>{{ it.momentPreview }}</small>
+              </div>
+            </div>
+          </Transition>
+          <!-- 置顶横栏 -->
+          <div v-if="pinnedMoments.length" class="cp-pinned-bar">
+            <div class="cp-pinned-scroll">
+              <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="handlePinnedClick(m.author_id)">
+                <div class="cp-pinned-thumb-wrap">
+                  <img v-if="m.media_urls?.[0] && !isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" />
+                  <div v-else class="cp-pinned-thumb-placeholder">📌</div>
+                  <SparkAvatar class="cp-pinned-avatar" :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="xs" />
+                </div>
+                <div class="cp-pinned-body">
+                  <b>{{ resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name }}</b>
+                  <p>{{ m.content?.slice(0, 36) || '查看动态' }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-for="m in feedMoments" :key="m.id" class="cp-feed-card">
             <div class="cp-feed-head">
               <SparkAvatar :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="sm" />
               <div class="cp-feed-info">
@@ -632,8 +677,20 @@
               </div>
             </div>
             <p class="cp-feed-text">{{ m.content }}</p>
+            <div v-if="m.tags?.length" class="cp-feed-tags">
+              <span v-for="(tag,ti) in m.tags" :key="ti" class="cp-feed-tag">#{{ tag }}</span>
+            </div>
             <div v-if="m.media_urls?.length" class="cp-feed-media">
-              <img v-for="(url,idx) in m.media_urls.slice(0,9)" :key="idx" :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
+              <template v-for="(url,idx) in m.media_urls.slice(0,9)" :key="idx">
+                <div v-if="isMomentVideoUrl(url)" class="cp-feed-video-wrap" @click="toggleFeedVideo($event)">
+                  <video :src="url" class="cp-feed-video" preload="metadata" playsinline :poster="url+'#t=0.5'"></video>
+                  <div class="cp-feed-video-play">▶</div>
+                </div>
+                <img v-else :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
+              </template>
+            </div>
+            <div class="cp-feed-footer-info">
+              <span v-if="m.region" class="cp-feed-region">📍{{ m.region }}</span>
             </div>
             <div class="cp-feed-acts">
               <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
@@ -641,8 +698,37 @@
               <button @click="showToast('分享功能开发中')">🚀 分享</button>
             </div>
             <div v-if="expandedComments[m.id]" class="cp-comments">
-              <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
-              <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
+              <div v-for="c in m.comments" :key="c.id" class="cp-cmt">
+                <div class="cp-cmt-main">
+                  <b>{{ c.author_name }}：</b>
+                  <span>{{ c.content }}</span>
+                  <img v-if="c.image_url" :src="c.image_url" class="cp-cmt-img" @click="openAvatarPreview(c.image_url,'','')">
+                </div>
+                <div class="cp-cmt-actions">
+                  <button class="cp-cmt-like" :class="{liked:c.likes?.includes(myProfile?.spark_id||'')}" @click="toggleCommentLike(m.id,c.id)">❤️ {{ c.likes?.length||'' }}</button>
+                  <button class="cp-cmt-reply" @click="commentInputs[m.id]='@'+c.author_name+' '">回复</button>
+                </div>
+              </div>
+              <div class="cp-cmt-input-enhanced">
+                <div class="cp-cmt-tools">
+                  <button @click="toggleCommentEmoji(m.id)" title="表情">😊</button>
+                  <button @click="triggerCommentImage(m.id)" title="图片">🖼️</button>
+                </div>
+                <Transition name="fade">
+                  <div v-if="commentEmojiVisible===m.id" class="cp-cmt-emoji-panel">
+                    <button v-for="e in EMOJIS.slice(0,48)" :key="e" @click="commentInputs[m.id]=(commentInputs[m.id]||'')+e">{{ e }}</button>
+                  </div>
+                </Transition>
+                <div v-if="commentImagePreview[m.id]" class="cp-cmt-img-preview">
+                  <img :src="commentImagePreview[m.id]" class="cp-cmt-preview-thumb">
+                  <button @click="clearCommentImage(m.id)">×</button>
+                </div>
+                <div class="cp-cmt-input-row">
+                  <input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleCommentEnhanced(m.id)">
+                  <button @click="handleCommentEnhanced(m.id)">发送</button>
+                </div>
+              </div>
+              <input :ref="el => setCommentFileRef(m.id, el)" type="file" accept="image/*" style="display:none" @change="onCommentImageSelect($event, m.id)">
             </div>
           </div>
           <p v-if="!allMoments.length" class="cp-empty">还没有动态，发一条吧 🌟</p>
@@ -832,6 +918,21 @@
               <button @click="publishFiles.splice(i,1)">×</button>
             </div>
           </div>
+          <!-- 标签 -->
+          <div class="cp-pub-tags-area">
+            <div class="cp-pub-tags-list" v-if="publishTags.length">
+              <span v-for="(tag,i) in publishTags" :key="i" class="cp-pub-tag">#{{ tag }} <button @click="removePublishTag(i)">×</button></span>
+            </div>
+            <div class="cp-pub-tag-input-row">
+              <input v-model="publishTagInput" placeholder="#添加标签（回车确认）" maxlength="20" @keydown.enter.prevent="addPublishTag" class="cp-pub-tag-input">
+              <span class="cp-pub-tag-hint">{{ publishTags.length }}/5</span>
+            </div>
+          </div>
+          <!-- 地区 -->
+          <div class="cp-pub-region-row">
+            <span class="cp-pub-region-label">📍</span>
+            <input v-model="publishRegion" placeholder="添加地区（如：北京·海淀）" maxlength="30" class="cp-pub-region-input">
+          </div>
           <!-- 工具栏 -->
           <div class="cp-pub-tools">
             <button @click="publishFileInput?.click()" title="添加图片/视频">🖼️</button>
@@ -840,16 +941,123 @@
               <input type="checkbox" v-model="publishIsLive">
               <span class="cp-pub-live-dot"></span>LIVE
             </label>
-            <select v-model="publishVis" class="cp-pub-vis-sel">
+            <select v-model="publishVis" class="cp-pub-vis-sel" @change="onVisChange">
               <option value="public">🌐 公开</option>
               <option value="friends">👥 好友</option>
+              <option value="partial">👤 部分可见</option>
               <option value="private">🔒 私密</option>
             </select>
+          </div>
+          <!-- 部分可见好友选择 -->
+          <div v-if="publishVis==='partial'" class="cp-pub-partial">
+            <p class="cp-pub-partial-hint">选择可见的好友：</p>
+            <div class="cp-pub-partial-list">
+              <div v-for="f in friends" :key="f.spark_id" class="cp-pub-partial-item" :class="{selected:publishVisibleTo.includes(f.spark_id)}" @click="toggleVisibleTo(f.spark_id)">
+                <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url||f.profile?.avatar_url" :name="f.nickname" size="xs" />
+                <span>{{ f.remark||f.nickname }}</span>
+                <span v-if="publishVisibleTo.includes(f.spark_id)" class="cp-pub-partial-check">✓</span>
+              </div>
+            </div>
+            <p class="cp-pub-partial-count">已选 {{ publishVisibleTo.length }} 人</p>
           </div>
           <input ref="publishFileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx" @change="onPublishFileSelect" style="display:none">
           <div class="cp-modal-btns">
             <button @click="showPublishModal=false">取消</button>
             <button class="primary" :disabled="!publishContent.trim()" @click="handlePublish">🚀 发布</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 恢复默认背景确认弹窗 -->
+    <Transition name="fade">
+      <div v-if="showResetBgConfirm" class="cp-overlay" @click.self="showResetBgConfirm=false">
+        <div class="cp-modal sm">
+          <h3>确认恢复默认背景？</h3>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);text-align:center;margin:0 0 8px">当前自定义背景将被移除，此操作不可撤销</p>
+          <div class="cp-modal-btns"><button @click="showResetBgConfirm=false">取消</button><button class="primary" @click="resetBg">确认恢复</button></div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 状态选择器弹窗 -->
+    <Transition name="fade">
+      <div v-if="showStatusPicker" class="cp-overlay" @click.self="showStatusPicker=false">
+        <div class="cp-modal cp-status-modal">
+          <h3>设置状态</h3>
+          <div class="cp-status-grid">
+            <div v-for="s in statusPresets" :key="s.id" class="cp-status-option" :class="{active:currentStatus?.id===s.id}" @click="selectStatus(s)">
+              <span class="cp-status-emoji">{{ s.emoji }}</span>
+              <span class="cp-status-label">{{ s.label }}</span>
+            </div>
+          </div>
+          <div class="cp-status-custom">
+            <input v-model="customStatusText" placeholder="自定义状态文字..." maxlength="20" class="cp-status-custom-input">
+            <select v-model="customStatusEmoji" class="cp-status-custom-emoji">
+              <option v-for="e in statusEmojis" :key="e" :value="e">{{ e }}</option>
+            </select>
+            <button class="cp-status-custom-btn" @click="setCustomStatus" :disabled="!customStatusText.trim()">设置</button>
+          </div>
+          <div class="cp-status-duration">
+            <span>持续时间：</span>
+            <select v-model="statusDuration" class="cp-status-dur-sel">
+              <option value="1h">1小时</option>
+              <option value="today">今天</option>
+              <option value="3d">3天</option>
+              <option value="forever">一直</option>
+            </select>
+          </div>
+          <div class="cp-modal-btns">
+            <button v-if="currentStatus" @click="clearStatus">清除状态</button>
+            <button v-else @click="showStatusPicker=false">取消</button>
+            <button class="primary" @click="showStatusPicker=false">完成</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 作者空间页面（仿微信朋友圈个人空间） -->
+    <Transition name="fade">
+      <div v-if="authorSpaceVisible" class="cp-overlay cp-author-space-overlay" @click.self="authorSpaceVisible=false">
+        <div class="cp-author-space">
+          <div class="cp-as-header">
+            <button class="cp-as-back" @click="authorSpaceVisible=false">← 返回</button>
+            <h3>{{ authorSpaceName }} 的空间</h3>
+          </div>
+          <div class="cp-as-profile">
+            <SparkAvatar :avatar="authorSpaceAvatar" :avatar-url="authorSpaceAvatarUrl" :name="authorSpaceName" size="lg" />
+            <div class="cp-as-pinfo">
+              <b>{{ authorSpaceName }}</b>
+              <p v-if="authorSpaceBio">{{ authorSpaceBio }}</p>
+              <span class="cp-as-count">{{ authorSpaceMoments.length }} 条动态</span>
+            </div>
+          </div>
+          <div class="cp-as-feed">
+            <div v-for="m in authorSpaceMoments" :key="m.id" class="cp-feed-card">
+              <div class="cp-feed-head">
+                <small>{{ formatTimeAgo(m.created_at) }}</small>
+                <span v-if="m.is_pinned" class="cp-pin-badge">📌 置顶</span>
+              </div>
+              <p class="cp-feed-text">{{ m.content }}</p>
+              <div v-if="m.media_urls?.length" class="cp-feed-media">
+                <template v-for="(url,idx) in m.media_urls.slice(0,9)" :key="idx">
+                  <div v-if="isMomentVideoUrl(url)" class="cp-feed-video-wrap" @click="toggleFeedVideo($event)">
+                    <video :src="url" class="cp-feed-video" preload="metadata" playsinline :poster="url+'#t=0.5'"></video>
+                    <div class="cp-feed-video-play">▶</div>
+                  </div>
+                  <img v-else :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
+                </template>
+              </div>
+              <div class="cp-feed-acts">
+                <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
+                <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
+              </div>
+              <div v-if="expandedComments[m.id]" class="cp-comments">
+                <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
+                <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
+              </div>
+            </div>
+            <p v-if="!authorSpaceMoments.length" class="cp-empty">暂无动态 🌟</p>
           </div>
         </div>
       </div>
@@ -949,9 +1157,14 @@ const showBgSettings = ref(false)
 const editingBio = ref(false)
 const bioEditInput = ref('')
 const customBgUrl = ref(localStorage.getItem('spark-bg-url') || '')
+const customBgType = ref<'image'|'video'>(localStorage.getItem('spark-bg-type') as 'image'|'video' || 'image')
 const bgPresetIdx = ref(parseInt(localStorage.getItem('spark-bg-preset') || '0'))
+const bgExpanded = ref(false)
 const bgFileInput = ref<HTMLInputElement|null>(null)
 const bioInputRef = ref<HTMLInputElement|null>(null)
+const bgVideoRef = ref<HTMLVideoElement|null>(null)
+const bgVideoPlaying = ref(false)
+const showResetBgConfirm = ref(false)
 const bgPresets = [
   { name: '极光紫' },
   { name: '深海蓝' },
@@ -987,8 +1200,26 @@ const showAllMembers = ref(false)
 // 发布编辑器弹窗
 const showPublishModal = ref(false)
 const publishContent = ref('')
-const publishVis = ref<'public'|'friends'|'private'>('public')
+const publishVis = ref<'public'|'friends'|'private'|'partial'>('public')
 const publishIsLive = ref(false)
+const publishTags = ref<string[]>([])
+const publishTagInput = ref('')
+const publishRegion = ref('')
+const publishVisibleTo = ref<string[]>([])
+
+function addPublishTag() {
+  const tag = publishTagInput.value.trim().replace(/^#/, '')
+  if (tag && !publishTags.value.includes(tag) && publishTags.value.length < 5) {
+    publishTags.value.push(tag)
+  }
+  publishTagInput.value = ''
+}
+function removePublishTag(idx: number) { publishTags.value.splice(idx, 1) }
+function toggleVisibleTo(sparkId: string) {
+  const i = publishVisibleTo.value.indexOf(sparkId)
+  if (i >= 0) publishVisibleTo.value.splice(i, 1)
+  else publishVisibleTo.value.push(sparkId)
+}
 const publishImages = ref<{url:string;name:string;blob?:boolean}[]>([])
 const publishVideos = ref<{url:string;name:string}[]>([])
 const publishFiles = ref<{url:string;name:string;size:number}[]>([])
@@ -1799,6 +2030,49 @@ const createGroupLetterGroups = computed(() => {
 function handleCreateGroup(){if(!newGroupName.value.trim())return;createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value);showToast('群聊已创建！');showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[];newGroupSearch.value=''}
 function handlePost(){if(!postContent.value.trim())return;postMoment(postContent.value.trim(),[],postVis.value);postContent.value='';showToast('已发布')}
 function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return;commentMoment(id,c);commentInputs[id]=''}
+
+const commentEmojiVisible = ref<string|null>(null)
+const commentImagePreview = reactive<Record<string,string>>({})
+const commentFileRefs: Record<string, HTMLInputElement|null> = {}
+function setCommentFileRef(momentId: string, el: any) { commentFileRefs[momentId] = el as HTMLInputElement }
+function toggleCommentEmoji(momentId: string) {
+  commentEmojiVisible.value = commentEmojiVisible.value === momentId ? null : momentId
+}
+function triggerCommentImage(momentId: string) {
+  commentFileRefs[momentId]?.click()
+}
+function onCommentImageSelect(e: Event, momentId: string) {
+  const el = e.target as HTMLInputElement
+  if (!el.files?.[0]) return
+  const file = el.files[0]
+  if (file.size > 5 * 1024 * 1024) { showToast('图片不能超过5MB'); return }
+  commentImagePreview[momentId] = URL.createObjectURL(file)
+  el.value = ''
+}
+function clearCommentImage(momentId: string) {
+  if (commentImagePreview[momentId]?.startsWith('blob:')) URL.revokeObjectURL(commentImagePreview[momentId])
+  delete commentImagePreview[momentId]
+}
+function handleCommentEnhanced(momentId: string) {
+  const text = commentInputs[momentId]?.trim()
+  const imgUrl = commentImagePreview[momentId]
+  if (!text && !imgUrl) return
+  commentMoment(momentId, text || '[图片]', imgUrl)
+  commentInputs[momentId] = ''
+  clearCommentImage(momentId)
+  commentEmojiVisible.value = null
+}
+function toggleCommentLike(momentId: string, commentId: string) {
+  if (!myProfile.value) return
+  const m = moments.value.find(m => m.id === momentId)
+  if (!m) return
+  const c = m.comments.find((c: any) => c.id === commentId)
+  if (!c) return
+  if (!c.likes) c.likes = []
+  const idx = c.likes.indexOf(myProfile.value.spark_id)
+  if (idx >= 0) c.likes.splice(idx, 1)
+  else c.likes.push(myProfile.value.spark_id)
+}
 async function renderQR(canvas:HTMLCanvasElement|null,data:string){if(!canvas)return;try{await QRCode.toCanvas(canvas,data,{width:160,margin:2,color:{dark:'#8b5cf6',light:'#0d0a1a'}})}catch{}}
 function copyQRData(){navigator.clipboard.writeText(getQRData());showToast('名片已复制')}
 function copyGroupQR(){if(activeGroup.value){navigator.clipboard.writeText(getQRData(undefined,'group',activeGroup.value.id));showToast('已复制')}}
@@ -1887,6 +2161,7 @@ onMounted(async ()=>{
   window.addEventListener('click',closeMenus)
   _resizeHandler=()=>{isMobile.value=window.innerWidth<768}
   window.addEventListener('resize',_resizeHandler)
+  loadStatus()
   try {
     const { data } = await supabase.auth.getUser()
     if (data?.user && myProfile.value) {
@@ -1895,7 +2170,7 @@ onMounted(async ()=>{
       if (meta?.nickname) myProfile.value.nickname = meta.nickname
       if (meta?.bio) myProfile.value.bio = meta.bio
       if (meta?.avatar_url) myProfile.value.avatar_url = meta.avatar_url
-      const { data: profile } = await supabase.from('profiles').select('avatar_url,nickname,bio').eq('id', data.user.id).single()
+      const { data: profile } = await supabase.from('spark_profiles').select('avatar_url,nickname,bio,university,interests,spark_id').eq('user_id', data.user.id).single()
       if (profile) {
         if (profile.avatar_url) myProfile.value.avatar_url = profile.avatar_url
         if (profile.nickname) myProfile.value.nickname = profile.nickname
@@ -2147,7 +2422,7 @@ function isMentionedInMsg(msg: ChatMsg): boolean {
   if (msg.mentions?.includes(myProfile.value.spark_id)) return true
   return msg.content.includes(`@${myProfile.value.nickname}`)
 }
-void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat
+void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat;void pinnedMoments;void feedMoments;void handlePinnedClick;void authorSpaceVisible;void authorSpaceMoments;void openAuthorSpace;void interactionCount;void showInteractPanel;void interactionList;void currentStatus;void showStatusPicker;void statusPresets;void statusEmojis;void customStatusText;void customStatusEmoji;void statusDuration;void commentEmojiVisible;void commentImagePreview;void commentFileRefs;void handleCommentEnhanced;void toggleCommentLike;void publishTags;void publishTagInput;void publishRegion;void publishVisibleTo;void addPublishTag;void removePublishTag;void toggleVisibleTo;void onVisChange
 // 渲染消息内容（@提及高亮）
 function renderMsgContent(content: string): string {
   const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2184,6 +2459,132 @@ const allMoments = computed(() => {
   )
   return filtered
 })
+const pinnedMoments = computed(() => allMoments.value.filter(m => m.is_pinned))
+const feedMoments = computed(() => allMoments.value.filter(m => !m.is_pinned))
+
+// ====== 用户状态系统 ======
+interface UserStatus { id: string; emoji: string; label: string; expiresAt?: string }
+const showStatusPicker = ref(false)
+const customStatusText = ref('')
+const customStatusEmoji = ref('✨')
+const statusDuration = ref<'1h'|'today'|'3d'|'forever'>('today')
+const statusEmojis = ['✨','🎯','📚','🎮','☕','🏃','💤','🎵','🍕','🐟','💻','🎨','🌙','🔥','❤️','🤔','😴','🎉','🛫','🏠']
+const statusPresets: UserStatus[] = [
+  { id: 'study', emoji: '📚', label: '学习中' },
+  { id: 'work', emoji: '💻', label: '工作中' },
+  { id: 'fish', emoji: '🐟', label: '摸鱼中' },
+  { id: 'game', emoji: '🎮', label: '游戏中' },
+  { id: 'sleep', emoji: '😴', label: '睡觉了' },
+  { id: 'eat', emoji: '🍕', label: '吃饭中' },
+  { id: 'sport', emoji: '🏃', label: '运动中' },
+  { id: 'music', emoji: '🎵', label: '听音乐' },
+  { id: 'coffee', emoji: '☕', label: '喝咖啡' },
+  { id: 'travel', emoji: '🛫', label: '旅行中' },
+  { id: 'code', emoji: '🔥', label: '写代码' },
+  { id: 'chill', emoji: '🌙', label: '发呆中' },
+]
+const currentStatus = ref<UserStatus|null>(null)
+function loadStatus() {
+  const saved = localStorage.getItem('spark-user-status')
+  if (saved) {
+    try {
+      const s = JSON.parse(saved) as UserStatus
+      if (s.expiresAt && new Date(s.expiresAt) < new Date()) {
+        localStorage.removeItem('spark-user-status')
+        currentStatus.value = null
+      } else {
+        currentStatus.value = s
+      }
+    } catch { currentStatus.value = null }
+  }
+}
+function saveStatus(s: UserStatus|null) {
+  currentStatus.value = s
+  if (s) localStorage.setItem('spark-user-status', JSON.stringify(s))
+  else localStorage.removeItem('spark-user-status')
+}
+function getStatusExpiry(): string|undefined {
+  const now = new Date()
+  if (statusDuration.value === '1h') return new Date(now.getTime() + 3600000).toISOString()
+  if (statusDuration.value === 'today') {
+    const end = new Date(now); end.setHours(23, 59, 59, 999)
+    return end.toISOString()
+  }
+  if (statusDuration.value === '3d') return new Date(now.getTime() + 3 * 86400000).toISOString()
+  return undefined
+}
+function selectStatus(s: UserStatus) {
+  saveStatus({ ...s, expiresAt: getStatusExpiry() })
+  showToast(`状态已设置：${s.emoji} ${s.label}`)
+}
+function setCustomStatus() {
+  const text = customStatusText.value.trim()
+  if (!text) return
+  saveStatus({ id: 'custom', emoji: customStatusEmoji.value, label: text, expiresAt: getStatusExpiry() })
+  showToast(`状态已设置：${customStatusEmoji.value} ${text}`)
+  customStatusText.value = ''
+}
+function clearStatus() {
+  saveStatus(null)
+  showStatusPicker.value = false
+  showToast('状态已清除')
+}
+
+const showInteractPanel = ref(false)
+const interactionList = computed(() => {
+  if (!myProfile.value) return []
+  const myId = myProfile.value.spark_id
+  const result: { type: 'like'|'comment'; userName: string; content?: string; momentId: string; momentPreview: string; time: string }[] = []
+  for (const m of moments.value) {
+    if (m.author_id !== myId) continue
+    const preview = (m.content || '').slice(0, 20) + (m.content && m.content.length > 20 ? '...' : '')
+    for (const likerId of m.likes) {
+      if (likerId === myId) continue
+      const f = friends.value.find(f => f.spark_id === likerId)
+      result.push({ type: 'like', userName: f?.remark || f?.nickname || '用户', momentId: m.id, momentPreview: preview, time: m.created_at })
+    }
+    for (const c of m.comments) {
+      if (c.author_id === myId) continue
+      result.push({ type: 'comment', userName: c.author_name, content: c.content?.slice(0, 40), momentId: m.id, momentPreview: preview, time: c.created_at || m.created_at })
+    }
+  }
+  return result.slice(0, 50)
+})
+const interactionCount = computed(() => interactionList.value.length)
+
+const authorSpaceVisible = ref(false)
+const authorSpaceId = ref('')
+const authorSpaceName = ref('')
+const authorSpaceAvatar = ref('')
+const authorSpaceAvatarUrl = ref<string|undefined>('')
+const authorSpaceBio = ref('')
+const authorSpaceMoments = computed(() => {
+  if (!authorSpaceId.value) return []
+  return [...moments.value]
+    .filter(m => m.author_id === authorSpaceId.value)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+})
+function openAuthorSpace(authorId: string) {
+  authorSpaceId.value = authorId
+  const isSelf = authorId === myProfile.value?.spark_id
+  if (isSelf) {
+    authorSpaceName.value = myProfile.value?.nickname || '我'
+    authorSpaceAvatar.value = myProfile.value?.avatar || ''
+    authorSpaceAvatarUrl.value = myProfile.value?.avatar_url
+    authorSpaceBio.value = myProfile.value?.bio || ''
+  } else {
+    const f = friends.value.find(f => f.spark_id === authorId)
+    const m = moments.value.find(m => m.author_id === authorId)
+    authorSpaceName.value = f?.remark || f?.nickname || m?.author_name || '用户'
+    authorSpaceAvatar.value = f?.avatar || m?.author_avatar || ''
+    authorSpaceAvatarUrl.value = f?.avatar_url || f?.profile?.avatar_url
+    authorSpaceBio.value = ''
+  }
+  authorSpaceVisible.value = true
+}
+function handlePinnedClick(authorId: string) {
+  openAuthorSpace(authorId)
+}
 
 // 拖拽分隔条
 function onDividerMouseDown(e: MouseEvent) {
@@ -2210,12 +2611,17 @@ function onBgFileSelect(e: Event) {
   const el = e.target as HTMLInputElement
   if (!el.files?.[0]) return
   const file = el.files[0]
-  if (!file.type.startsWith('image/')) { showToast('请选择图片文件'); return }
-  if (file.size > 10 * 1024 * 1024) { showToast('图片不能超过10MB'); return }
+  const isVideo = file.type.startsWith('video/')
+  const isImage = file.type.startsWith('image/')
+  if (!isImage && !isVideo) { showToast('请选择图片或视频文件'); return }
+  const maxSize = isVideo ? 30 * 1024 * 1024 : 10 * 1024 * 1024
+  if (file.size > maxSize) { showToast(isVideo ? '视频不能超过30MB' : '图片不能超过10MB'); return }
   const reader = new FileReader()
   reader.onload = () => {
     customBgUrl.value = reader.result as string
+    customBgType.value = isVideo ? 'video' : 'image'
     localStorage.setItem('spark-bg-url', customBgUrl.value)
+    localStorage.setItem('spark-bg-type', customBgType.value)
     showBgSettings.value = false
   }
   reader.readAsDataURL(file)
@@ -2228,9 +2634,59 @@ function selectBgPreset(idx: number) {
   localStorage.setItem('spark-bg-preset', String(idx))
   showBgSettings.value = false
 }
+function isMomentVideoUrl(url: string): boolean {
+  const exts = ['.mp4', '.webm', '.ogg', '.mov']
+  const lower = url.toLowerCase().split('?')[0]
+  return exts.some(ext => lower.endsWith(ext))
+}
+function toggleFeedVideo(e: Event) {
+  const wrap = (e.currentTarget as HTMLElement)
+  const vid = wrap.querySelector('video') as HTMLVideoElement | null
+  if (!vid) return
+  const hint = wrap.querySelector('.cp-feed-video-play') as HTMLElement | null
+  // Pause all other playing feed videos first
+  document.querySelectorAll('.cp-feed-video').forEach(v => {
+    const otherVid = v as HTMLVideoElement
+    if (otherVid !== vid && !otherVid.paused) {
+      otherVid.pause()
+      otherVid.currentTime = 0
+      const otherHint = otherVid.parentElement?.querySelector('.cp-feed-video-play') as HTMLElement | null
+      if (otherHint) otherHint.style.display = 'flex'
+    }
+  })
+  if (vid.paused) {
+    vid.muted = false
+    vid.play().catch(() => {
+      vid.muted = true
+      vid.play().catch(() => {})
+    })
+    if (hint) hint.style.display = 'none'
+  } else {
+    vid.pause()
+    if (hint) hint.style.display = 'flex'
+  }
+}
+function toggleBgVideo() {
+  const vid = bgVideoRef.value
+  if (!vid || customBgType.value !== 'video') return
+  if (vid.paused) {
+    vid.muted = false
+    vid.play().catch(() => {})
+    bgVideoPlaying.value = true
+  } else {
+    vid.pause()
+    vid.muted = true
+    bgVideoPlaying.value = false
+  }
+}
+function confirmResetBg() { showResetBgConfirm.value = true }
 function resetBg() {
+  showResetBgConfirm.value = false
+  bgVideoPlaying.value = false
   customBgUrl.value = ''
+  customBgType.value = 'image'
   localStorage.removeItem('spark-bg-url')
+  localStorage.removeItem('spark-bg-type')
   bgPresetIdx.value = 0
   localStorage.setItem('spark-bg-preset', '0')
   showBgSettings.value = false
@@ -2343,12 +2799,15 @@ function formatPublishFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
+function onVisChange() {
+  if (publishVis.value !== 'partial') publishVisibleTo.value = []
+}
 function handlePublish() {
   if (!publishContent.value.trim()) return
   postMoment(
     publishContent.value.trim(),
     publishImages.value.map(img => img.url),
-    publishVis.value,
+    publishVis.value === 'partial' ? 'friends' : publishVis.value,
     true,
     {
       videoUrls: publishVideos.value.map(v => v.url),
@@ -2356,16 +2815,22 @@ function handlePublish() {
       fileNames: publishFiles.value.map(f => f.name),
       fileSizes: publishFiles.value.map(f => f.size),
       isLive: publishIsLive.value,
+      tags: publishTags.value,
+      region: publishRegion.value.trim(),
+      visibleTo: publishVis.value === 'partial' ? publishVisibleTo.value : undefined,
     }
   )
   showToast('已发布')
-  // 重置
   publishContent.value = ''
   publishImages.value = []
   publishVideos.value = []
   publishFiles.value = []
   publishIsLive.value = false
   publishVis.value = 'public'
+  publishTags.value = []
+  publishTagInput.value = ''
+  publishRegion.value = ''
+  publishVisibleTo.value = []
   showPublishModal.value = false
 }
 </script>
@@ -2416,8 +2881,25 @@ function handlePublish() {
 .cp-x{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.1);cursor:pointer;font-size:11px}
 .cp-moment-text{font-size:12px;color:rgba(255,255,255,.55);line-height:1.6;margin:0 0 6px;white-space:pre-wrap}
 .cp-moment-acts{display:flex;gap:6px}.cp-moment-acts button{padding:2px 8px;border-radius:5px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .15s}.cp-moment-acts button:hover{background:rgba(139,92,246,.04);color:rgba(139,92,246,.5)}.cp-moment-acts button.liked{color:rgba(239,68,68,.5)}
-.cp-comments{margin-top:6px;padding:6px;border-radius:6px;background:rgba(255,255,255,.01)}.cp-cmt{font-size:10px;color:rgba(255,255,255,.3);margin-bottom:3px}.cp-cmt b{color:rgba(139,92,246,.5)}
+.cp-comments{margin-top:6px;padding:6px;border-radius:6px;background:rgba(255,255,255,.01)}.cp-cmt{font-size:10px;color:rgba(255,255,255,.3);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.02)}.cp-cmt b{color:rgba(139,92,246,.5)}
+.cp-cmt-main{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px}
+.cp-cmt-img{width:60px;height:60px;border-radius:6px;object-fit:cover;cursor:pointer;margin-top:4px;display:block}
+.cp-cmt-actions{display:flex;gap:8px;margin-top:3px}
+.cp-cmt-like,.cp-cmt-reply{background:none;border:none;color:rgba(255,255,255,.15);font-size:9px;cursor:pointer;padding:1px 4px;border-radius:4px;transition:all .12s}
+.cp-cmt-like:hover,.cp-cmt-reply:hover{background:rgba(255,255,255,.02);color:rgba(255,255,255,.35)}
+.cp-cmt-like.liked{color:rgba(239,68,68,.5)}
 .cp-cmt-input{display:flex;gap:4px;margin-top:4px}.cp-cmt-input input{flex:1;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.02);color:white;font-size:10px;outline:none}.cp-cmt-input button{padding:2px 8px;border-radius:5px;border:none;background:rgba(139,92,246,.08);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer}
+/* 增强评论输入 */
+.cp-cmt-input-enhanced{margin-top:6px;border-top:1px solid rgba(255,255,255,.02);padding-top:6px}
+.cp-cmt-tools{display:flex;gap:2px;margin-bottom:4px}
+.cp-cmt-tools button{width:24px;height:24px;border-radius:6px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.25);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s}.cp-cmt-tools button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.5)}
+.cp-cmt-emoji-panel{display:flex;flex-wrap:wrap;gap:1px;padding:6px;background:rgba(20,18,34,.98);border:1px solid rgba(255,255,255,.05);border-radius:8px;max-height:100px;overflow-y:auto;margin-bottom:4px}
+.cp-cmt-emoji-panel button{width:26px;height:26px;border:none;background:none;font-size:14px;cursor:pointer;border-radius:4px;transition:all .1s;display:flex;align-items:center;justify-content:center}.cp-cmt-emoji-panel button:hover{background:rgba(139,92,246,.08);transform:scale(1.15)}
+.cp-cmt-img-preview{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.cp-cmt-preview-thumb{width:48px;height:48px;border-radius:6px;object-fit:cover}
+.cp-cmt-img-preview button{background:none;border:none;color:rgba(239,68,68,.4);font-size:14px;cursor:pointer}
+.cp-cmt-input-row{display:flex;gap:4px}.cp-cmt-input-row input{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.02);color:white;font-size:10px;outline:none}.cp-cmt-input-row input:focus{border-color:rgba(139,92,246,.12)}
+.cp-cmt-input-row button{padding:3px 10px;border-radius:6px;border:none;background:rgba(139,92,246,.08);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer;font-weight:600;transition:all .12s}.cp-cmt-input-row button:hover{background:rgba(139,92,246,.15)}
 .cp-empty{text-align:center;padding:30px 0;color:rgba(255,255,255,.08);font-size:11px}
 /* 通讯录分组(仿微信) */
 .cp-contact-group{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;transition:all .12s;border-bottom:1px solid rgba(255,255,255,.02)}.cp-contact-group:hover{background:rgba(255,255,255,.015)}
@@ -2543,6 +3025,8 @@ function handlePublish() {
 .cp-ml{display:flex;flex-direction:column;overflow-y:auto;border-right:none;padding:0}.cp-ml::-webkit-scrollbar{width:2px}.cp-ml::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
 /* 背景图区域 */
 .cp-ml-bg{position:relative;height:240px;overflow:hidden;flex-shrink:0}
+.cp-ml-bg-video{width:100%;height:100%;object-fit:cover;cursor:pointer}
+.cp-ml-bg-play-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.4);width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:3;pointer-events:none;backdrop-filter:blur(4px);text-indent:3px}
 .cp-ml-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 30%,rgba(139,92,246,.08) 0%,transparent 50%),radial-gradient(circle at 80% 60%,rgba(59,130,246,.06) 0%,transparent 50%);pointer-events:none;z-index:1;animation:shimmer 8s ease-in-out infinite alternate}
 @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
 .cp-ml-bg-img{width:100%;height:100%;background-size:cover;background-position:center;transition:transform .3s ease}.cp-ml-bg:hover .cp-ml-bg-img{transform:scale(1.02)}
@@ -2579,6 +3063,10 @@ function handlePublish() {
 .cp-bg-btn-upload{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}.cp-bg-btn-upload:hover{background:rgba(139,92,246,.12)}
 .cp-bg-btn-reset{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:11px;cursor:pointer;transition:all .15s}.cp-bg-btn-reset:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.5)}
 /* 用户信息 */
+.cp-ml-avatar-wrap{position:relative;flex-shrink:0}
+.cp-status-dot{position:absolute;bottom:-2px;right:-2px;font-size:14px;background:rgba(14,11,28,.9);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(14,11,28,.9);z-index:3}
+.cp-status-display{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);font-size:10px;color:rgba(139,92,246,.6);cursor:pointer;margin-top:2px;transition:all .15s}.cp-status-display:hover{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.2)}
+.cp-status-set-btn{background:none;border:1px dashed rgba(255,255,255,.08);border-radius:6px;padding:2px 8px;font-size:9px;color:rgba(255,255,255,.2);cursor:pointer;margin-top:2px;transition:all .15s}.cp-status-set-btn:hover{border-color:rgba(139,92,246,.2);color:rgba(139,92,246,.5)}
 .cp-ml-profile{display:flex;align-items:flex-start;gap:14px;padding:16px 16px 12px;margin-top:-40px;position:relative;z-index:2}
 .cp-ml-pinfo{flex:1;min-width:0}.cp-ml-pinfo b{font-size:16px;color:rgba(255,255,255,.92);display:block;font-weight:700;text-shadow:0 1px 6px rgba(0,0,0,.4);letter-spacing:.3px}
 .cp-ml-signature{font-size:11px;color:rgba(255,255,255,.35);margin:4px 0 0;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-style:italic;cursor:pointer;padding:2px 4px;border-radius:6px;transition:all .2s}.cp-ml-signature:hover{color:rgba(255,255,255,.5);background:rgba(255,255,255,.03)}
@@ -2599,10 +3087,60 @@ function handlePublish() {
 .cp-mr-header{display:flex;align-items:center;gap:10px;padding:16px 0;position:sticky;top:0;background:rgba(14,11,28,.95);z-index:5;backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.03);margin-bottom:14px}
 .cp-mr-title{font-size:16px;color:rgba(255,255,255,.7);margin:0;font-weight:700;flex:1}
 .cp-publish-btn-sm{padding:5px 14px;border-radius:8px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}.cp-publish-btn-sm:hover{background:rgba(139,92,246,.15);border-color:rgba(139,92,246,.3)}
+/* 互动按钮+面板 */
+.cp-interact-btn{position:relative;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.4);font-size:12px;cursor:pointer;transition:all .15s}.cp-interact-btn:hover,.cp-interact-btn.active{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.2);color:rgba(139,92,246,.7)}
+.cp-interact-dot{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:#f43f5e;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.cp-interact-panel{position:absolute;top:56px;right:20px;width:340px;max-height:420px;overflow-y:auto;background:rgba(18,14,36,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:14px;z-index:10;box-shadow:0 12px 48px rgba(0,0,0,.5)}
+.cp-interact-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.04)}.cp-interact-hdr h4{margin:0;font-size:13px;color:rgba(255,255,255,.7);font-weight:600}.cp-interact-hdr button{background:none;border:none;color:rgba(255,255,255,.2);font-size:14px;cursor:pointer}
+.cp-interact-empty{padding:40px 20px;text-align:center;color:rgba(255,255,255,.15);font-size:12px}
+.cp-interact-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;cursor:pointer;transition:background .12s;border-bottom:1px solid rgba(255,255,255,.02)}.cp-interact-item:hover{background:rgba(139,92,246,.04)}
+.cp-interact-icon{font-size:16px;flex-shrink:0;margin-top:2px}
+.cp-interact-body{flex:1;min-width:0}.cp-interact-body b{font-size:11px;color:rgba(255,255,255,.6);margin-right:4px}.cp-interact-body span{font-size:11px;color:rgba(255,255,255,.3)}
+.cp-interact-preview{font-size:10px;color:rgba(255,255,255,.2);margin:3px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-interact-item small{font-size:9px;color:rgba(255,255,255,.12);flex-shrink:0;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 置顶横栏 */
+.cp-pinned-bar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.04)}
+.cp-pinned-scroll{display:flex;gap:10px;overflow-x:auto;padding:2px 0;scroll-behavior:smooth;-ms-overflow-style:none;scrollbar-width:none}.cp-pinned-scroll::-webkit-scrollbar{display:none}
+.cp-pinned-card{flex-shrink:0;width:140px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);cursor:pointer;overflow:hidden;transition:all .2s ease;display:flex;flex-direction:column}
+.cp-pinned-card:hover{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.25);transform:translateY(-2px);box-shadow:0 6px 20px rgba(139,92,246,.12)}
+.cp-pinned-thumb-wrap{position:relative;width:100%;height:80px;overflow:hidden;background:rgba(139,92,246,.06)}
+.cp-pinned-thumb{width:100%;height:100%;object-fit:cover}
+.cp-pinned-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.08))}
+.cp-pinned-avatar{position:absolute;bottom:-10px;left:8px;border:2px solid rgba(14,11,28,.9);border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.cp-pinned-body{padding:14px 10px 10px;min-height:0}
+.cp-pinned-body b{display:block;font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.cp-pinned-body p{font-size:10px;color:rgba(255,255,255,.25);line-height:1.4;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cp-feed-media{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;border-radius:8px;overflow:hidden}.cp-feed-img{width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;transition:opacity .15s}.cp-feed-img:hover{opacity:.85}
+.cp-feed-video-wrap{position:relative;width:100%;aspect-ratio:1;cursor:pointer;overflow:hidden;background:#000}.cp-feed-video{width:100%;height:100%;object-fit:cover}.cp-feed-video-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgba(255,255,255,.8);background:rgba(0,0,0,.3);pointer-events:none;transition:opacity .2s}
 .cp-feed-info{flex:1;min-width:0}.cp-feed-info b{display:block;font-size:12px;color:rgba(255,255,255,.6)}.cp-feed-info small{font-size:9px;color:rgba(255,255,255,.15)}
 /* 置顶标识 */
 .cp-pin-badge{font-size:9px;color:rgba(139,92,246,.7);background:rgba(139,92,246,.1);padding:2px 8px;border-radius:6px;margin-right:auto;font-weight:600;letter-spacing:.3px}
+/* 作者空间页面 */
+.cp-author-space-overlay{z-index:60}
+.cp-author-space{width:520px;max-width:95vw;max-height:90vh;background:rgba(14,11,28,.98);border:1px solid rgba(255,255,255,.06);border-radius:18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 80px rgba(0,0,0,.6)}
+.cp-as-header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0}
+.cp-as-back{background:none;border:none;color:rgba(255,255,255,.4);font-size:13px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .12s}.cp-as-back:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.7)}
+.cp-as-header h3{margin:0;font-size:14px;color:rgba(255,255,255,.7);font-weight:600}
+.cp-as-profile{display:flex;align-items:center;gap:16px;padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,.03);background:linear-gradient(180deg,rgba(139,92,246,.04),transparent);flex-shrink:0}
+.cp-as-pinfo{flex:1;min-width:0}.cp-as-pinfo b{display:block;font-size:16px;color:rgba(255,255,255,.85);font-weight:700;margin-bottom:4px}
+.cp-as-pinfo p{font-size:11px;color:rgba(255,255,255,.3);margin:0 0 4px;font-style:italic}
+.cp-as-count{font-size:10px;color:rgba(139,92,246,.5);background:rgba(139,92,246,.06);padding:2px 8px;border-radius:8px}
+.cp-as-feed{flex:1;overflow-y:auto;padding:16px 16px 20px}.cp-as-feed::-webkit-scrollbar{width:2px}.cp-as-feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+/* 状态选择器 */
+.cp-status-modal{width:400px}
+.cp-status-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+.cp-status-option{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);cursor:pointer;transition:all .15s}
+.cp-status-option:hover{background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.15)}
+.cp-status-option.active{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);box-shadow:0 0 12px rgba(139,92,246,.1)}
+.cp-status-emoji{font-size:18px}
+.cp-status-label{font-size:11px;color:rgba(255,255,255,.5);font-weight:500}
+.cp-status-option.active .cp-status-label{color:rgba(139,92,246,.8)}
+.cp-status-custom{display:flex;gap:6px;margin-bottom:10px;align-items:center}
+.cp-status-custom-input{flex:1;padding:7px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:white;font-size:11px;outline:none}.cp-status-custom-input:focus{border-color:rgba(139,92,246,.15)}.cp-status-custom-input::placeholder{color:rgba(255,255,255,.12)}
+.cp-status-custom-emoji{width:40px;padding:5px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:rgba(14,11,28,.95);color:white;font-size:16px;text-align:center;outline:none;cursor:pointer;-webkit-appearance:none}
+.cp-status-custom-btn{padding:6px 14px;border-radius:8px;border:none;background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s}.cp-status-custom-btn:hover:not(:disabled){background:rgba(139,92,246,.2)}.cp-status-custom-btn:disabled{opacity:.3;cursor:default}
+.cp-status-duration{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,.3)}
+.cp-status-dur-sel{padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:rgba(14,11,28,.95);color:rgba(255,255,255,.5);font-size:10px;outline:none;cursor:pointer;-webkit-appearance:none}
 .cp-feed-card.is-pinned{border-color:rgba(139,92,246,.15);background:rgba(139,92,246,.04);box-shadow:0 0 20px rgba(139,92,246,.05)}.cp-feed-card.is-pinned:hover{border-color:rgba(139,92,246,.25);background:rgba(139,92,246,.06)}
 /* 动态菜单 */
 .cp-feed-menu-wrap{position:relative;margin-left:auto}
@@ -2616,6 +3154,9 @@ function handlePublish() {
 .cp-feed-card{padding:14px;border-radius:14px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03);margin-bottom:10px;transition:all .2s ease}.cp-feed-card:hover{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.06);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.15)}
 .cp-feed-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.cp-feed-head b{font-size:12px;color:rgba(255,255,255,.55)}.cp-feed-head small{color:rgba(255,255,255,.1);margin-left:6px;font-size:9px}
 .cp-feed-card p{font-size:13px;color:rgba(255,255,255,.5);line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
+.cp-feed-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.cp-feed-tag{font-size:10px;color:rgba(139,92,246,.6);background:rgba(139,92,246,.06);padding:1px 6px;border-radius:4px}
+.cp-feed-footer-info{display:flex;gap:8px;margin-bottom:4px}.cp-feed-region{font-size:9px;color:rgba(255,255,255,.2)}
 .cp-feed-acts{display:flex;gap:8px;padding-top:4px}.cp-feed-acts button{padding:5px 12px;border-radius:8px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .2s;font-weight:500}.cp-feed-acts button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6);transform:scale(1.02)}.cp-feed-acts button:active{transform:scale(.96)}.cp-feed-acts button.liked{color:rgba(239,68,68,.6);background:rgba(239,68,68,.04)}
 .cp-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center}
 .cp-welcome-icon{font-size:48px;margin-bottom:12px}.cp-welcome h3{color:white;font-size:18px;margin:0 0 6px}.cp-welcome p{color:rgba(255,255,255,.15);font-size:12px;margin:0 0 20px}
@@ -2799,7 +3340,29 @@ function handlePublish() {
 .cp-pub-live-toggle input{display:none}
 .cp-pub-live-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.15)}
 .cp-pub-live-toggle.active .cp-pub-live-dot{background:#ef4444;animation:live-pulse-sm 1.5s infinite}
-.cp-pub-vis-sel{margin-left:auto;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:10px;outline:none}
+.cp-pub-vis-sel{margin-left:auto;padding:4px 8px;border-radius:6px;border:1px solid rgba(139,92,246,.15);background:rgba(14,11,28,.95);color:rgba(255,255,255,.5);font-size:10px;outline:none;-webkit-appearance:none;appearance:none;cursor:pointer}
+.cp-pub-vis-sel option{background:rgba(14,11,28,.98);color:rgba(255,255,255,.6);padding:6px 10px}
+/* 标签区域 */
+.cp-pub-tags-area{margin-bottom:6px}
+.cp-pub-tags-list{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.cp-pub-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);font-size:10px;font-weight:600}
+.cp-pub-tag button{background:none;border:none;color:rgba(139,92,246,.4);font-size:11px;cursor:pointer;padding:0;margin-left:2px}.cp-pub-tag button:hover{color:rgba(239,68,68,.6)}
+.cp-pub-tag-input-row{display:flex;align-items:center;gap:6px}
+.cp-pub-tag-input{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(139,92,246,.7);font-size:10px;outline:none}.cp-pub-tag-input:focus{border-color:rgba(139,92,246,.15)}.cp-pub-tag-input::placeholder{color:rgba(255,255,255,.12)}
+.cp-pub-tag-hint{font-size:9px;color:rgba(255,255,255,.1)}
+/* 地区 */
+.cp-pub-region-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.cp-pub-region-label{font-size:13px;flex-shrink:0}
+.cp-pub-region-input{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.5);font-size:11px;outline:none}.cp-pub-region-input:focus{border-color:rgba(139,92,246,.15)}.cp-pub-region-input::placeholder{color:rgba(255,255,255,.12)}
+/* 部分可见 */
+.cp-pub-partial{margin-bottom:8px;padding:8px;border-radius:10px;border:1px solid rgba(139,92,246,.08);background:rgba(139,92,246,.02)}
+.cp-pub-partial-hint{font-size:10px;color:rgba(255,255,255,.3);margin:0 0 6px}
+.cp-pub-partial-list{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.cp-pub-partial-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:all .12s;font-size:11px;color:rgba(255,255,255,.45)}
+.cp-pub-partial-item:hover{background:rgba(255,255,255,.02)}
+.cp-pub-partial-item.selected{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
+.cp-pub-partial-check{margin-left:auto;color:rgba(139,92,246,.7);font-weight:700}
+.cp-pub-partial-count{font-size:9px;color:rgba(139,92,246,.5);margin:6px 0 0;text-align:right}
 
 /* ====== 翻译结果样式 ====== */
 .cp-translate-result{margin-top:4px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.08)}

@@ -1,7 +1,7 @@
 <template>
   <div class="app-layout">
     <!-- 宇宙深空背景 — 受外观设置粒子开关控制 -->
-    <CosmicBackground :enabled="particleEnabled" />
+    <CosmicBackground :enabled="particleEnabled" :intensity="bgIntensity" />
 
     <!-- 临时版本水印 — 验证后删除 -->
     <div class="version-watermark">v7.4.1 ✅</div>
@@ -210,7 +210,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
 import CosmicBackground from '../../components/CosmicBackground.vue'
@@ -221,6 +221,13 @@ const { appearance } = useSettings()
 const particleEnabled = computed(() => appearance.value.particleEffect)
 
 const router = useRouter()
+const route = useRoute()
+
+const fullBrightnessRoutes = ['AppCompanion']
+const bgIntensity = computed(() =>
+  fullBrightnessRoutes.includes(route.name as string) ? 1 : 0.65
+)
+
 const showDropdown = ref(false)
 const showNotifPanel = ref(false)
 const sidebarCollapsed = ref(false)

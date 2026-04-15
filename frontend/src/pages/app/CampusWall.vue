@@ -822,6 +822,7 @@ const fetchPosts = async () => {
     const { data: postsData, error: postsError } = await supabase
       .from('posts')
       .select('*, likes(count), comments(count)')
+      .neq('is_hidden', true)
       .order('created_at', { ascending: false })
       .limit(50)
 
@@ -1139,15 +1140,15 @@ const toggleLike = async (post: Post) => {
   post.likes += post.liked ? 1 : -1
 
   try {
-    if (post.liked) {
-      await supabase.from('likes').insert({ post_id: post.id, user_id: user.value.id })
-    } else {
-      await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.value.id)
-    }
+    const { error } = post.liked
+      ? await supabase.from('likes').insert({ post_id: post.id, user_id: user.value.id })
+      : await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.value.id)
+    if (error) throw error
   } catch (error) {
     console.error('点赞失败:', error)
     post.liked = originalLiked
     post.likes = originalLikes
+    showToast('操作失败，请重试', 'error')
   }
 }
 
@@ -1270,18 +1271,27 @@ const fetchComments = async (postId: string) => {
           anonymous: inferAnonymousState(c),
           authorId: c.is_anonymous ? undefined : c.author_id,
           authorName: c.author_name,
-          anonymousSeed: c.id,
+          anonymousSeed: c.anonymous_seed || c.id,
           fallbackSeed: c.id,
         }).name
       })
-      commentList.value = data.map(c => ({
+      commentList.value = data.map(c => {
+        const isAnon = inferAnonymousState(c)
+        const display = resolveAuthorDisplay({
+          anonymous: isAnon,
+          authorId: isAnon ? undefined : c.author_id,
+          authorName: c.author_name,
+          anonymousSeed: c.anonymous_seed || c.id,
+          fallbackSeed: c.id,
+        })
+        return {
         id: c.id,
         authorId: c.author_id,
         authorName: c.author_name,
         anonymousSeed: c.anonymous_seed,
-        authorInitial: inferAnonymousState(c) ? '' : c.author_name.charAt(0).toUpperCase(),
-        avatarBg: inferAnonymousState(c) ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, #4f8ef7, #8b5cf6)',
-        isAnonymous: inferAnonymousState(c),
+        authorInitial: display.initial,
+        avatarBg: display.avatarBg,
+        isAnonymous: isAnon,
         content: c.content || '',
         mediaUrls: (c.media_urls || []).filter((url: string) => url && url.startsWith('http')),
         time: formatTime(c.created_at),
@@ -1292,7 +1302,7 @@ const fetchComments = async (postId: string) => {
         likeCount: c.like_count || 0,
         isHidden: c.is_hidden || false,
         reportCount: c.report_count || 0
-      }))
+      }})
       const realCommentCount = data.length
       const targetPost = posts.value.find(post => post.id === postId)
       if (targetPost) targetPost.comments = realCommentCount
@@ -1312,12 +1322,11 @@ const submitComment = async () => {
   if (!newCommentText.value.trim() && commentFiles.value.length === 0) return
   if (!user.value) { showToast('请先登录', 'error'); return }
   if (!activePostForComment.value) return
-  // 制裁检查：是否被禁止评论
   const { data: sanctions } = await supabase
     .from('user_sanctions')
     .select('*')
     .eq('user_id', user.value.id)
-    .eq('type', 'comment_ban')
+    .in('type', ['comment_ban', 'full_ban'])
     .gt('expires_at', new Date().toISOString())
     .limit(1)
   if (sanctions && sanctions.length > 0) {
@@ -1328,15 +1337,20 @@ const submitComment = async () => {
   }
   isSubmittingComment.value = true
   try {
-    // 上传评论媒体
     const uploadedUrls: string[] = []
-for (const file of commentFiles.value) {
+    let commentUploadFails = 0
+    for (const file of commentFiles.value) {
       const path = createStorageObjectPath('comments', user.value.id, file)
       const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
       if (!error && data) {
         const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
         uploadedUrls.push(urlData.publicUrl)
+      } else {
+        commentUploadFails++
       }
+    }
+    if (commentUploadFails > 0) {
+      showToast(`${commentUploadFails} 个附件上传失败`, 'error')
     }
     const authorName = isCommentAnonymous.value
       ? ANONYMOUS_PLACEHOLDER_NAME
@@ -1428,14 +1442,14 @@ const toggleCommentLike = async (comment: Comment) => {
   comment.liked = !comment.liked
   comment.likeCount += comment.liked ? 1 : -1
   try {
-    if (comment.liked) {
-      await supabase.from('comment_likes').insert({ comment_id: comment.id, user_id: user.value.id })
-    } else {
-      await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', user.value.id)
-    }
+    const { error } = comment.liked
+      ? await supabase.from('comment_likes').insert({ comment_id: comment.id, user_id: user.value.id })
+      : await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', user.value.id)
+    if (error) throw error
   } catch {
     comment.liked = originalLiked
     comment.likeCount = originalCount
+    showToast('操作失败，请重试', 'error')
   }
 }
 
@@ -1538,15 +1552,20 @@ const submitReport = async () => {
   if (!user.value || !activePostForReport.value) return
   isSubmittingReport.value = true
   try {
-    // 上传证据图片
     const evidenceUrls: string[] = []
-for (const file of reportEvidenceFiles.value) {
+    let evidenceUploadFails = 0
+    for (const file of reportEvidenceFiles.value) {
       const path = createStorageObjectPath('reports', user.value.id, file)
       const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
       if (!error && data) {
         const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
         evidenceUrls.push(urlData.publicUrl)
+      } else {
+        evidenceUploadFails++
       }
+    }
+    if (evidenceUploadFails > 0) {
+      showToast(`${evidenceUploadFails} 个证据文件上传失败`, 'error')
     }
     const reportPayload: Record<string, unknown> = {
       reporter_id: user.value.id,
@@ -1637,27 +1656,21 @@ const deletePost = async (post: Post) => {
     return
   }
 
-  // 先删除关联的 Storage 文件
-  if (post.mediaUrls.length > 0) {
-    for (const url of post.mediaUrls) {
-      try {
-        // 从 publicUrl 中提取 storage path
-        const storagePath = extractStoragePathFromPublicUrl(url)
-        if (storagePath) {
-          await supabase.storage.from('campus-wall').remove([storagePath])
-        }
-      } catch {
-        // Storage 删除失败不阻塞帖子删除
-      }
-    }
-  }
-
   try {
     const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('author_id', user.value.id)
     if (error) throw error
-    // 前端移除
     posts.value = posts.value.filter(p => p.id !== post.id)
     showToast('帖子已删除', 'success')
+
+    // DB 删除成功后再清理 Storage（失败不影响用户体验）
+    if (post.mediaUrls.length > 0) {
+      const paths = post.mediaUrls
+        .map(url => extractStoragePathFromPublicUrl(url))
+        .filter((p): p is string => !!p)
+      if (paths.length > 0) {
+        await supabase.storage.from('campus-wall').remove(paths).catch(() => {})
+      }
+    }
   } catch (error) {
     console.error('删除失败:', error)
     showToast('删除失败，请稍后重试', 'error')
@@ -1686,18 +1699,37 @@ const submitPost = async () => {
     return
   }
 
+  const { data: postSanctions } = await supabase
+    .from('user_sanctions')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .in('type', ['post_ban', 'full_ban'])
+    .gt('expires_at', new Date().toISOString())
+    .limit(1)
+  if (postSanctions && postSanctions.length > 0) {
+    const expiresAt = new Date(postSanctions[0].expires_at)
+    const remainDays = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
+    showToast(`发帖权限已被限制，还剩 ${remainDays} 天恢复`, 'error')
+    return
+  }
+
   isSubmitting.value = true
 
   try {
-    // 上传媒体文件
     const uploadedUrls: string[] = []
-for (const file of selectedFiles.value) {
+    let uploadFailCount = 0
+    for (const file of selectedFiles.value) {
       const path = createStorageObjectPath('posts', user.value.id, file)
       const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
       if (!error && data) {
         const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
         uploadedUrls.push(urlData.publicUrl)
+      } else {
+        uploadFailCount++
       }
+    }
+    if (uploadFailCount > 0) {
+      showToast(`${uploadFailCount} 个附件上传失败，帖子将不含这些附件`, 'error')
     }
 
     const authorName = isAnonymous.value
