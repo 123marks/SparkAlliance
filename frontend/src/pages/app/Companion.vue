@@ -115,9 +115,16 @@
         <p v-if="!friends.length&&!groups.length" class="cp-empty">还没有联系人</p>
       </div>
 
-      <!-- 动态tab：左侧只显示标签和快速发布，右侧显示完整feed -->
+      <!-- 动态tab：左侧快捷入口 -->
       <div v-if="sideTab==='moments'" class="cp-list moments-tab">
-        <p class="cp-sb-hint">→ 右侧查看星火域时间线</p>
+        <div class="cp-sb-moments-profile" v-if="myProfile">
+          <SparkAvatar :avatar="myProfile.avatar||''" :avatar-url="myProfile.avatar_url" :name="myProfile.nickname||''" size="sm" />
+          <div class="cp-sb-mp-info">
+            <b>{{ myProfile.nickname || '未设置' }}</b>
+            <span>{{ myMoments.length }} 条动态</span>
+          </div>
+        </div>
+        <p class="cp-sb-hint">右侧查看星火域时间线</p>
         <button class="cp-sb-publish-btn" @click="showPublishModal=true">✨ 发布动态</button>
       </div>
     </aside>
@@ -513,20 +520,39 @@
       <div v-if="sideTab==='moments'" class="cp-moments-dual" :class="{'is-dragging':isDraggingDivider}">
         <!-- 左栏：我的专区（置顶+个人信息） -->
         <div class="cp-ml" :style="{width: momentLeftWidth+'%', minWidth:'220px'}">
-          <!-- 背景图区域：展示大部分，点击下推展开 -->
-          <div class="cp-ml-bg" :class="{expanded:bgExpanded}" @click="bgExpanded=!bgExpanded">
+          <!-- 背景图区域 -->
+          <div class="cp-ml-bg">
             <div v-if="customBgUrl" class="cp-ml-bg-img" :style="{backgroundImage:'url('+customBgUrl+')'}"></div>
-            <div v-else class="cp-ml-bg-default"></div>
+            <div v-else class="cp-ml-bg-default" :class="'preset-'+bgPresetIdx"></div>
             <div class="cp-ml-bg-overlay"></div>
-            <button class="cp-ml-bg-upload" @click.stop="bgFileInput?.click()" title="更换背景">📷</button>
-            <input ref="bgFileInput" type="file" accept="image/*,video/*" @change="onBgFileSelect" style="display:none">
+            <div class="cp-ml-bg-actions">
+              <button class="cp-ml-bg-btn" @click.stop="showBgSettings=!showBgSettings" title="背景设置">📷</button>
+            </div>
+            <input ref="bgFileInput" type="file" accept="image/*" @change="onBgFileSelect" style="display:none">
+            <!-- 背景设置浮层 -->
+            <Transition name="fade">
+              <div v-if="showBgSettings" class="cp-bg-panel" @click.stop>
+                <h4>背景设置</h4>
+                <div class="cp-bg-presets">
+                  <div v-for="(p,i) in bgPresets" :key="i" class="cp-bg-preset" :class="['preset-'+i, {active:!customBgUrl&&bgPresetIdx===i}]" @click="selectBgPreset(i)" :title="p.name"></div>
+                </div>
+                <div class="cp-bg-btns">
+                  <button class="cp-bg-btn-upload" @click="bgFileInput?.click()">上传图片</button>
+                  <button v-if="customBgUrl" class="cp-bg-btn-reset" @click="resetBg">恢复默认</button>
+                </div>
+              </div>
+            </Transition>
           </div>
-          <!-- 用户信息（紧贴背景下方） -->
+          <!-- 用户信息卡片（半浮在背景上） -->
           <div class="cp-ml-profile">
             <SparkAvatar :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="lg" clickable @click="showSelfProfile" />
             <div class="cp-ml-pinfo">
-              <b>{{ myProfile?.nickname }}</b>
-              <p class="cp-ml-motto">{{ myProfile?.bio || '这个人很懒，什么都没留下' }}</p>
+              <b>{{ myProfile?.nickname || '未设置昵称' }}</b>
+              <div v-if="editingBio" class="cp-bio-edit" @click.stop>
+                <input v-model="bioEditInput" class="cp-bio-input" placeholder="写一句个性签名..." maxlength="60" @keydown.enter="saveBio" @keydown.escape="editingBio=false" @blur="saveBio" ref="bioInputRef">
+                <span class="cp-bio-count">{{ bioEditInput.length }}/60</span>
+              </div>
+              <p v-else class="cp-ml-signature" @click.stop="startEditBio" title="点击编辑签名">{{ myProfile?.bio || '点击设置个性签名...' }}</p>
               <p v-if="myProfile?.region||myProfile?.identity" class="cp-ml-tags">
                 <span v-if="myProfile?.region">📍{{ myProfile.region }}</span>
                 <span v-if="myProfile?.identity">🎓{{ myProfile.identity }}</span>
@@ -588,7 +614,7 @@
             <button class="cp-publish-btn-sm" @click="showPublishModal=true">✨ 发布</button>
             <SparkAvatar :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url" :name="myProfile?.nickname||''" size="sm" clickable @click="showSelfProfile" />
           </div>
-          <div v-for="m in allMoments" :key="m.id" class="cp-feed-card">
+          <div v-for="m in allMoments" :key="m.id" class="cp-feed-card" :class="{'is-pinned':m.is_pinned}">
             <div class="cp-feed-head">
               <SparkAvatar :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="sm" />
               <div class="cp-feed-info">
@@ -596,7 +622,7 @@
                 <small>{{ formatTimeAgo(m.created_at) }}</small>
               </div>
               <span v-if="isMomentLive(m)" class="cp-live-badge"><span class="cp-live-dot-sm"></span>LIVE</span>
-              <span v-if="m.is_pinned && m.author_id===myProfile?.spark_id" class="cp-pin-badge">📌</span>
+              <span v-if="m.is_pinned" class="cp-pin-badge">📌 置顶</span>
               <div v-if="m.author_id===myProfile?.spark_id" class="cp-feed-menu-wrap">
                 <button class="cp-feed-dots" @click.stop="toggleMomentMenu(m.id)">⋯</button>
                 <div v-if="momentMenuId===m.id" class="cp-feed-dropdown">
@@ -917,11 +943,26 @@ const newGroupName = ref(''); const newGroupAI = ref(true); const newGroupMember
 const newGroupSearch = ref('')
 const postContent = ref(''); const postVis = ref<'public'|'friends'|'private'>('public')
 // 星火域双栏状态
-const momentLeftWidth = ref(32) // 左栏宽度百分比
+const momentLeftWidth = ref(32)
 const isDraggingDivider = ref(false)
-const bgExpanded = ref(false) // 背景图放大状态
-const customBgUrl = ref('') // 自定义背景图
+const showBgSettings = ref(false)
+const editingBio = ref(false)
+const bioEditInput = ref('')
+const customBgUrl = ref(localStorage.getItem('spark-bg-url') || '')
+const bgPresetIdx = ref(parseInt(localStorage.getItem('spark-bg-preset') || '0'))
 const bgFileInput = ref<HTMLInputElement|null>(null)
+const bioInputRef = ref<HTMLInputElement|null>(null)
+const bgPresets = [
+  { name: '极光紫' },
+  { name: '深海蓝' },
+  { name: '星云橙' },
+  { name: '森林绿' },
+  { name: '暮光粉' },
+  { name: '星空黑' },
+  { name: '晚霞红' },
+  { name: '冰川蓝' },
+  { name: '暗夜金' },
+]
 const momentMenuId = ref<string|null>(null) // 当前显礼菜单的动态ID
 const expandedComments = reactive<Record<string,boolean>>({})
 const commentInputs = reactive<Record<string,string>>({})
@@ -1831,7 +1872,7 @@ async function scanQRFromFile(file:File){
 }
 let _addMenuOpenTime = 0
 function toggleAddMenu(){showAddMenu.value=!showAddMenu.value;if(showAddMenu.value)_addMenuOpenTime=Date.now()}
-function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value&&Date.now()-_addMenuOpenTime>300)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false;if(pokeMenu.show)pokeMenu.show=false}
+function closeMenus(){if(ctxMenu.show)ctxMenu.show=false;if(showAddMenu.value&&Date.now()-_addMenuOpenTime>300)showAddMenu.value=false;if(msgCtx.show)msgCtx.show=false;if(pokeMenu.show)pokeMenu.show=false;if(showBgSettings.value)showBgSettings.value=false}
 // 拖拽上传
 function onDragEnter(){isDragging.value=true}
 function onDragLeave(){isDragging.value=false}
@@ -1846,21 +1887,21 @@ onMounted(async ()=>{
   window.addEventListener('click',closeMenus)
   _resizeHandler=()=>{isMobile.value=window.innerWidth<768}
   window.addEventListener('resize',_resizeHandler)
-  // v6.7: 从Supabase同步真实头像URL到myProfile
   try {
     const { data } = await supabase.auth.getUser()
-    if (data?.user) {
+    if (data?.user && myProfile.value) {
+      myProfile.value.user_id = data.user.id
       const meta = data.user.user_metadata
-      if (meta?.avatar_url && myProfile.value) {
-        myProfile.value.avatar_url = meta.avatar_url
+      if (meta?.nickname) myProfile.value.nickname = meta.nickname
+      if (meta?.bio) myProfile.value.bio = meta.bio
+      if (meta?.avatar_url) myProfile.value.avatar_url = meta.avatar_url
+      const { data: profile } = await supabase.from('profiles').select('avatar_url,nickname,bio').eq('id', data.user.id).single()
+      if (profile) {
+        if (profile.avatar_url) myProfile.value.avatar_url = profile.avatar_url
+        if (profile.nickname) myProfile.value.nickname = profile.nickname
+        if (profile.bio) myProfile.value.bio = profile.bio
       }
-      // 也检查profiles表
-      const { data: profile } = await supabase.from('profiles').select('avatar_url').eq('id', data.user.id).single()
-      if (profile?.avatar_url && myProfile.value) {
-        myProfile.value.avatar_url = profile.avatar_url
-      }
-      // 头像同步后，更新所有群聊中自己的成员头像
-      syncMyGroupAvatars()
+      updateProfile({})
     }
   } catch { /* 离线模式忽略 */ }
 })
@@ -2132,10 +2173,14 @@ const myMoments = computed(() => {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
 })
-// 星火域双栏: 所有动态(时间倒序+可见性过滤)
+// 星火域双栏: 所有动态(置顶优先+时间倒序+可见性过滤)
 const allMoments = computed(() => {
   const filtered = filterMomentsByVisibility(
-    [...moments.value].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    [...moments.value].sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1
+      if (!a.is_pinned && b.is_pinned) return 1
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
   )
   return filtered
 })
@@ -2161,15 +2206,47 @@ function onDividerMouseDown(e: MouseEvent) {
   document.addEventListener('mouseup', onUp)
 }
 
-// 背景图上传
 function onBgFileSelect(e: Event) {
   const el = e.target as HTMLInputElement
   if (!el.files?.[0]) return
   const file = el.files[0]
-  if (!file.type.startsWith('image/')) return
-  const url = URL.createObjectURL(file)
-  customBgUrl.value = url
+  if (!file.type.startsWith('image/')) { showToast('请选择图片文件'); return }
+  if (file.size > 10 * 1024 * 1024) { showToast('图片不能超过10MB'); return }
+  const reader = new FileReader()
+  reader.onload = () => {
+    customBgUrl.value = reader.result as string
+    localStorage.setItem('spark-bg-url', customBgUrl.value)
+    showBgSettings.value = false
+  }
+  reader.readAsDataURL(file)
   el.value = ''
+}
+function selectBgPreset(idx: number) {
+  customBgUrl.value = ''
+  localStorage.removeItem('spark-bg-url')
+  bgPresetIdx.value = idx
+  localStorage.setItem('spark-bg-preset', String(idx))
+  showBgSettings.value = false
+}
+function resetBg() {
+  customBgUrl.value = ''
+  localStorage.removeItem('spark-bg-url')
+  bgPresetIdx.value = 0
+  localStorage.setItem('spark-bg-preset', '0')
+  showBgSettings.value = false
+}
+function startEditBio() {
+  bioEditInput.value = myProfile.value?.bio || ''
+  editingBio.value = true
+  nextTick(() => bioInputRef.value?.focus())
+}
+function saveBio() {
+  if (!editingBio.value) return
+  const text = bioEditInput.value.trim()
+  if (text !== (myProfile.value?.bio || '')) {
+    updateProfile({ bio: text || '这个人很懒，什么都没留下' })
+  }
+  editingBio.value = false
 }
 
 // 动态菜单切换
@@ -2327,7 +2404,10 @@ function handlePublish() {
 .cp-contact{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;cursor:pointer;transition:all .12s}.cp-contact:hover{background:rgba(255,255,255,.015)}.cp-contact.active{background:rgba(139,92,246,.06)}
 .cp-contact-info{flex:1;min-width:0;display:flex;flex-direction:column}.cp-contact-name{font-size:11px;color:rgba(255,255,255,.5)}.cp-contact-id{font-size:9px;color:rgba(255,255,255,.1)}
 /* 动态 */
-.moments-tab{padding:8px}.cp-post-box{margin-bottom:8px;padding:8px;border-radius:10px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
+.moments-tab{padding:8px}
+.cp-sb-moments-profile{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);margin-bottom:8px}
+.cp-sb-mp-info{flex:1;min-width:0}.cp-sb-mp-info b{font-size:12px;color:rgba(255,255,255,.65);display:block}.cp-sb-mp-info span{font-size:10px;color:rgba(255,255,255,.2)}
+.cp-post-box{margin-bottom:8px;padding:8px;border-radius:10px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
 .cp-post-box textarea{width:100%;background:none;border:none;color:white;font-size:12px;resize:none;outline:none;font-family:inherit;line-height:1.5}.cp-post-box textarea::placeholder{color:rgba(255,255,255,.12)}
 .cp-post-acts{display:flex;justify-content:space-between;align-items:center;margin-top:6px}.cp-post-acts select{padding:3px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.3);font-size:10px;outline:none}
 .cp-post-acts button{padding:4px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;font-size:10px;font-weight:600;cursor:pointer}.cp-post-acts button:disabled{opacity:.3}
@@ -2461,18 +2541,51 @@ function handlePublish() {
 .cp-moments-dual{display:flex;height:100%;overflow:hidden;position:relative}
 .cp-moments-dual.is-dragging{cursor:col-resize;user-select:none}
 .cp-ml{display:flex;flex-direction:column;overflow-y:auto;border-right:none;padding:0}.cp-ml::-webkit-scrollbar{width:2px}.cp-ml::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
-/* 背景图区域：展示大部分内容，点击下推展开 */
-.cp-ml-bg{position:relative;height:200px;overflow:hidden;cursor:pointer;flex-shrink:0;transition:height .5s cubic-bezier(.22,1,.36,1)}
-.cp-ml-bg.expanded{height:400px}
-.cp-ml-bg-img{width:100%;height:100%;background-size:cover;background-position:center top;transition:none}
-.cp-ml-bg-default{width:100%;height:100%;background:linear-gradient(135deg,rgba(139,92,246,.3) 0%,rgba(59,130,246,.2) 40%,rgba(168,85,247,.25) 80%,rgba(236,72,153,.15) 100%)}
-.cp-ml-bg-overlay{position:absolute;bottom:0;left:0;right:0;height:60px;background:linear-gradient(transparent,rgba(14,11,28,.9));pointer-events:none}
-.cp-ml-bg-upload{position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,.45);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;opacity:.7;transition:all .2s}.cp-ml-bg-upload:hover{opacity:1;background:rgba(0,0,0,.6)}
+/* 背景图区域 */
+.cp-ml-bg{position:relative;height:240px;overflow:hidden;flex-shrink:0}
+.cp-ml-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 30%,rgba(139,92,246,.08) 0%,transparent 50%),radial-gradient(circle at 80% 60%,rgba(59,130,246,.06) 0%,transparent 50%);pointer-events:none;z-index:1;animation:shimmer 8s ease-in-out infinite alternate}
+@keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
+.cp-ml-bg-img{width:100%;height:100%;background-size:cover;background-position:center;transition:transform .3s ease}.cp-ml-bg:hover .cp-ml-bg-img{transform:scale(1.02)}
+.cp-ml-bg-default{width:100%;height:100%;animation:bgShift 20s ease-in-out infinite alternate}
+.cp-ml-bg-default.preset-0{background:linear-gradient(135deg,#1a0533 0%,#2d1b69 30%,#4a2fbd 60%,#7c3aed 100%)}
+.cp-ml-bg-default.preset-1{background:linear-gradient(135deg,#0a1628 0%,#0d2847 30%,#1e4976 60%,#2563eb 100%)}
+.cp-ml-bg-default.preset-2{background:linear-gradient(135deg,#1a0f00 0%,#4a2800 30%,#b45309 60%,#f97316 100%)}
+.cp-ml-bg-default.preset-3{background:linear-gradient(135deg,#021a0a 0%,#064e23 30%,#15803d 60%,#22c55e 100%)}
+.cp-ml-bg-default.preset-4{background:linear-gradient(135deg,#1a0521 0%,#5b1a66 30%,#a855f7 50%,#ec4899 100%)}
+.cp-ml-bg-default.preset-5{background:linear-gradient(135deg,#050510 0%,#0a0a1a 30%,#111128 60%,#1e1e3f 100%)}
+.cp-ml-bg-default.preset-6{background:linear-gradient(135deg,#1a0505 0%,#6b1010 25%,#dc2626 55%,#fb923c 100%)}
+.cp-ml-bg-default.preset-7{background:linear-gradient(135deg,#041c2c 0%,#0c4a6e 30%,#38bdf8 65%,#e0f2fe 100%)}
+.cp-ml-bg-default.preset-8{background:linear-gradient(135deg,#0a0a00 0%,#1c1a05 25%,#854d0e 55%,#fbbf24 100%)}
+@keyframes bgShift{0%{background-size:100% 100%;background-position:0% 50%}50%{background-size:130% 130%;background-position:100% 50%}100%{background-size:100% 100%;background-position:0% 50%}}
+.cp-ml-bg-overlay{position:absolute;bottom:0;left:0;right:0;height:100px;background:linear-gradient(transparent,rgba(14,11,28,.4) 40%,rgba(14,11,28,.95));pointer-events:none;z-index:1}
+.cp-ml-bg-actions{position:absolute;top:12px;right:12px;display:flex;gap:6px;z-index:2}
+.cp-ml-bg-btn{background:rgba(0,0,0,.4);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:10px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;opacity:.8;transition:all .2s}.cp-ml-bg-btn:hover{opacity:1;background:rgba(0,0,0,.6);transform:scale(1.05)}
+.cp-bg-panel{position:absolute;top:56px;right:12px;background:rgba(18,14,36,.96);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;width:220px;z-index:10;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.cp-bg-panel h4{margin:0 0 12px;font-size:12px;color:rgba(255,255,255,.5);font-weight:600}
+.cp-bg-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.cp-bg-preset{height:48px;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:all .2s;position:relative;overflow:hidden}
+.cp-bg-preset:hover{transform:scale(1.05);border-color:rgba(255,255,255,.15)}
+.cp-bg-preset.active{border-color:rgba(139,92,246,.6);box-shadow:0 0 12px rgba(139,92,246,.25)}
+.cp-bg-preset.preset-0{background:linear-gradient(135deg,#1a0533,#7c3aed)}
+.cp-bg-preset.preset-1{background:linear-gradient(135deg,#0a1628,#2563eb)}
+.cp-bg-preset.preset-2{background:linear-gradient(135deg,#1a0f00,#f97316)}
+.cp-bg-preset.preset-3{background:linear-gradient(135deg,#021a0a,#22c55e)}
+.cp-bg-preset.preset-4{background:linear-gradient(135deg,#1a0521,#ec4899)}
+.cp-bg-preset.preset-5{background:linear-gradient(135deg,#050510,#1e1e3f)}
+.cp-bg-preset.preset-6{background:linear-gradient(135deg,#1a0505,#fb923c)}
+.cp-bg-preset.preset-7{background:linear-gradient(135deg,#041c2c,#38bdf8)}
+.cp-bg-preset.preset-8{background:linear-gradient(135deg,#0a0a00,#fbbf24)}
+.cp-bg-btns{display:flex;gap:8px}
+.cp-bg-btn-upload{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}.cp-bg-btn-upload:hover{background:rgba(139,92,246,.12)}
+.cp-bg-btn-reset{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:11px;cursor:pointer;transition:all .15s}.cp-bg-btn-reset:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.5)}
 /* 用户信息 */
-.cp-ml-profile{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.03)}
-.cp-ml-pinfo{flex:1;min-width:0}.cp-ml-pinfo b{font-size:14px;color:rgba(255,255,255,.8);display:block;font-weight:700}
-.cp-ml-motto{font-size:11px;color:rgba(255,255,255,.25);margin:3px 0 0;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.cp-ml-tags{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.cp-ml-tags span{font-size:9px;color:rgba(139,92,246,.45);background:rgba(139,92,246,.06);padding:1px 5px;border-radius:3px}
+.cp-ml-profile{display:flex;align-items:flex-start;gap:14px;padding:16px 16px 12px;margin-top:-40px;position:relative;z-index:2}
+.cp-ml-pinfo{flex:1;min-width:0}.cp-ml-pinfo b{font-size:16px;color:rgba(255,255,255,.92);display:block;font-weight:700;text-shadow:0 1px 6px rgba(0,0,0,.4);letter-spacing:.3px}
+.cp-ml-signature{font-size:11px;color:rgba(255,255,255,.35);margin:4px 0 0;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-style:italic;cursor:pointer;padding:2px 4px;border-radius:6px;transition:all .2s}.cp-ml-signature:hover{color:rgba(255,255,255,.5);background:rgba(255,255,255,.03)}
+.cp-bio-edit{position:relative;margin-top:4px}
+.cp-bio-input{width:100%;padding:6px 40px 6px 8px;border-radius:8px;border:1px solid rgba(139,92,246,.3);background:rgba(0,0,0,.3);backdrop-filter:blur(8px);color:rgba(255,255,255,.8);font-size:11px;font-style:italic;outline:none;box-sizing:border-box;transition:border-color .2s}.cp-bio-input:focus{border-color:rgba(139,92,246,.5)}
+.cp-bio-count{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:9px;color:rgba(255,255,255,.15)}
+.cp-ml-tags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.cp-ml-tags span{font-size:9px;color:rgba(139,92,246,.5);background:rgba(139,92,246,.08);padding:2px 8px;border-radius:10px}
 /* 我的动态列表 */
 .cp-ml-list{flex:1;overflow-y:auto;padding:8px 10px}.cp-ml-list::-webkit-scrollbar{width:2px}.cp-ml-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
 .cp-ml-title{font-size:11px;color:rgba(255,255,255,.15);margin:0 0 8px;font-weight:600;letter-spacing:.5px}
@@ -2489,8 +2602,8 @@ function handlePublish() {
 .cp-feed-media{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;border-radius:8px;overflow:hidden}.cp-feed-img{width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;transition:opacity .15s}.cp-feed-img:hover{opacity:.85}
 .cp-feed-info{flex:1;min-width:0}.cp-feed-info b{display:block;font-size:12px;color:rgba(255,255,255,.6)}.cp-feed-info small{font-size:9px;color:rgba(255,255,255,.15)}
 /* 置顶标识 */
-.cp-pin-badge{font-size:9px;color:rgba(139,92,246,.6);background:rgba(139,92,246,.08);padding:1px 6px;border-radius:4px;margin-right:auto}
-.cp-feed-card.is-pinned{border-color:rgba(139,92,246,.12);background:rgba(139,92,246,.03)}
+.cp-pin-badge{font-size:9px;color:rgba(139,92,246,.7);background:rgba(139,92,246,.1);padding:2px 8px;border-radius:6px;margin-right:auto;font-weight:600;letter-spacing:.3px}
+.cp-feed-card.is-pinned{border-color:rgba(139,92,246,.15);background:rgba(139,92,246,.04);box-shadow:0 0 20px rgba(139,92,246,.05)}.cp-feed-card.is-pinned:hover{border-color:rgba(139,92,246,.25);background:rgba(139,92,246,.06)}
 /* 动态菜单 */
 .cp-feed-menu-wrap{position:relative;margin-left:auto}
 .cp-feed-dots{background:none;border:none;color:rgba(255,255,255,.2);font-size:16px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .12s;line-height:1}.cp-feed-dots:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.4)}
@@ -2500,10 +2613,10 @@ function handlePublish() {
 .cp-feed-dropdown button.del{color:rgba(239,68,68,.5)}.cp-feed-dropdown button.del:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.7)}
 /* 左栏post box */
 .cp-ml .cp-post-box{margin:8px 10px;padding:8px;border-radius:10px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03)}
-.cp-feed-card{padding:14px;border-radius:14px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03);margin-bottom:10px}
+.cp-feed-card{padding:14px;border-radius:14px;background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.03);margin-bottom:10px;transition:all .2s ease}.cp-feed-card:hover{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.06);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.15)}
 .cp-feed-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.cp-feed-head b{font-size:12px;color:rgba(255,255,255,.55)}.cp-feed-head small{color:rgba(255,255,255,.1);margin-left:6px;font-size:9px}
 .cp-feed-card p{font-size:13px;color:rgba(255,255,255,.5);line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
-.cp-feed-acts{display:flex;gap:8px}.cp-feed-acts button{padding:4px 10px;border-radius:6px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .15s}.cp-feed-acts button:hover{background:rgba(139,92,246,.04);color:rgba(139,92,246,.5)}.cp-feed-acts button.liked{color:rgba(239,68,68,.5)}
+.cp-feed-acts{display:flex;gap:8px;padding-top:4px}.cp-feed-acts button{padding:5px 12px;border-radius:8px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);font-size:10px;cursor:pointer;transition:all .2s;font-weight:500}.cp-feed-acts button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6);transform:scale(1.02)}.cp-feed-acts button:active{transform:scale(.96)}.cp-feed-acts button.liked{color:rgba(239,68,68,.6);background:rgba(239,68,68,.04)}
 .cp-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center}
 .cp-welcome-icon{font-size:48px;margin-bottom:12px}.cp-welcome h3{color:white;font-size:18px;margin:0 0 6px}.cp-welcome p{color:rgba(255,255,255,.15);font-size:12px;margin:0 0 20px}
 .cp-stats{display:flex;gap:24px}.cp-stat{display:flex;flex-direction:column;align-items:center;gap:2px;color:rgba(255,255,255,.2);font-size:10px}.cp-stat span{font-size:22px;font-weight:700;color:rgba(139,92,246,.5)}
