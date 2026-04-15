@@ -55,63 +55,63 @@ function init() {
   stars = []; meteors = []; nebulae = []; planets = []
   const area = w * h
 
-  const dimCount = Math.floor(area / 2000)
+  const dimCount = Math.floor(area / 1200)
   for (let i = 0; i < dimCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 0.6 + 0.2,
-      baseAlpha: Math.random() * 0.12 + 0.04,
+      size: Math.random() * 0.7 + 0.2,
+      baseAlpha: Math.random() * 0.18 + 0.06,
       phase: Math.random() * Math.PI * 2,
-      twinkleSpeed: Math.random() * 0.3 + 0.1,
+      twinkleSpeed: Math.random() * 0.4 + 0.15,
       color: starColors[Math.floor(Math.random() * starColors.length)],
       layer: 'dim'
     })
   }
 
-  const normalCount = Math.floor(area / 5000)
+  const normalCount = Math.floor(area / 3000)
   for (let i = 0; i < normalCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.0 + 0.5,
-      baseAlpha: Math.random() * 0.2 + 0.1,
+      size: Math.random() * 1.2 + 0.5,
+      baseAlpha: Math.random() * 0.3 + 0.12,
       phase: Math.random() * Math.PI * 2,
-      twinkleSpeed: Math.random() * 0.5 + 0.2,
+      twinkleSpeed: Math.random() * 0.6 + 0.25,
       color: starColors[Math.floor(Math.random() * starColors.length)],
       layer: 'normal'
     })
   }
 
-  const brightCount = Math.floor(area / 30000) + 8
+  const brightCount = Math.floor(area / 18000) + 12
   for (let i = 0; i < brightCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.5 + 1.0,
-      baseAlpha: Math.random() * 0.25 + 0.2,
+      size: Math.random() * 1.8 + 1.0,
+      baseAlpha: Math.random() * 0.35 + 0.25,
       phase: Math.random() * Math.PI * 2,
-      twinkleSpeed: Math.random() * 0.8 + 0.3,
+      twinkleSpeed: Math.random() * 0.9 + 0.35,
       color: starColors[Math.floor(Math.random() * 3)],
       layer: 'bright'
     })
   }
 
-  const nebCount = Math.min(Math.floor(area / 120000) + 3, 6)
+  const nebCount = Math.min(Math.floor(area / 80000) + 5, 8)
   for (let i = 0; i < nebCount; i++) {
     nebulae.push({
       x: Math.random() * w, y: Math.random() * h,
       radius: Math.random() * 400 + 200,
       color: ['rgba(80,60,160,', 'rgba(40,70,140,', 'rgba(100,50,120,', 'rgba(30,80,100,'][Math.floor(Math.random() * 4)],
-      alpha: Math.random() * 0.015 + 0.005,
+      alpha: Math.random() * 0.025 + 0.01,
       driftX: (Math.random() - 0.5) * 0.04,
       driftY: (Math.random() - 0.5) * 0.03
     })
   }
 
   const planetColors = [
-    { color: '#3a2520', glow: 'rgba(180,100,60,0.06)' },
-    { color: '#1a2a3a', glow: 'rgba(80,120,180,0.05)' },
-    { color: '#2a1a2a', glow: 'rgba(140,80,160,0.04)' },
+    { color: '#4a3530', glow: 'rgba(180,100,60,0.08)' },
+    { color: '#2a3a4a', glow: 'rgba(80,120,180,0.07)' },
+    { color: '#3a2a3a', glow: 'rgba(140,80,160,0.06)' },
   ]
-  const pCount = Math.floor(Math.random() * 2) + 1
+  const pCount = Math.floor(Math.random() * 2) + 2
   for (let i = 0; i < pCount; i++) {
     const pc = planetColors[Math.floor(Math.random() * planetColors.length)]
     const hasRing = Math.random() > 0.6
@@ -120,7 +120,7 @@ function init() {
       y: Math.random() * h * 0.5 + h * 0.1,
       radius: Math.random() * 20 + 10,
       color: pc.color, glowColor: pc.glow,
-      alpha: Math.random() * 0.12 + 0.06,
+      alpha: Math.random() * 0.15 + 0.08,
       ringRadius: hasRing ? Math.random() * 12 + 8 : undefined,
       ringAlpha: hasRing ? 0.04 : undefined,
     })
@@ -273,7 +273,7 @@ function animate(ctx: CanvasRenderingContext2D) {
   for (const p of planets) drawPlanet(ctx, p)
   for (const s of stars) drawStar(ctx, s, time)
 
-  if (Math.random() < 0.003) spawnMeteor()
+  if (Math.random() < 0.008) spawnMeteor()
 
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]

@@ -190,6 +190,12 @@
                   </div>
                   <!-- 普通文本消息 -->
                   <div v-else class="cp-bubble" v-html="renderMsgContent(msg.content)"></div>
+                  <!-- AI 回复失败 — 重试按钮 -->
+                  <button
+                    v-if="activeChat?.type==='ai' && msg.sender_type==='ai' && idx===chatMessages.length-1 && isAiErrorMsg(msg.content) && !isAiTyping"
+                    class="cp-ai-retry-btn"
+                    @click.stop="handleRetryAI"
+                  >🔄 重新发送</button>
                   <!-- 翻译结果（微信风格） -->
                   <div v-if="translatedMessages[msg.id]" class="cp-translate-result">
                     <p class="cp-translate-text">{{ translatedMessages[msg.id] }}</p>
@@ -849,7 +855,7 @@ const {
   myProfile, friends, groups, moments, isAiTyping, aiTypingText, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
-  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, aiChatHistory, searchUser,
+  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, retryLastAI, lastAiError, aiChatHistory, searchUser,
   updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
   setGroupRemark, setMyGroupNickname, getGroupDisplayName,
@@ -2103,10 +2109,17 @@ function isMentionedInMsg(msg: ChatMsg): boolean {
 void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat
 // 渲染消息内容（@提及高亮）
 function renderMsgContent(content: string): string {
-  // 转义HTML
   const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  // 高亮 @提及
   return escaped.replace(/@([\w\u4e00-\u9fff\uff08\uff09\(\)]+)/g, '<span class="cp-mention-hl">@$1</span>')
+}
+
+const AI_ERROR_KEYWORDS = ['无法连接', '网络连接异常', '开小差', '仍然无法连接', '重试失败', '网络波动', 'AI_UNREACHABLE', '出了点小状况']
+function isAiErrorMsg(content: string): boolean {
+  return AI_ERROR_KEYWORDS.some(kw => content.includes(kw))
+}
+async function handleRetryAI() {
+  await retryLastAI()
+  scrollChat()
 }
 
 // 星火域双栏: 我的动态(置顶优先)
@@ -2358,6 +2371,10 @@ function handlePublish() {
 .cp-msg:not(.mine):not(.sys) .cp-bubble{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-top-left-radius:4px}
 .cp-msg.mine .cp-bubble{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.08);border-top-right-radius:4px;color:rgba(255,255,255,.85)}
 .cp-msg.ai .cp-bubble{background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);border-top-left-radius:4px}
+/* AI 重试按钮 */
+.cp-ai-retry-btn{margin-top:6px;padding:5px 14px;border-radius:10px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:11px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.cp-ai-retry-btn:hover{background:rgba(139,92,246,.14);border-color:rgba(139,92,246,.35);color:rgba(139,92,246,.9);transform:translateY(-1px);box-shadow:0 2px 8px rgba(139,92,246,.15)}
+.cp-ai-retry-btn:active{transform:scale(.97)}
 .cp-msg-time{font-size:8px;color:rgba(255,255,255,.08);white-space:nowrap;flex-shrink:0}
 /* 时间更醒目 */
 .cp-msg-time2{font-size:9px;color:rgba(255,255,255,.25);white-space:nowrap;flex-shrink:0;align-self:flex-end}

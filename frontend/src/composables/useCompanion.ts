@@ -819,7 +819,7 @@ export function useCompanion() {
   function clearPrivateChat(friendId: string) {
     const all = getPrivateChatStore()
     all[friendId] = []
-    savePrivateChatStore()
+    markPrivateChatDirty()
   }
 
   /** 标记消息为已读（本地缓存 + 异步 Supabase 同步） */
@@ -906,8 +906,9 @@ export function useCompanion() {
 
   /** AI自动回复（私聊） */
   async function triggerAIReply(friendId: string, userMsg: string, _allChats: Record<string, ChatMsg[]>) {
-    void _allChats // 使用缓存替代传入引用
+    void _allChats
     isAiTyping.value = true
+    aiTypingText.value = '正在思考...'
     try {
       const store = getPrivateChatStore()
       const chatMsgs = store[friendId] || []
@@ -923,11 +924,25 @@ export function useCompanion() {
       if (!store[friendId]) store[friendId] = []
       store[friendId].push(aiMsg)
       markPrivateChatDirty()
-      // 更新好友最后消息
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
-    } catch { /* 静默失败 */ }
-    isAiTyping.value = false
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const friendlyText = msg === 'AI_UNREACHABLE'
+        ? '网络波动，暂时回复不了，稍后再找我聊~ 💫'
+        : `抱歉，出了点小状况~ 🤔`
+      const store = getPrivateChatStore()
+      if (!store[friendId]) store[friendId] = []
+      store[friendId].push({
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: friendlyText, type: 'text', is_read: true, created_at: now(),
+      })
+      markPrivateChatDirty()
+      console.warn('[Companion AI] triggerAIReply failed:', msg)
+    } finally {
+      isAiTyping.value = false
+      aiTypingText.value = ''
+    }
   }
 
   // ------ 消息撤回 ------
@@ -1167,7 +1182,18 @@ export function useCompanion() {
 简短回复优先，不要长篇大论。聊天就像跟朋友发微信一样。
 涉及敏感话题时温和转移。今天是${new Date().toLocaleDateString('zh-CN')}。`
 
-  async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
+  const lastAiError = ref<string | null>(null)
+  const aiRetryCount = ref(0)
+  const MAX_AI_RETRIES = 2
+
+  async function callAIWithRetry(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    extraSystem?: string,
+    attempt = 0,
+  ): Promise<string> {
+    const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+    // 1) Edge Function
     try {
       const scopedMessages = extraSystem
         ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
@@ -1177,43 +1203,87 @@ export function useCompanion() {
         mode: 'fast',
         messages: scopedMessages,
       })
-      if (response.content) return response.content
-    } catch {
-      // Edge Function 不可用，回退到 NVIDIA API
+      if (response.content) {
+        lastAiError.value = null
+        return response.content
+      }
+    } catch (edgeErr) {
+      const msg = edgeErr instanceof Error ? edgeErr.message : String(edgeErr)
+      console.warn(`[Companion AI] Edge Function 失败 (attempt ${attempt + 1}):`, msg)
+      if (msg === '请先登录后再使用 AI 助手') throw edgeErr
     }
 
+    // 2) NVIDIA API 直连回退
     const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY
-    if (!API_KEY) return '抱歉，AI 服务暂时不可用，请稍后再试 🤔'
+    if (API_KEY) {
+      const systemMsg = extraSystem
+        ? `${AI_COMPANION_PROMPT}\n${extraSystem}`
+        : AI_COMPANION_PROMPT
+      const apiMessages = [
+        { role: 'system' as const, content: systemMsg },
+        ...messages.slice(-15),
+      ]
 
-    const systemMsg = extraSystem
-      ? `${AI_COMPANION_PROMPT}\n${extraSystem}`
-      : AI_COMPANION_PROMPT
-    const apiMessages = [
-      { role: 'system' as const, content: systemMsg },
-      ...messages.slice(-15),
-    ]
+      const modelsToTry = [
+        'deepseek-ai/deepseek-r1',
+        'meta/llama-3.1-70b-instruct',
+        'meta/llama-3.1-8b-instruct',
+      ]
 
-    const modelsToTry = ['deepseek-ai/deepseek-r1', 'meta/llama-3.1-70b-instruct', 'meta/llama-3.1-8b-instruct']
-    for (const modelId of modelsToTry) {
-      try {
-        const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
-          body: JSON.stringify({
-            model: modelId,
-            messages: apiMessages,
-            stream: false,
-            temperature: 0.8,
-            max_tokens: 1024,
-          }),
-        })
-        if (!res.ok) continue
-        const data = await res.json()
-        const content = data.choices?.[0]?.message?.content
-        if (content) return content
-      } catch { continue }
+      for (const modelId of modelsToTry) {
+        try {
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 30000)
+          const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+            body: JSON.stringify({
+              model: modelId,
+              messages: apiMessages,
+              stream: false,
+              temperature: 0.8,
+              max_tokens: 1024,
+            }),
+            signal: controller.signal,
+          })
+          clearTimeout(timer)
+          if (!res.ok) {
+            console.warn(`[Companion AI] NVIDIA ${modelId} → HTTP ${res.status}`)
+            continue
+          }
+          const data = await res.json()
+          const content = data.choices?.[0]?.message?.content
+          if (content) {
+            lastAiError.value = null
+            return content
+          }
+        } catch (fetchErr) {
+          const name = fetchErr instanceof Error ? fetchErr.name : ''
+          if (name === 'AbortError') {
+            console.warn(`[Companion AI] NVIDIA ${modelId} 请求超时`)
+          } else {
+            console.warn(`[Companion AI] NVIDIA ${modelId} 失败:`, fetchErr)
+          }
+          continue
+        }
+      }
     }
-    return '网络不太好，让我歇会儿再回你~ 🤔'
+
+    // 3) 自动重试（指数退避）
+    if (attempt < MAX_AI_RETRIES) {
+      const backoff = (attempt + 1) * 1500
+      console.log(`[Companion AI] 第 ${attempt + 2} 次重试，等待 ${backoff}ms...`)
+      aiTypingText.value = `连接中...重试第 ${attempt + 1} 次`
+      await delay(backoff)
+      return callAIWithRetry(messages, extraSystem, attempt + 1)
+    }
+
+    lastAiError.value = 'AI_UNREACHABLE'
+    throw new Error('AI_UNREACHABLE')
+  }
+
+  async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
+    return callAIWithRetry(messages, extraSystem, 0)
   }
 
   /** 发消息给AI伴侣（独立聊天，非群聊/私聊） */
@@ -1228,11 +1298,17 @@ export function useCompanion() {
 
     isAiTyping.value = true
     aiTypingText.value = '正在思考...'
+    aiRetryCount.value = 0
+    lastAiError.value = null
+
     try {
-      const history = aiChatHistory.value.slice(-20).map(m => ({
-        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
-        content: m.content,
-      }))
+      const history = aiChatHistory.value
+        .filter(m => m.type !== 'system')
+        .slice(-20)
+        .map(m => ({
+          role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+          content: m.content,
+        }))
       aiTypingText.value = '正在生成回复...'
       const reply = await callAI(history)
       const aiMsg: ChatMsg = {
@@ -1242,16 +1318,73 @@ export function useCompanion() {
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
       return reply
-    } catch (err: any) {
-      // v7.1: 失败时插入错误消息气泡，而非静默失败
-      const errorText = err?.message || 'AI服务暂时不可用'
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : String(err)
+      let friendlyText: string
+      if (raw === 'AI_UNREACHABLE') {
+        friendlyText = '暂时无法连接 AI 服务，可能是网络波动，请稍后点击重试 💫'
+      } else if (raw === '请先登录后再使用 AI 助手') {
+        friendlyText = '请先登录账号，登录后即可和我畅聊 🔐'
+      } else if (raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+        friendlyText = '网络连接异常，请检查网络后重试 📡'
+      } else {
+        friendlyText = `服务暂时开小差了：${raw.slice(0, 60)} 🛠️`
+      }
       const errorMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
-        sender_type: 'ai', content: `⚠️ ${errorText}\n\n请稍后再试，或检查网络连接。`, type: 'text', is_read: true, created_at: now(),
+        sender_type: 'ai', content: friendlyText, type: 'text', is_read: true, created_at: now(),
       }
       aiChatHistory.value.push(errorMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
-      return errorText
+      return friendlyText
+    } finally {
+      isAiTyping.value = false
+      aiTypingText.value = ''
+    }
+  }
+
+  /** 重新发送最后一条用户消息（重试） */
+  async function retryLastAI(): Promise<string> {
+    const lastUserIdx = [...aiChatHistory.value].reverse().findIndex(m => m.sender_type === 'user')
+    if (lastUserIdx < 0) return ''
+    const realIdx = aiChatHistory.value.length - 1 - lastUserIdx
+
+    // 删除该条之后的所有 AI 错误回复
+    aiChatHistory.value = aiChatHistory.value.slice(0, realIdx + 1)
+    saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+
+    isAiTyping.value = true
+    aiTypingText.value = '重新连接中...'
+    lastAiError.value = null
+
+    try {
+      const history = aiChatHistory.value
+        .filter(m => m.type !== 'system')
+        .slice(-20)
+        .map(m => ({
+          role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+          content: m.content,
+        }))
+      const reply = await callAI(history)
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
+      }
+      aiChatHistory.value.push(aiMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return reply
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : String(err)
+      const friendlyText = raw === 'AI_UNREACHABLE'
+        ? '仍然无法连接，请稍后再试 💫'
+        : `重试失败：${raw.slice(0, 60)}`
+      const errorMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
+        sender_type: 'ai', content: friendlyText, type: 'text', is_read: true, created_at: now(),
+      }
+      aiChatHistory.value.push(errorMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return friendlyText
     } finally {
       isAiTyping.value = false
       aiTypingText.value = ''
@@ -1627,7 +1760,7 @@ export function useCompanion() {
     // 收藏
     addFavorite, removeFavorite,
     // AI
-    sendToAI, clearAIChat,
+    sendToAI, retryLastAI, clearAIChat, lastAiError,
     // 工具
     formatTimeAgo,
     // 持久化

@@ -18,10 +18,76 @@
         <div class="ws-item"><span class="ws-num">{{ wallStats.totalComments }}</span><span class="ws-label">评论</span></div>
       </div>
 
-      <!-- 热门标签 -->
+      <!-- 星火墙数据面板 -->
+      <div v-if="!isLoading && posts.length > 0" class="wall-insight-panel">
+        <!-- 面板头 -->
+        <button class="wip-toggle" @click="insightExpanded = !insightExpanded">
+          <span class="wip-toggle-label">📊 星火洞察</span>
+          <span class="wip-toggle-arrow" :class="{ open: insightExpanded }">›</span>
+        </button>
+
+        <!-- 面板内容（可折叠） -->
+        <Transition name="panel-slide">
+          <div v-if="insightExpanded" class="wip-body">
+            <!-- 词云 -->
+            <div v-if="trendingTags.length > 0" class="wip-section">
+              <h4 class="wip-title">🏷️ 话题词云</h4>
+              <div class="wip-wordcloud">
+                <button
+                  v-for="(t, i) in wordCloudTags"
+                  :key="t.tag"
+                  class="wc-word"
+                  :style="{
+                    fontSize: t.size + 'px',
+                    color: t.color,
+                    opacity: t.opacity,
+                    animationDelay: (i * 0.04) + 's',
+                  }"
+                  @click="filterByTag(t.tag)"
+                >
+                  #{{ t.tag }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 7日趋势 -->
+            <div class="wip-section">
+              <h4 class="wip-title">📈 7日活跃趋势</h4>
+              <div class="wip-trend">
+                <div class="wip-trend-chart">
+                  <div
+                    v-for="(d, i) in weeklyTrend"
+                    :key="i"
+                    class="wip-bar-col"
+                  >
+                    <div class="wip-bar" :style="{ height: d.pct + '%' }" :title="d.count + ' 条'"></div>
+                    <span class="wip-bar-label">{{ d.label }}</span>
+                  </div>
+                </div>
+                <div class="wip-trend-summary">
+                  <span class="wip-trend-num" :class="trendDirection">{{ trendDelta }}</span>
+                  <span class="wip-trend-desc">较上周{{ trendDirection === 'up' ? '增长' : trendDirection === 'down' ? '下降' : '持平' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 活跃时段 -->
+            <div class="wip-section">
+              <h4 class="wip-title">⏰ 今日活跃时段</h4>
+              <div class="wip-hours">
+                <div v-for="h in hourlyActivity" :key="h.hour" class="wip-hour-dot" :class="{ active: h.count > 0 }" :style="{ opacity: h.intensity }" :title="h.hour + ':00 — ' + h.count + '条'">
+                  <span class="wip-hour-label">{{ h.hour }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+
+      <!-- 热门标签（精简版，始终可见） -->
       <div v-if="!isLoading && trendingTags.length > 0" class="wall-trending">
         <span class="wt-label">🔥 热门</span>
-        <button v-for="t in trendingTags.slice(0, 8)" :key="t.tag" class="wt-tag" @click="activeTab='推荐'">
+        <button v-for="t in trendingTags.slice(0, 8)" :key="t.tag" class="wt-tag" @click="filterByTag(t.tag)">
           #{{ t.tag }} <span class="wt-count">{{ t.count }}</span>
         </button>
       </div>
@@ -119,6 +185,18 @@
             <span class="p-tag" v-for="tag in post.tags" :key="tag">#{{ tag }}</span>
           </div>
 
+          <!-- 表情快速回应 -->
+          <div v-if="getPostReactions(post.id).length > 0" class="post-reactions">
+            <button
+              v-for="r in getPostReactions(post.id)"
+              :key="r.emoji"
+              class="reaction-chip"
+              :class="{ mine: r.mine }"
+              @click="toggleReaction(post.id, r.emoji)"
+            >
+              {{ r.emoji }} <span>{{ r.count }}</span>
+            </button>
+          </div>
           <!-- 帖子操作栏 -->
           <div class="post-actions">
             <button class="action-btn" :class="{ active: post.liked }" @click="toggleLike(post)">
@@ -129,6 +207,17 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
               {{ post.comments }}
             </button>
+            <!-- 表情回应选择器 -->
+            <div class="reaction-trigger-wrap">
+              <button class="action-btn" @click.stop="toggleReactionPicker(post.id)">
+                😊 回应
+              </button>
+              <Transition name="dropdown">
+                <div v-if="activeReactionPicker === post.id" class="reaction-picker" @click.stop>
+                  <button v-for="e in REACTION_EMOJIS" :key="e" class="rp-emoji" @click="toggleReaction(post.id, e); activeReactionPicker = null">{{ e }}</button>
+                </div>
+              </Transition>
+            </div>
             <button class="action-btn" @click="sharePost(post)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
               分享
@@ -865,6 +954,129 @@ const trendingTags = computed(() => {
     .slice(0, 12)
     .map(([tag, count]) => ({ tag, count }))
 })
+
+// ====== 星火洞察面板 ======
+const insightExpanded = ref(false)
+
+const WORDCLOUD_COLORS = [
+  'rgba(139,92,246,0.8)', 'rgba(99,102,241,0.7)', 'rgba(236,72,153,0.7)',
+  'rgba(59,130,246,0.7)', 'rgba(168,85,247,0.8)', 'rgba(244,114,182,0.7)',
+  'rgba(129,140,248,0.7)', 'rgba(192,132,252,0.8)',
+]
+
+const wordCloudTags = computed(() => {
+  if (trendingTags.value.length === 0) return []
+  const maxCount = trendingTags.value[0]?.count || 1
+  return trendingTags.value.slice(0, 20).map((t, i) => {
+    const ratio = t.count / maxCount
+    return {
+      tag: t.tag,
+      count: t.count,
+      size: Math.round(11 + ratio * 15),
+      color: WORDCLOUD_COLORS[i % WORDCLOUD_COLORS.length],
+      opacity: 0.5 + ratio * 0.5,
+    }
+  })
+})
+
+const weeklyTrend = computed(() => {
+  const days: { label: string; count: number; pct: number }[] = []
+  const now = new Date()
+  const dayLabels = ['日', '一', '二', '三', '四', '五', '六']
+  const counts: number[] = []
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - i)
+    const dateStr = d.toDateString()
+    const count = posts.value.filter(p => new Date(p.createdAt).toDateString() === dateStr).length
+    counts.push(count)
+    days.push({ label: dayLabels[d.getDay()], count, pct: 0 })
+  }
+
+  const max = Math.max(...counts, 1)
+  days.forEach(d => { d.pct = Math.round((d.count / max) * 100) })
+  return days
+})
+
+const trendDirection = computed(() => {
+  const t = weeklyTrend.value
+  const thisWeek = t.slice(-3).reduce((s, d) => s + d.count, 0)
+  const lastWeek = t.slice(0, 3).reduce((s, d) => s + d.count, 0)
+  if (thisWeek > lastWeek) return 'up'
+  if (thisWeek < lastWeek) return 'down'
+  return 'flat'
+})
+
+const trendDelta = computed(() => {
+  const t = weeklyTrend.value
+  const thisWeek = t.slice(-3).reduce((s, d) => s + d.count, 0)
+  const lastWeek = t.slice(0, 3).reduce((s, d) => s + d.count, 0)
+  const diff = thisWeek - lastWeek
+  if (diff > 0) return `+${diff}`
+  if (diff < 0) return `${diff}`
+  return '0'
+})
+
+const hourlyActivity = computed(() => {
+  const today = new Date().toDateString()
+  const hours: { hour: number; count: number; intensity: number }[] = []
+  const counts: number[] = Array(24).fill(0)
+
+  for (const p of posts.value) {
+    const d = new Date(p.createdAt)
+    if (d.toDateString() === today) {
+      counts[d.getHours()]++
+    }
+  }
+
+  const max = Math.max(...counts, 1)
+  for (let h = 6; h <= 23; h++) {
+    hours.push({ hour: h, count: counts[h], intensity: 0.2 + (counts[h] / max) * 0.8 })
+  }
+  return hours
+})
+
+function filterByTag(tag: string) {
+  activeTab.value = '推荐'
+}
+void filterByTag
+
+// ====== 表情回应系统 ======
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '😮', '😢', '🎉', '💡']
+const postReactions = ref<Record<string, Record<string, Set<string>>>>({})
+const activeReactionPicker = ref<string | null>(null)
+
+function getPostReactions(postId: string): { emoji: string; count: number; mine: boolean }[] {
+  const r = postReactions.value[postId]
+  if (!r) return []
+  return Object.entries(r)
+    .filter(([, users]) => users.size > 0)
+    .map(([emoji, users]) => ({
+      emoji,
+      count: users.size,
+      mine: users.has(user.value?.id || ''),
+    }))
+    .sort((a, b) => b.count - a.count)
+}
+
+function toggleReaction(postId: string, emoji: string) {
+  if (!user.value) return
+  if (!postReactions.value[postId]) postReactions.value[postId] = {}
+  if (!postReactions.value[postId][emoji]) postReactions.value[postId][emoji] = new Set()
+
+  const users = postReactions.value[postId][emoji]
+  if (users.has(user.value.id)) {
+    users.delete(user.value.id)
+  } else {
+    users.add(user.value.id)
+  }
+  postReactions.value = { ...postReactions.value }
+}
+
+function toggleReactionPicker(postId: string) {
+  activeReactionPicker.value = activeReactionPicker.value === postId ? null : postId
+}
 
 // ====== 帖子统计 ======
 const wallStats = computed(() => ({
@@ -2280,6 +2492,111 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
 .ws-label {
   font-size: 9px; color: rgba(255,255,255,0.2); letter-spacing: 0.5px;
 }
+
+/* ====== 星火洞察面板 ====== */
+.wall-insight-panel {
+  margin: 0 auto 10px; max-width: 640px;
+  border-radius: 12px; overflow: hidden;
+  background: rgba(139,92,246,0.02);
+  border: 1px solid rgba(139,92,246,0.06);
+}
+.wip-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 10px 16px; border: none; background: transparent;
+  color: rgba(255,255,255,0.4); font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+}
+.wip-toggle:hover { background: rgba(139,92,246,0.04); color: rgba(255,255,255,0.6); }
+.wip-toggle-label { font-weight: 600; }
+.wip-toggle-arrow { font-size: 16px; transition: transform 0.25s; display: inline-block; }
+.wip-toggle-arrow.open { transform: rotate(90deg); }
+.wip-body { padding: 0 16px 14px; }
+.wip-section { margin-bottom: 16px; }
+.wip-section:last-child { margin-bottom: 0; }
+.wip-title { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.3); margin: 0 0 8px; }
+
+/* 词云 */
+.wip-wordcloud {
+  display: flex; flex-wrap: wrap; gap: 6px 10px;
+  align-items: center; justify-content: center;
+  padding: 8px 4px; min-height: 60px;
+}
+.wc-word {
+  border: none; background: transparent; cursor: pointer;
+  font-weight: 600; letter-spacing: 0.3px;
+  transition: all 0.2s; animation: wcFadeIn 0.4s both;
+  padding: 2px 4px; border-radius: 4px;
+}
+.wc-word:hover {
+  transform: scale(1.12);
+  text-shadow: 0 0 12px currentColor;
+  background: rgba(139,92,246,0.08);
+}
+@keyframes wcFadeIn { from { opacity: 0; transform: scale(0.7) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* 7日趋势图 */
+.wip-trend { display: flex; align-items: flex-end; gap: 12px; }
+.wip-trend-chart {
+  display: flex; align-items: flex-end; gap: 4px;
+  height: 50px; flex: 1;
+}
+.wip-bar-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; height: 100%; justify-content: flex-end; }
+.wip-bar {
+  width: 100%; min-height: 2px; max-height: 100%;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to top, rgba(139,92,246,0.15), rgba(139,92,246,0.4));
+  transition: height 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+.wip-bar-label { font-size: 8px; color: rgba(255,255,255,0.15); }
+.wip-trend-summary { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 48px; }
+.wip-trend-num { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wip-trend-num.up { color: rgba(34,197,94,0.7); }
+.wip-trend-num.down { color: rgba(239,68,68,0.6); }
+.wip-trend-num.flat { color: rgba(255,255,255,0.25); }
+.wip-trend-desc { font-size: 9px; color: rgba(255,255,255,0.2); white-space: nowrap; }
+
+/* 活跃时段 */
+.wip-hours { display: flex; gap: 2px; flex-wrap: wrap; }
+.wip-hour-dot {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  width: 22px; height: 26px; border-radius: 4px;
+  background: rgba(139,92,246,0.05);
+  justify-content: center; transition: all 0.15s;
+}
+.wip-hour-dot.active { background: rgba(139,92,246,0.15); }
+.wip-hour-label { font-size: 7px; color: rgba(255,255,255,0.2); }
+
+/* 面板过渡 */
+.panel-slide-enter-active { transition: all 0.3s ease; }
+.panel-slide-leave-active { transition: all 0.2s ease; }
+.panel-slide-enter-from, .panel-slide-leave-to { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+.panel-slide-enter-to, .panel-slide-leave-from { opacity: 1; max-height: 400px; }
+
+/* ====== 表情回应 ====== */
+.post-reactions { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 16px 0; }
+.reaction-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 12px; font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);
+  color: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.15s;
+}
+.reaction-chip span { font-size: 10px; }
+.reaction-chip:hover { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.15); }
+.reaction-chip.mine { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.2); color: rgba(139,92,246,0.8); }
+.reaction-trigger-wrap { position: relative; }
+.reaction-picker {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 6px 8px;
+  background: rgba(24,24,36,0.95); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  z-index: 10; white-space: nowrap;
+}
+.rp-emoji {
+  border: none; background: transparent; font-size: 18px;
+  cursor: pointer; padding: 2px 4px; border-radius: 6px;
+  transition: all 0.12s;
+}
+.rp-emoji:hover { background: rgba(139,92,246,0.12); transform: scale(1.2); }
 
 /* ====== 热门标签 ====== */
 .wall-trending {
