@@ -59,6 +59,7 @@ export interface Friend {
   spark_id: string
   nickname: string
   avatar: string
+  avatar_url?: string    // 完整图片URL
   profile?: SparkProfile
   remark?: string        // 备注
   bio: string
@@ -517,20 +518,81 @@ export function useCompanion() {
     myProfile.value.moment_count = moments.value.filter(m => m.author_id === myProfile.value?.spark_id).length
     saveData(STORAGE_KEYS.profile, myProfile.value)
 
-    // 同步群成员中自己的头像和昵称
-    if (updates.avatar || updates.avatar_url || updates.nickname) {
+    const myId = myProfile.value.spark_id
+    const hasAvatarOrNameChange = updates.avatar !== undefined || updates.avatar_url !== undefined || updates.nickname !== undefined
+
+    if (hasAvatarOrNameChange) {
       for (const g of groups.value) {
-        const me = g.members.find(m => m.spark_id === myProfile.value?.spark_id)
+        const me = g.members.find(m => m.spark_id === myId)
         if (me) {
           if (updates.avatar !== undefined) me.avatar = updates.avatar
           if (updates.avatar_url !== undefined) me.avatar_url = updates.avatar_url
           if (updates.nickname !== undefined && !me.group_nickname) me.nickname = updates.nickname
         }
+        for (const msg of g.messages) {
+          if (msg.sender_id === myId) {
+            if (updates.avatar !== undefined) msg.sender_avatar = updates.avatar
+            if (updates.avatar_url !== undefined) msg.sender_avatar_url = updates.avatar_url
+            if (updates.nickname !== undefined) msg.sender_name = updates.nickname
+          }
+        }
       }
       saveData(STORAGE_KEYS.groups, groups.value)
+
+      for (const f of friends.value) {
+        const msgs = getPrivateChat(f.spark_id)
+        let changed = false
+        for (const msg of msgs) {
+          if (msg.sender_id === myId) {
+            if (updates.avatar !== undefined) msg.sender_avatar = updates.avatar
+            if (updates.avatar_url !== undefined) msg.sender_avatar_url = updates.avatar_url
+            if (updates.nickname !== undefined) msg.sender_name = updates.nickname
+            changed = true
+          }
+        }
+        if (changed) saveData(`spark_chat_${f.spark_id}`, msgs)
+      }
+
+      for (const m of moments.value) {
+        if (m.author_id === myId) {
+          if (updates.avatar !== undefined) m.author_avatar = updates.avatar
+          if (updates.nickname !== undefined) m.author_name = updates.nickname
+        }
+        for (const c of m.comments || []) {
+          if (c.author_id === myId) {
+            if (updates.avatar !== undefined) c.author_avatar = updates.avatar
+            if (updates.nickname !== undefined) c.author_name = updates.nickname
+          }
+        }
+      }
+      saveData(STORAGE_KEYS.moments, moments.value)
     }
 
     syncProfileToSupabase(updates)
+  }
+
+  /** 解析消息发送者的最新头像和昵称（实时，不依赖消息快照） */
+  function resolveSenderInfo(senderId: string, fallbackAvatar?: string, fallbackAvatarUrl?: string, fallbackName?: string) {
+    if (senderId === myProfile.value?.spark_id) {
+      return {
+        avatar: myProfile.value.avatar || '',
+        avatar_url: myProfile.value.avatar_url || '',
+        name: myProfile.value.nickname || ''
+      }
+    }
+    const f = friends.value.find(f => f.spark_id === senderId)
+    if (f) {
+      return {
+        avatar: f.avatar || fallbackAvatar || '',
+        avatar_url: f.avatar_url || f.profile?.avatar_url || fallbackAvatarUrl || '',
+        name: f.remark || f.nickname || fallbackName || ''
+      }
+    }
+    return {
+      avatar: fallbackAvatar || '',
+      avatar_url: fallbackAvatarUrl || '',
+      name: fallbackName || ''
+    }
   }
 
   /** 同步用户信息到Supabase */
@@ -698,10 +760,11 @@ export function useCompanion() {
     return request
   }
 
-  function addFriend(data: { spark_id: string; nickname: string; avatar: string; bio: string }, _message = ''): { ok: boolean; msg: string } {
+  function addFriend(data: { spark_id: string; nickname: string; avatar: string; avatar_url?: string; bio: string }, _message = ''): { ok: boolean; msg: string } {
     if (friends.value.some(f => f.spark_id === data.spark_id)) return { ok: false, msg: '已经是好友了' }
     friends.value.push({
       id: uid(), spark_id: data.spark_id, nickname: data.nickname, avatar: data.avatar,
+      avatar_url: data.avatar_url,
       remark: '', bio: data.bio, added_at: now(), unread: 0,
     })
     saveData(STORAGE_KEYS.friends, friends.value)
@@ -731,6 +794,7 @@ export function useCompanion() {
         spark_id: data.id,
         nickname: data.name || data.id,
         avatar: data.avatar || '👤',
+        avatar_url: data.avatar_url || '',
         bio: data.bio || '',
       })
     } catch { return { ok: false, msg: '二维码数据格式无效' } }
@@ -1539,7 +1603,7 @@ export function useCompanion() {
     friendTags, blacklist, friendPermissions,
     loading, isAiTyping, aiTypingText, totalUnreadMessages,
     // 档案
-    updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
+    updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase, resolveSenderInfo,
     // 好友
     searchUser, searchBySparkId, sendFriendRequest, addFriend, addFriendByQR, removeFriend, setFriendRemark,
     // 好友管理(星标/标签/拉黑/权限)

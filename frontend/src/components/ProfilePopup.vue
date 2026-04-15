@@ -20,6 +20,10 @@
             </div>
             <p class="pp-sub">昵称：{{ profile.nickname }}</p>
             <p class="pp-sub">星火ID：{{ profile.spark_id }}</p>
+            <p v-if="profile.region || profile.identity" class="pp-sub pp-tags">
+              <span v-if="profile.region" class="pp-tag">📍 {{ profile.region }}</span>
+              <span v-if="profile.identity" class="pp-tag">🎓 {{ profile.identity }}</span>
+            </p>
             <p v-if="profile.bio" class="pp-sub">{{ profile.bio }}</p>
           </div>
         </div>
@@ -30,7 +34,7 @@
             <button @click="startEditRemark">📝 设置备注</button>
             <button @click="emit('action', 'permissions')">🔐 设置星火域权限</button>
             <button @click="emit('action', 'recommend')">👤 推荐给朋友</button>
-            <button @click="emit('action', 'star')">⭐ 设为星标朋友</button>
+            <button @click="emit('action', 'star')">{{ profile.is_starred ? '☆ 取消星标朋友' : '⭐ 设为星标朋友' }}</button>
             <button class="warn" @click="emit('action', 'block')">🚫 加入黑名单</button>
           </div>
         </Transition>
@@ -114,6 +118,9 @@ export interface ProfileData {
   avatar_url?: string
   remark?: string
   bio?: string
+  is_starred?: boolean
+  region?: string
+  identity?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -121,9 +128,11 @@ const props = withDefaults(defineProps<{
   profile: ProfileData
   momentCount?: number
   position?: 'center' | 'right'
+  isSelf?: boolean
 }>(), {
   momentCount: 0,
   position: 'center',
+  isSelf: false,
 })
 
 const emit = defineEmits<{
@@ -175,6 +184,7 @@ function saveRemark() {
 .pp-name-row h3{margin:0;font-size:16px;color:white;font-weight:700}
 .pp-more-btn{background:none;border:none;color:rgba(255,255,255,.25);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .12s}.pp-more-btn:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.5)}
 .pp-sub{font-size:11px;color:rgba(255,255,255,.2);margin:3px 0 0}
+.pp-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.pp-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);font-size:10px;color:rgba(139,92,246,.5)}
 
 /* 更多菜单 */
 .pp-more-menu{position:absolute;right:20px;top:60px;background:rgba(30,28,44,.98);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:4px;box-shadow:0 8px 32px rgba(0,0,0,.5);min-width:160px;z-index:10}
