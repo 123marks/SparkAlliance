@@ -84,12 +84,22 @@ const isSameDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear()
   && left.getMonth() === right.getMonth()
   && left.getDate() === right.getDate()
+void isSameDay
+
+const dayStart = computed(() => new Date(props.date.getFullYear(), props.date.getMonth(), props.date.getDate()))
+const dayEnd = computed(() => new Date(dayStart.value.getTime() + 86400000 - 1))
+
+function eventOverlapsDay(event: ScheduleEvent): boolean {
+  const s = new Date(event.start_time)
+  const end = event.end_time ? new Date(event.end_time) : s
+  return s <= dayEnd.value && end >= dayStart.value
+}
 
 const allDayEvents = computed(() =>
-  props.events.filter(event => event.all_day && isSameDay(new Date(event.start_time), props.date))
+  props.events.filter(event => event.all_day && eventOverlapsDay(event))
 )
 const timedEvents = computed(() =>
-  props.events.filter(event => !event.all_day && isSameDay(new Date(event.start_time), props.date))
+  props.events.filter(event => !event.all_day && eventOverlapsDay(event))
 )
 const timedEventLayouts = computed(() => buildTimedEventLayouts(timedEvents.value))
 

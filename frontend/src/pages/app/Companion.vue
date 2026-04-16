@@ -521,13 +521,14 @@
         <!-- 左栏：我的专区（置顶+个人信息） -->
         <div class="cp-ml" :style="{width: momentLeftWidth+'%', minWidth:'220px'}">
           <!-- 背景区域 -->
-          <div class="cp-ml-bg" @click="toggleBgVideo">
-            <video v-if="customBgType==='video'&&customBgUrl" ref="bgVideoRef" :src="customBgUrl" class="cp-ml-bg-video" loop playsinline preload="metadata" @click.stop="toggleBgVideo"></video>
-            <div v-if="customBgType==='video'&&customBgUrl&&!bgVideoPlaying" class="cp-ml-bg-play-hint">▶ 点击播放</div>
+          <div class="cp-ml-bg" :class="{expanded:bgExpanded}" @click="handleBgClick">
+            <video v-if="customBgType==='video'&&customBgUrl" ref="bgVideoRef" :src="customBgUrl" class="cp-ml-bg-video" loop playsinline preload="metadata" @click.stop="handleBgClick"></video>
+            <div v-if="customBgType==='video'&&customBgUrl&&!bgVideoPlaying" class="cp-ml-bg-play-overlay"></div>
             <div v-else-if="customBgUrl" class="cp-ml-bg-img" :style="{backgroundImage:'url('+customBgUrl+')'}"></div>
             <div v-else class="cp-ml-bg-default" :class="'preset-'+bgPresetIdx"></div>
-            <div class="cp-ml-bg-overlay"></div>
+            <div class="cp-ml-bg-overlay" :class="{dimmed:bgExpanded}"></div>
             <div class="cp-ml-bg-actions" @click.stop>
+              <button v-if="customBgUrl" class="cp-ml-bg-btn" @click.stop="openBgFullscreen" title="全屏查看">⛶</button>
               <button class="cp-ml-bg-btn" @click.stop="bgFileInput?.click()" title="上传背景图片/视频">📷</button>
               <button class="cp-ml-bg-btn" @click.stop="showBgSettings=!showBgSettings" title="背景预设">🎨</button>
               <button v-if="customBgUrl" class="cp-ml-bg-btn" @click.stop="confirmResetBg" title="恢复默认">↩</button>
@@ -583,12 +584,12 @@
               </div>
             </div>
           </Transition>
-          <!-- 我的置顶+动态列表 -->
+          <!-- 我的动态列表（置顶的在右栏星火域顶部展示） -->
           <div class="cp-ml-list">
             <h4 class="cp-ml-title">我的动态</h4>
-            <div v-for="m in myMoments" :key="m.id" class="cp-feed-card" :class="{'is-pinned':m.is_pinned}">
+            <p v-if="myPinnedCount" class="cp-pinned-hint">📌 {{ myPinnedCount }} 条已置顶（见星火域顶部）</p>
+            <div v-for="m in myMoments" :key="m.id" class="cp-feed-card">
               <div class="cp-feed-head">
-                <span v-if="m.is_pinned" class="cp-pin-badge">📌 置顶</span>
                 <span v-if="isMomentLive(m)" class="cp-live-badge"><span class="cp-live-dot-sm"></span>LIVE</span>
                 <small>{{ formatTimeAgo(m.created_at) }}</small>
                 <div class="cp-feed-menu-wrap">
@@ -918,20 +919,26 @@
               <button @click="publishFiles.splice(i,1)">×</button>
             </div>
           </div>
-          <!-- 标签 -->
+          <!-- 标签（系统推荐 + 自定义） -->
           <div class="cp-pub-tags-area">
+            <div class="cp-pub-suggest-tags">
+              <span v-for="st in suggestedTags" :key="st" class="cp-pub-suggest-tag" :class="{selected:publishTags.includes(st)}" @click="toggleSuggestedTag(st)">#{{ st }}</span>
+            </div>
             <div class="cp-pub-tags-list" v-if="publishTags.length">
               <span v-for="(tag,i) in publishTags" :key="i" class="cp-pub-tag">#{{ tag }} <button @click="removePublishTag(i)">×</button></span>
             </div>
             <div class="cp-pub-tag-input-row">
-              <input v-model="publishTagInput" placeholder="#添加标签（回车确认）" maxlength="20" @keydown.enter.prevent="addPublishTag" class="cp-pub-tag-input">
+              <input v-model="publishTagInput" placeholder="#自定义标签（回车确认）" maxlength="20" @keydown.enter.prevent="addPublishTag" class="cp-pub-tag-input">
               <span class="cp-pub-tag-hint">{{ publishTags.length }}/5</span>
             </div>
           </div>
-          <!-- 地区 -->
+          <!-- 地区（支持自动定位） -->
           <div class="cp-pub-region-row">
             <span class="cp-pub-region-label">📍</span>
-            <input v-model="publishRegion" placeholder="添加地区（如：北京·海淀）" maxlength="30" class="cp-pub-region-input">
+            <input v-model="publishRegion" placeholder="添加地区" maxlength="30" class="cp-pub-region-input">
+            <button class="cp-pub-region-detect" @click="detectLocation" :disabled="detectingLocation" title="自动定位">
+              {{ detectingLocation ? '⏳' : '📡' }} {{ detectingLocation ? '定位中...' : '定位' }}
+            </button>
           </div>
           <!-- 工具栏 -->
           <div class="cp-pub-tools">
@@ -948,17 +955,39 @@
               <option value="private">🔒 私密</option>
             </select>
           </div>
-          <!-- 部分可见好友选择 -->
+          <!-- 部分可见好友选择（支持标签组批量） -->
           <div v-if="publishVis==='partial'" class="cp-pub-partial">
-            <p class="cp-pub-partial-hint">选择可见的好友：</p>
+            <div class="cp-pub-partial-header">
+              <p class="cp-pub-partial-hint">选择可见的好友：</p>
+              <div class="cp-pub-partial-quick">
+                <button type="button" class="cp-pub-partial-qbtn" @click="selectAllVisibleTo">全选</button>
+                <button type="button" class="cp-pub-partial-qbtn" @click="clearAllVisibleTo" :disabled="!publishVisibleTo.length">清空</button>
+              </div>
+            </div>
+            <!-- 标签组快速批量 -->
+            <div v-if="friendTags.length" class="cp-pub-tag-groups">
+              <span class="cp-pub-tag-groups-label">🏷️ 标签组：</span>
+              <button v-for="tg in friendTags" :key="tg.id" type="button"
+                class="cp-pub-tag-group-chip" :class="['state-'+tagGroupState(tg.id), {empty:!tg.members.length}]"
+                :style="tg.color ? {'--tg-color':tg.color} : undefined"
+                :disabled="!tg.members.length"
+                @click="toggleTagGroup(tg.id)"
+                :title="tg.members.length ? `${tg.name}（${tg.members.length} 人）` : `${tg.name}（暂无成员）`">
+                {{ tg.name }}
+                <span class="cp-pub-tag-group-count">{{ tagGroupSelectedCount(tg.id) }}/{{ tg.members.length }}</span>
+              </button>
+            </div>
             <div class="cp-pub-partial-list">
               <div v-for="f in friends" :key="f.spark_id" class="cp-pub-partial-item" :class="{selected:publishVisibleTo.includes(f.spark_id)}" @click="toggleVisibleTo(f.spark_id)">
                 <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url||f.profile?.avatar_url" :name="f.nickname" size="xs" />
-                <span>{{ f.remark||f.nickname }}</span>
+                <span class="cp-pub-partial-name">{{ f.remark||f.nickname }}</span>
+                <span v-if="getTagsForFriend(f.spark_id).length" class="cp-pub-partial-badges">
+                  <span v-for="tg in getTagsForFriend(f.spark_id).slice(0,2)" :key="tg.id" class="cp-pub-partial-badge" :style="tg.color ? {background:tg.color+'22', color:tg.color} : undefined">{{ tg.name }}</span>
+                </span>
                 <span v-if="publishVisibleTo.includes(f.spark_id)" class="cp-pub-partial-check">✓</span>
               </div>
             </div>
-            <p class="cp-pub-partial-count">已选 {{ publishVisibleTo.length }} 人</p>
+            <p class="cp-pub-partial-count">已选 {{ publishVisibleTo.length }} / {{ friends.length }} 人</p>
           </div>
           <input ref="publishFileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx" @change="onPublishFileSelect" style="display:none">
           <div class="cp-modal-btns">
@@ -1089,11 +1118,11 @@ const {
   myProfile, friends, groups, moments, isAiTyping, aiTypingText, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
-  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, retryLastAI, lastAiError, aiChatHistory, searchUser,
+  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, retryLastAI, aiChatHistory, searchUser, searchBySparkId,
   updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
   setGroupRemark, setMyGroupNickname, getGroupDisplayName,
-  friendTags, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
+  friendTags, getTagsForFriend, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
   momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
   persistFriends, persistGroups, resolveSenderInfo,
 } = useCompanion()
@@ -1207,6 +1236,9 @@ const publishTagInput = ref('')
 const publishRegion = ref('')
 const publishVisibleTo = ref<string[]>([])
 
+const suggestedTags = ['日常', '学习', '心情', '分享', '校园', '美食', '运动', '旅行', '技术', '考试', '读书', '自拍']
+const detectingLocation = ref(false)
+
 function addPublishTag() {
   const tag = publishTagInput.value.trim().replace(/^#/, '')
   if (tag && !publishTags.value.includes(tag) && publishTags.value.length < 5) {
@@ -1215,10 +1247,74 @@ function addPublishTag() {
   publishTagInput.value = ''
 }
 function removePublishTag(idx: number) { publishTags.value.splice(idx, 1) }
+function toggleSuggestedTag(tag: string) {
+  const idx = publishTags.value.indexOf(tag)
+  if (idx >= 0) {
+    publishTags.value.splice(idx, 1)
+  } else if (publishTags.value.length < 5) {
+    publishTags.value.push(tag)
+  }
+}
+async function detectLocation() {
+  if (!navigator.geolocation) { showToast('浏览器不支持定位'); return }
+  detectingLocation.value = true
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, enableHighAccuracy: false })
+    })
+    const { latitude, longitude } = pos.coords
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=zh`, { signal: AbortSignal.timeout(5000) })
+      const data = await res.json()
+      const addr = data.address || {}
+      const city = addr.city || addr.county || addr.state || ''
+      const district = addr.suburb || addr.neighbourhood || addr.district || ''
+      publishRegion.value = city && district ? `${city}·${district}` : city || `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+    } catch {
+      publishRegion.value = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof GeolocationPositionError ? (err.code === 1 ? '请允许定位权限' : '定位失败') : '定位失败'
+    showToast(msg)
+  } finally {
+    detectingLocation.value = false
+  }
+}
 function toggleVisibleTo(sparkId: string) {
   const i = publishVisibleTo.value.indexOf(sparkId)
   if (i >= 0) publishVisibleTo.value.splice(i, 1)
   else publishVisibleTo.value.push(sparkId)
+}
+function selectAllVisibleTo() {
+  publishVisibleTo.value = friends.value.map(f => f.spark_id)
+}
+function clearAllVisibleTo() {
+  publishVisibleTo.value = []
+}
+function tagGroupSelectedCount(tagId: string): number {
+  const tag = friendTags.value.find(t => t.id === tagId)
+  if (!tag) return 0
+  return tag.members.filter(m => publishVisibleTo.value.includes(m)).length
+}
+function tagGroupState(tagId: string): 'none'|'partial'|'all' {
+  const tag = friendTags.value.find(t => t.id === tagId)
+  if (!tag || !tag.members.length) return 'none'
+  const n = tagGroupSelectedCount(tagId)
+  if (n === 0) return 'none'
+  if (n === tag.members.length) return 'all'
+  return 'partial'
+}
+function toggleTagGroup(tagId: string) {
+  const tag = friendTags.value.find(t => t.id === tagId)
+  if (!tag || !tag.members.length) return
+  const state = tagGroupState(tagId)
+  const set = new Set(publishVisibleTo.value)
+  if (state === 'all') {
+    tag.members.forEach(m => set.delete(m))
+  } else {
+    tag.members.forEach(m => set.add(m))
+  }
+  publishVisibleTo.value = Array.from(set)
 }
 const publishImages = ref<{url:string;name:string;blob?:boolean}[]>([])
 const publishVideos = ref<{url:string;name:string}[]>([])
@@ -1274,6 +1370,7 @@ const voiceConverting = reactive<Record<string,boolean>>({})
 // 实时语音识别（录音时）
 const realtimeTranscript = ref('')
 let realtimeRecognition: any = null
+void realtimeRecognition
 // ====== 过滤后的消息列表（排除已删除） ======
 const deletedMsgIds = ref<string[]>([])
 const filteredChatMessages = computed(() => {
@@ -1328,6 +1425,7 @@ const unifiedChatList = computed<ChatListItem[]>(() => {
 // 保留原有computed兼容其他模块
 const sortedFriends = computed(() => friends.value)
 const sortedGroups = computed(() => groups.value)
+void sortedFriends; void sortedGroups
 
 function showToast(msg:string){toast.msg=msg;toast.show=true;setTimeout(()=>{toast.show=false},2000)}
 function switchTab(tab:'chat'|'contacts'|'moments'){sideTab.value=tab;if(tab==='contacts'){rightPanel.value='none';selectedContact.value=null}else if(tab==='moments'){rightPanel.value='none'}}
@@ -1929,6 +2027,7 @@ function handleClearChatHistory(){
 }
 // 查找聊天内容（v6.8: 直接打开搜索Modal）
 function handleSearchChatHistory(){ showChatHistorySearch.value = true }
+void handleSearchChatHistory
 // 右键菜单动态标签
 function getCtxPinLabel():string{
   if(ctxMenu.type==='private'){const f=friends.value.find(f=>f.spark_id===ctxMenu.id);return f?.is_chat_pinned?'📌 取消置顶':'📌 置顶'}
@@ -1975,11 +2074,13 @@ function openChatFriendRemarkEdit() {
   const newRemark = prompt('输入备注：', chatFriend.value.remark || '')
   if (newRemark !== null) { setFriendRemark(chatFriend.value.spark_id, newRemark); showToast('备注已更新') }
 }
+void openChatFriendRemarkEdit
 function handleChatStarToggle() {
   if (!chatFriend.value) return
   toggleStarFriend(chatFriend.value.spark_id)
   showToast(chatFriend.value.is_starred ? '已设为星标' : '已取消星标')
 }
+void handleChatStarToggle
 function openChatFriendPermissions() {
   if (!chatFriend.value) return
   const perms = getFriendPermissions(chatFriend.value.spark_id)
@@ -1989,18 +2090,21 @@ function openChatFriendPermissions() {
     showToast('权限已更新')
   }
 }
+void openChatFriendPermissions
 function handleChatBlockFriend() {
   if (!chatFriend.value) return
   const f = chatFriend.value
   confirmDialog.show = true; confirmDialog.title = '🚫 拉黑'; confirmDialog.text = `确定要拉黑「${f.nickname}」吗？`; confirmDialog.btnText = '拉黑'
   confirmDialog.onConfirm = () => { blockFriend(f.spark_id); showChatSettings.value = false; showToast('已拉黑') }
 }
+void handleChatBlockFriend
 function handleChatDeleteFriend() {
   if (!chatFriend.value) return
   const f = chatFriend.value
   confirmDialog.show = true; confirmDialog.title = '⚠️ 删除好友'; confirmDialog.text = `确定要删除「${f.nickname}」吗？`; confirmDialog.btnText = '删除'
   confirmDialog.onConfirm = () => { removeFriend(f.spark_id); activeChat.value = null; rightPanel.value = 'none'; showToast('已删除') }
 }
+void handleChatDeleteFriend
 function handleGlobalSearch(){const q=globalSearch.value.trim().toLowerCase();if(!q){globalSearchResults.value=[];return};const r:typeof globalSearchResults.value=[];friends.value.filter(f=>f.nickname.toLowerCase().includes(q)||f.spark_id.includes(q)).forEach(f=>r.push({id:f.id,name:f.nickname,avatar:f.avatar,desc:f.spark_id,action:()=>openPrivateChat(f.spark_id)}));groups.value.filter(g=>g.name.toLowerCase().includes(q)).forEach(g=>r.push({id:g.id,name:g.name,avatar:g.avatar,desc:`${g.members.length}人`,action:()=>openGroupChat(g.id)}));globalSearchResults.value=r.slice(0,10)}
 let _searchTimer:ReturnType<typeof setTimeout>|null=null
 function debouncedSearch(){if(_searchTimer)clearTimeout(_searchTimer);_searchTimer=setTimeout(handleGlobalSearch,300)}
@@ -2029,6 +2133,7 @@ const createGroupLetterGroups = computed(() => {
 })
 function handleCreateGroup(){if(!newGroupName.value.trim())return;createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value);showToast('群聊已创建！');showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[];newGroupSearch.value=''}
 function handlePost(){if(!postContent.value.trim())return;postMoment(postContent.value.trim(),[],postVis.value);postContent.value='';showToast('已发布')}
+void handlePost
 function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return;commentMoment(id,c);commentInputs[id]=''}
 
 const commentEmojiVisible = ref<string|null>(null)
@@ -2240,6 +2345,7 @@ function getGroupMsgRole(msg: ChatMsg): 'owner' | 'admin' | 'member' | null {
 function getGroupAvatarGrid(g: GroupChat) {
   return g.members.slice(0, 9).map(m => m.avatar)
 }
+void getGroupAvatarGrid
 function getGroupAvatarMembers(g: GroupChat) {
   return g.members.slice(0, 9)
 }
@@ -2422,7 +2528,6 @@ function isMentionedInMsg(msg: ChatMsg): boolean {
   if (msg.mentions?.includes(myProfile.value.spark_id)) return true
   return msg.content.includes(`@${myProfile.value.nickname}`)
 }
-void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat;void pinnedMoments;void feedMoments;void handlePinnedClick;void authorSpaceVisible;void authorSpaceMoments;void openAuthorSpace;void interactionCount;void showInteractPanel;void interactionList;void currentStatus;void showStatusPicker;void statusPresets;void statusEmojis;void customStatusText;void customStatusEmoji;void statusDuration;void commentEmojiVisible;void commentImagePreview;void commentFileRefs;void handleCommentEnhanced;void toggleCommentLike;void publishTags;void publishTagInput;void publishRegion;void publishVisibleTo;void addPublishTag;void removePublishTag;void toggleVisibleTo;void onVisChange
 // 渲染消息内容（@提及高亮）
 function renderMsgContent(content: string): string {
   const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2438,15 +2543,16 @@ async function handleRetryAI() {
   scrollChat()
 }
 
-// 星火域双栏: 我的动态(置顶优先)
+// 星火域双栏: 我的动态（置顶的不重复显示，已在右栏置顶栏展示）
 const myMoments = computed(() => {
   if (!myProfile.value) return []
-  const mine = moments.value.filter(m => m.author_id === myProfile.value!.spark_id)
-  return [...mine].sort((a, b) => {
-    if (a.is_pinned && !b.is_pinned) return -1
-    if (!a.is_pinned && b.is_pinned) return 1
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
+  return moments.value
+    .filter(m => m.author_id === myProfile.value!.spark_id && !m.is_pinned)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+})
+const myPinnedCount = computed(() => {
+  if (!myProfile.value) return 0
+  return moments.value.filter(m => m.author_id === myProfile.value!.spark_id && m.is_pinned).length
 })
 // 星火域双栏: 所有动态(置顶优先+时间倒序+可见性过滤)
 const allMoments = computed(() => {
@@ -2666,17 +2772,28 @@ function toggleFeedVideo(e: Event) {
     if (hint) hint.style.display = 'flex'
   }
 }
-function toggleBgVideo() {
+function handleBgClick() {
+  bgExpanded.value = !bgExpanded.value
   const vid = bgVideoRef.value
-  if (!vid || customBgType.value !== 'video') return
-  if (vid.paused) {
-    vid.muted = false
-    vid.play().catch(() => {})
-    bgVideoPlaying.value = true
+  if (bgExpanded.value) {
+    if (vid && customBgType.value === 'video') {
+      vid.muted = false
+      vid.play().catch(() => {})
+      bgVideoPlaying.value = true
+    }
   } else {
-    vid.pause()
-    vid.muted = true
-    bgVideoPlaying.value = false
+    if (vid && customBgType.value === 'video') {
+      vid.pause()
+      vid.muted = true
+      bgVideoPlaying.value = false
+    }
+  }
+}
+function openBgFullscreen() {
+  if (customBgType.value === 'video' && bgVideoRef.value) {
+    bgVideoRef.value.requestFullscreen?.().catch(() => {})
+  } else if (customBgUrl.value) {
+    openAvatarPreview(customBgUrl.value, '', '')
   }
 }
 function confirmResetBg() { showResetBgConfirm.value = true }
@@ -2833,6 +2950,8 @@ function handlePublish() {
   publishVisibleTo.value = []
   showPublishModal.value = false
 }
+
+void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat;void pinnedMoments;void feedMoments;void handlePinnedClick;void authorSpaceVisible;void authorSpaceMoments;void openAuthorSpace;void interactionCount;void showInteractPanel;void interactionList;void currentStatus;void showStatusPicker;void statusPresets;void statusEmojis;void customStatusText;void customStatusEmoji;void statusDuration;void commentEmojiVisible;void commentImagePreview;void commentFileRefs;void handleCommentEnhanced;void toggleCommentLike;void publishTags;void publishTagInput;void publishRegion;void publishVisibleTo;void addPublishTag;void removePublishTag;void toggleVisibleTo;void onVisChange;void myPinnedCount;void bgExpanded;void openBgFullscreen;void suggestedTags;void toggleSuggestedTag;void detectLocation;void detectingLocation
 </script>
 
 <style scoped>
@@ -3024,9 +3143,14 @@ function handlePublish() {
 .cp-moments-dual.is-dragging{cursor:col-resize;user-select:none}
 .cp-ml{display:flex;flex-direction:column;overflow-y:auto;border-right:none;padding:0}.cp-ml::-webkit-scrollbar{width:2px}.cp-ml::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
 /* 背景图区域 */
-.cp-ml-bg{position:relative;height:240px;overflow:hidden;flex-shrink:0}
-.cp-ml-bg-video{width:100%;height:100%;object-fit:cover;cursor:pointer}
-.cp-ml-bg-play-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.4);width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:3;pointer-events:none;backdrop-filter:blur(4px);text-indent:3px}
+.cp-ml-bg{position:relative;height:240px;overflow:hidden;flex-shrink:0;cursor:pointer;transition:height .45s cubic-bezier(.4,0,.2,1)}
+.cp-ml-bg.expanded{height:420px}
+.cp-ml-bg-video{width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform .45s ease}
+.cp-ml-bg.expanded .cp-ml-bg-video{transform:scale(1)}
+.cp-ml-bg.expanded .cp-ml-bg-img{transform:scale(1.06)}
+.cp-ml-bg-play-overlay{position:absolute;inset:0;background:rgba(0,0,0,.15);z-index:2;pointer-events:none;transition:opacity .3s}
+.cp-ml-bg.expanded .cp-ml-bg-play-overlay{opacity:0}
+.cp-ml-bg-overlay.dimmed{height:60px;background:linear-gradient(transparent,rgba(14,11,28,.6))}
 .cp-ml-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 30%,rgba(139,92,246,.08) 0%,transparent 50%),radial-gradient(circle at 80% 60%,rgba(59,130,246,.06) 0%,transparent 50%);pointer-events:none;z-index:1;animation:shimmer 8s ease-in-out infinite alternate}
 @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
 .cp-ml-bg-img{width:100%;height:100%;background-size:cover;background-position:center;transition:transform .3s ease}.cp-ml-bg:hover .cp-ml-bg-img{transform:scale(1.02)}
@@ -3098,20 +3222,21 @@ function handlePublish() {
 .cp-interact-body{flex:1;min-width:0}.cp-interact-body b{font-size:11px;color:rgba(255,255,255,.6);margin-right:4px}.cp-interact-body span{font-size:11px;color:rgba(255,255,255,.3)}
 .cp-interact-preview{font-size:10px;color:rgba(255,255,255,.2);margin:3px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cp-interact-item small{font-size:9px;color:rgba(255,255,255,.12);flex-shrink:0;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 置顶横栏 */
+/* 置顶横栏（仿微信自适应，整数卡片不截断） */
 .cp-pinned-bar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.04)}
-.cp-pinned-scroll{display:flex;gap:10px;overflow-x:auto;padding:2px 0;scroll-behavior:smooth;-ms-overflow-style:none;scrollbar-width:none}.cp-pinned-scroll::-webkit-scrollbar{display:none}
-.cp-pinned-card{flex-shrink:0;width:140px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);cursor:pointer;overflow:hidden;transition:all .2s ease;display:flex;flex-direction:column}
+.cp-pinned-scroll{display:flex;gap:10px;overflow-x:auto;padding:2px 4px;scroll-behavior:smooth;scroll-snap-type:x mandatory;-ms-overflow-style:none;scrollbar-width:none}.cp-pinned-scroll::-webkit-scrollbar{display:none}
+.cp-pinned-card{flex:0 0 calc((100% - 20px) / 3);min-width:110px;max-width:160px;scroll-snap-align:start;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);cursor:pointer;overflow:hidden;transition:all .2s ease;display:flex;flex-direction:column}
 .cp-pinned-card:hover{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.25);transform:translateY(-2px);box-shadow:0 6px 20px rgba(139,92,246,.12)}
-.cp-pinned-thumb-wrap{position:relative;width:100%;height:80px;overflow:hidden;background:rgba(139,92,246,.06)}
+.cp-pinned-thumb-wrap{position:relative;width:100%;height:72px;overflow:hidden;background:rgba(139,92,246,.06)}
 .cp-pinned-thumb{width:100%;height:100%;object-fit:cover}
-.cp-pinned-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.08))}
+.cp-pinned-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.08))}
 .cp-pinned-avatar{position:absolute;bottom:-10px;left:8px;border:2px solid rgba(14,11,28,.9);border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.cp-pinned-hint{font-size:11px;color:rgba(139,92,246,.5);margin:0 0 10px;padding-left:2px}
 .cp-pinned-body{padding:14px 10px 10px;min-height:0}
 .cp-pinned-body b{display:block;font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
 .cp-pinned-body p{font-size:10px;color:rgba(255,255,255,.25);line-height:1.4;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cp-feed-media{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;border-radius:8px;overflow:hidden}.cp-feed-img{width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;transition:opacity .15s}.cp-feed-img:hover{opacity:.85}
-.cp-feed-video-wrap{position:relative;width:100%;aspect-ratio:1;cursor:pointer;overflow:hidden;background:#000}.cp-feed-video{width:100%;height:100%;object-fit:cover}.cp-feed-video-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgba(255,255,255,.8);background:rgba(0,0,0,.3);pointer-events:none;transition:opacity .2s}
+.cp-feed-video-wrap{position:relative;width:100%;aspect-ratio:1;cursor:pointer;overflow:hidden;background:#000}.cp-feed-video{width:100%;height:100%;object-fit:cover}.cp-feed-video-play{position:absolute;bottom:8px;right:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);border-radius:50%;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(4px)}
 .cp-feed-info{flex:1;min-width:0}.cp-feed-info b{display:block;font-size:12px;color:rgba(255,255,255,.6)}.cp-feed-info small{font-size:9px;color:rgba(255,255,255,.15)}
 /* 置顶标识 */
 .cp-pin-badge{font-size:9px;color:rgba(139,92,246,.7);background:rgba(139,92,246,.1);padding:2px 8px;border-radius:6px;margin-right:auto;font-weight:600;letter-spacing:.3px}
@@ -3345,6 +3470,10 @@ function handlePublish() {
 /* 标签区域 */
 .cp-pub-tags-area{margin-bottom:6px}
 .cp-pub-tags-list{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.cp-pub-suggest-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.cp-pub-suggest-tag{padding:3px 8px;border-radius:10px;font-size:10px;color:rgba(255,255,255,.3);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);cursor:pointer;transition:all .15s;user-select:none}
+.cp-pub-suggest-tag:hover{color:rgba(139,92,246,.6);border-color:rgba(139,92,246,.15);background:rgba(139,92,246,.04)}
+.cp-pub-suggest-tag.selected{color:rgba(139,92,246,.85);background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.25)}
 .cp-pub-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);font-size:10px;font-weight:600}
 .cp-pub-tag button{background:none;border:none;color:rgba(139,92,246,.4);font-size:11px;cursor:pointer;padding:0;margin-left:2px}.cp-pub-tag button:hover{color:rgba(239,68,68,.6)}
 .cp-pub-tag-input-row{display:flex;align-items:center;gap:6px}
@@ -3352,16 +3481,35 @@ function handlePublish() {
 .cp-pub-tag-hint{font-size:9px;color:rgba(255,255,255,.1)}
 /* 地区 */
 .cp-pub-region-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.cp-pub-region-detect{padding:4px 10px;border-radius:8px;border:1px solid rgba(139,92,246,.15);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s}.cp-pub-region-detect:hover:not(:disabled){background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.25)}.cp-pub-region-detect:disabled{opacity:.5;cursor:not-allowed}
 .cp-pub-region-label{font-size:13px;flex-shrink:0}
 .cp-pub-region-input{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.5);font-size:11px;outline:none}.cp-pub-region-input:focus{border-color:rgba(139,92,246,.15)}.cp-pub-region-input::placeholder{color:rgba(255,255,255,.12)}
 /* 部分可见 */
 .cp-pub-partial{margin-bottom:8px;padding:8px;border-radius:10px;border:1px solid rgba(139,92,246,.08);background:rgba(139,92,246,.02)}
-.cp-pub-partial-hint{font-size:10px;color:rgba(255,255,255,.3);margin:0 0 6px}
+.cp-pub-partial-header{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
+.cp-pub-partial-hint{font-size:10px;color:rgba(255,255,255,.3);margin:0}
+.cp-pub-partial-quick{display:flex;gap:4px}
+.cp-pub-partial-qbtn{font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(139,92,246,.12);background:rgba(139,92,246,.04);color:rgba(139,92,246,.6);cursor:pointer;transition:all .12s}
+.cp-pub-partial-qbtn:hover:not(:disabled){background:rgba(139,92,246,.12);color:rgba(139,92,246,.9)}
+.cp-pub-partial-qbtn:disabled{opacity:.3;cursor:not-allowed}
+/* 标签组批量 */
+.cp-pub-tag-groups{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed rgba(139,92,246,.1)}
+.cp-pub-tag-groups-label{font-size:10px;color:rgba(255,255,255,.25);margin-right:2px}
+.cp-pub-tag-group-chip{--tg-color:rgba(139,92,246,1);font-size:10px;padding:3px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.45);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;line-height:1.2}
+.cp-pub-tag-group-chip:hover:not(:disabled){border-color:var(--tg-color);color:rgba(255,255,255,.7);background:rgba(139,92,246,.05)}
+.cp-pub-tag-group-chip.empty{opacity:.35;cursor:not-allowed}
+.cp-pub-tag-group-chip.state-partial{border-color:var(--tg-color);color:var(--tg-color);background:color-mix(in srgb, var(--tg-color) 10%, transparent)}
+.cp-pub-tag-group-chip.state-all{border-color:var(--tg-color);color:#fff;background:var(--tg-color);box-shadow:0 2px 8px color-mix(in srgb, var(--tg-color) 40%, transparent)}
+.cp-pub-tag-group-count{font-size:9px;opacity:.75;padding:0 3px;border-radius:4px;background:rgba(0,0,0,.18)}
+.cp-pub-tag-group-chip.state-all .cp-pub-tag-group-count{background:rgba(255,255,255,.22);opacity:1}
 .cp-pub-partial-list{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
 .cp-pub-partial-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:all .12s;font-size:11px;color:rgba(255,255,255,.45)}
 .cp-pub-partial-item:hover{background:rgba(255,255,255,.02)}
 .cp-pub-partial-item.selected{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
-.cp-pub-partial-check{margin-left:auto;color:rgba(139,92,246,.7);font-weight:700}
+.cp-pub-partial-name{flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.cp-pub-partial-badges{display:inline-flex;gap:3px;flex-wrap:nowrap;overflow:hidden;margin-left:auto}
+.cp-pub-partial-badge{font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(139,92,246,.08);color:rgba(139,92,246,.65);white-space:nowrap}
+.cp-pub-partial-check{margin-left:4px;color:rgba(139,92,246,.7);font-weight:700;flex-shrink:0}
 .cp-pub-partial-count{font-size:9px;color:rgba(139,92,246,.5);margin:6px 0 0;text-align:right}
 
 /* ====== 翻译结果样式 ====== */

@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS posts (
   media_urls TEXT[] DEFAULT '{}',
   category TEXT DEFAULT 'general',
   comment_count INT DEFAULT 0,
+  report_count INT DEFAULT 0,
+  is_hidden BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -75,11 +77,14 @@ CREATE TABLE IF NOT EXISTS reports (
   status TEXT DEFAULT 'pending',
   reviewed_at TIMESTAMPTZ,
   reviewed_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  -- 每个用户对同一帖子或评论只能举报一次
-  UNIQUE(post_id, reporter_id) WHERE comment_id IS NULL,
-  UNIQUE(comment_id, reporter_id) WHERE comment_id IS NOT NULL
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 条件唯一索引：每个用户对同一帖子或评论只能举报一次
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_post_reporter
+  ON reports(post_id, reporter_id) WHERE comment_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_comment_reporter
+  ON reports(comment_id, reporter_id) WHERE comment_id IS NOT NULL;
 
 -- ============================================
 -- 6. 创建 content_appeals 表（内容申诉）
@@ -94,11 +99,14 @@ CREATE TABLE IF NOT EXISTS content_appeals (
   reviewed_at TIMESTAMPTZ,
   reviewed_by UUID REFERENCES auth.users(id),
   review_note TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  -- 每个用户对同一内容只能申诉一次
-  UNIQUE(user_id, post_id) WHERE comment_id IS NULL,
-  UNIQUE(user_id, comment_id) WHERE comment_id IS NOT NULL
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 条件唯一索引：每个用户对同一内容只能申诉一次
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appeals_user_post
+  ON content_appeals(user_id, post_id) WHERE comment_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appeals_user_comment
+  ON content_appeals(user_id, comment_id) WHERE comment_id IS NOT NULL;
 
 -- ============================================
 -- 7. 创建 user_sanctions 表（用户制裁）
@@ -138,7 +146,15 @@ DROP POLICY IF EXISTS "Public can view posts" ON posts;
 DROP POLICY IF EXISTS "Users can insert posts" ON posts;
 DROP POLICY IF EXISTS "Users can delete own posts" ON posts;
 CREATE POLICY "Public can view posts" ON posts FOR SELECT USING (true);
-CREATE POLICY "Users can insert posts" ON posts FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Users can insert posts" ON posts FOR INSERT WITH CHECK (
+  auth.uid() = author_id
+  AND NOT EXISTS (
+    SELECT 1 FROM user_sanctions
+    WHERE user_id = auth.uid()
+      AND type IN ('post_ban', 'full_ban')
+      AND expires_at > NOW()
+  )
+);
 CREATE POLICY "Users can delete own posts" ON posts FOR DELETE USING (auth.uid() = author_id);
 
 -- likes
@@ -154,7 +170,15 @@ DROP POLICY IF EXISTS "Anyone can read comments" ON comments;
 DROP POLICY IF EXISTS "Authenticated can insert comments" ON comments;
 DROP POLICY IF EXISTS "Users can delete own comments" ON comments;
 CREATE POLICY "Anyone can read comments" ON comments FOR SELECT USING (true);
-CREATE POLICY "Authenticated can insert comments" ON comments FOR INSERT TO authenticated WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Authenticated can insert comments" ON comments FOR INSERT TO authenticated WITH CHECK (
+  auth.uid() = author_id
+  AND NOT EXISTS (
+    SELECT 1 FROM user_sanctions
+    WHERE user_id = auth.uid()
+      AND type IN ('comment_ban', 'full_ban')
+      AND expires_at > NOW()
+  )
+);
 CREATE POLICY "Users can delete own comments" ON comments FOR DELETE USING (auth.uid() = author_id);
 
 -- comment_likes
@@ -221,28 +245,38 @@ CREATE TRIGGER trigger_comment_like_count
 AFTER INSERT OR DELETE ON comment_likes
 FOR EACH ROW EXECUTE FUNCTION update_comment_like_count();
 
--- 举报计数触发器（自动维护 comments.report_count 并在达到阈值时隐藏）
-CREATE OR REPLACE FUNCTION update_comment_report_count()
+-- 举报计数触发器（同时维护 posts 和 comments 的 report_count，达到阈值时自动隐藏）
+CREATE OR REPLACE FUNCTION update_report_count()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF TG_OP = 'INSERT' AND NEW.comment_id IS NOT NULL THEN
-    UPDATE comments 
-    SET report_count = report_count + 1,
-        is_hidden = CASE WHEN report_count + 1 >= 3 THEN TRUE ELSE is_hidden END
-    WHERE id = NEW.comment_id;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.comment_id IS NOT NULL THEN
+      UPDATE comments
+      SET report_count = report_count + 1,
+          is_hidden = CASE WHEN report_count + 1 >= 3 THEN TRUE ELSE is_hidden END
+      WHERE id = NEW.comment_id;
+    ELSIF NEW.post_id IS NOT NULL THEN
+      UPDATE posts
+      SET report_count = report_count + 1,
+          is_hidden = CASE WHEN report_count + 1 >= 5 THEN TRUE ELSE is_hidden END
+      WHERE id = NEW.post_id;
+    END IF;
   END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_comment_report_count ON reports;
-CREATE TRIGGER trigger_comment_report_count
+DROP TRIGGER IF EXISTS trigger_report_count ON reports;
+CREATE TRIGGER trigger_report_count
 AFTER INSERT ON reports
-FOR EACH ROW EXECUTE FUNCTION update_comment_report_count();
+FOR EACH ROW EXECUTE FUNCTION update_report_count();
 
 -- ============================================
 -- 迁移脚本（如果表已存在，执行以下命令）
 -- ============================================
+-- ALTER TABLE posts ADD COLUMN IF NOT EXISTS report_count INT DEFAULT 0;
+-- ALTER TABLE posts ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
 -- ALTER TABLE comments ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES comments(id) ON DELETE SET NULL;
 -- ALTER TABLE comments ADD COLUMN IF NOT EXISTS like_count INT DEFAULT 0;
 -- ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
@@ -250,3 +284,24 @@ FOR EACH ROW EXECUTE FUNCTION update_comment_report_count();
 -- ALTER TABLE reports ADD COLUMN IF NOT EXISTS comment_id UUID REFERENCES comments(id) ON DELETE CASCADE;
 -- ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 -- ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES auth.users(id);
+
+-- ============================================
+-- 11. Storage Bucket 和访问策略
+-- ============================================
+-- 注意：Supabase SQL Editor 无法直接创建 bucket，需在 Dashboard → Storage 中手动创建
+-- 或通过 Supabase Client SDK 创建。以下仅为 Storage Policy（需 bucket 已存在）。
+--
+-- 前置条件：在 Supabase Dashboard 创建名为 "campus-wall" 的 public bucket
+--
+-- Storage Policy（在 SQL Editor 中运行）:
+INSERT INTO storage.buckets (id, name, public) VALUES ('campus-wall', 'campus-wall', true)
+  ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Anyone can read campus-wall" ON storage.objects
+  FOR SELECT USING (bucket_id = 'campus-wall');
+
+CREATE POLICY "Authenticated users can upload to campus-wall" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'campus-wall');
+
+CREATE POLICY "Users can delete own campus-wall files" ON storage.objects
+  FOR DELETE USING (bucket_id = 'campus-wall' AND auth.uid()::text = (storage.foldername(name))[2]);

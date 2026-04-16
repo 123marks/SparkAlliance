@@ -5,9 +5,11 @@
  * 鉴权 → 缓存检查 → 配额扣减 → 服务端抽牌 → AI 解读 → 入库
  *
  * 环境变量：
- * - MIMO_API_KEY: 小米 MiMO API Key（优先）
+ * - NVIDIA_API_KEY: NVIDIA NIM API Key（优先，gamma4）
+ * - NVIDIA_BASE_URL: NVIDIA API 基础 URL（可选）
+ * - MIMO_API_KEY: 小米 MiMO API Key（降级）
  * - GEMINI_API_KEY: Google Gemini API Key（降级）
- * - AI_PROVIDER: mimo | gemini（可选，默认按 key 自动选择）
+ * - AI_PROVIDER: nvidia | mimo | gemini（可选，默认按 key 自动选择）
  * - SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -65,6 +67,35 @@ function buildPrompt(
 5. 避免使用"注定""一定会""命中注定""你必须"等表达。`
 }
 
+// ====== 调用 NVIDIA gamma4 (gemma-3-27b-it) ======
+async function callNvidia(apiKey: string, prompt: string): Promise<string> {
+  const baseUrl = Deno.env.get('NVIDIA_BASE_URL') || 'https://integrate.api.nvidia.com/v1'
+  const model = Deno.env.get('SPARK_GENERAL_MODEL') || 'google/gemma-3-27b-it'
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 512,
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`NVIDIA API 错误 (${response.status}): ${errText}`)
+  }
+
+  const data = await response.json()
+  const text = data.choices?.[0]?.message?.content || ''
+  return text.trim()
+}
+
 // ====== 调用小米 MiMO（OpenAI 兼容格式） ======
 async function callMiMO(apiKey: string, prompt: string): Promise<string> {
   const url = 'https://api.xiaomimimo.com/v1/chat/completions'
@@ -119,13 +150,17 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
   return text.trim()
 }
 
-// ====== 智能调用 AI（优先 MiMO，降级 Gemini） ======
+// ====== 智能调用 AI（优先 NVIDIA gamma4，降级 MiMO/Gemini） ======
 async function callAI(prompt: string): Promise<{ text: string; provider: string }> {
   const forceProvider = Deno.env.get('AI_PROVIDER') || ''
+  const nvidiaKey = Deno.env.get('NVIDIA_API_KEY') || Deno.env.get('NV_API_KEY')
   const mimoKey = Deno.env.get('MIMO_API_KEY')
   const geminiKey = Deno.env.get('GEMINI_API_KEY')
 
   // 优先使用指定的 provider
+  if (forceProvider === 'nvidia' && nvidiaKey) {
+    return { text: await callNvidia(nvidiaKey, prompt), provider: 'nvidia-gamma4' }
+  }
   if (forceProvider === 'mimo' && mimoKey) {
     return { text: await callMiMO(mimoKey, prompt), provider: 'mimo' }
   }
@@ -133,7 +168,16 @@ async function callAI(prompt: string): Promise<{ text: string; provider: string 
     return { text: await callGemini(geminiKey, prompt), provider: 'gemini-1.5-flash' }
   }
 
-  // 自动选择：MiMO 优先
+  // 自动选择：NVIDIA gamma4 优先
+  if (nvidiaKey) {
+    try {
+      return { text: await callNvidia(nvidiaKey, prompt), provider: 'nvidia-gamma4' }
+    } catch (e) {
+      console.warn('NVIDIA gamma4 调用失败，尝试降级:', e)
+    }
+  }
+
+  // 降级到 MiMO
   if (mimoKey) {
     try {
       return { text: await callMiMO(mimoKey, prompt), provider: 'mimo' }
@@ -147,7 +191,7 @@ async function callAI(prompt: string): Promise<{ text: string; provider: string 
     return { text: await callGemini(geminiKey, prompt), provider: 'gemini-1.5-flash' }
   }
 
-  throw new Error('未配置任何 AI API Key（MIMO_API_KEY 或 GEMINI_API_KEY）')
+  throw new Error('未配置任何 AI API Key（NVIDIA_API_KEY、MIMO_API_KEY 或 GEMINI_API_KEY）')
 }
 
 // ====== JSON 响应 ======

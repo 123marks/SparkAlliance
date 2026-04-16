@@ -36,11 +36,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
 
-const isVisible = ref(false)
-const sectionRef = ref<HTMLElement | null>(null)
-let observer: IntersectionObserver | null = null
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.12 })
+void sectionRef  // 用于模板 ref 绑定
 
 const phases = [
   {
@@ -77,22 +76,6 @@ const phases = [
   }
 ]
 
-onMounted(() => {
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      isVisible.value = true
-      observer?.disconnect()
-    }
-  }, { threshold: 0.15 })
-
-  if (sectionRef.value) {
-    observer.observe(sectionRef.value)
-  }
-})
-
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
 </script>
 
 <style scoped>

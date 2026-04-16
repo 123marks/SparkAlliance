@@ -35,38 +35,14 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 2. 校园墙帖子表
-CREATE TABLE IF NOT EXISTS posts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  is_anonymous BOOLEAN DEFAULT false,
-  anonymous_seed UUID DEFAULT gen_random_uuid(),
-  category TEXT DEFAULT 'general',
-  likes_count INT DEFAULT 0,
-  comments_count INT DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. 评论表
-CREATE TABLE IF NOT EXISTS comments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
-  author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  is_anonymous BOOLEAN DEFAULT false,
-  anonymous_seed UUID DEFAULT gen_random_uuid(),
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 4. 点赞表
-CREATE TABLE IF NOT EXISTS likes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(post_id, user_id)
-);
+-- =============================================
+-- 2/3/4. 校园墙 posts / comments / likes
+-- [已废弃] 以下简化定义仅作存档。
+-- 页面实际依赖的增强版 schema（含 author_name、tags、media_urls、
+-- comment_likes、reports、content_appeals、user_sanctions 等）
+-- 请参见 docs/database/init_campus_wall.sql。
+-- 新环境建库时，请直接运行 init_campus_wall.sql，不要使用下方定义。
+-- =============================================
 
 -- 5. AI 对话记录表
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -120,9 +96,7 @@ CREATE TABLE IF NOT EXISTS course_reviews (
 -- =============================================
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
+-- [校园墙 RLS 已迁移至 init_campus_wall.sql，此处不再重复声明]
 ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resources ENABLE ROW LEVEL SECURITY;
@@ -132,21 +106,7 @@ ALTER TABLE course_reviews ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "profiles_select" ON profiles FOR SELECT USING (true);
 CREATE POLICY "profiles_update" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Posts: 所有人可读，登录用户可创建，作者可改删
-CREATE POLICY "posts_select" ON posts FOR SELECT USING (true);
-CREATE POLICY "posts_insert" ON posts FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "posts_update" ON posts FOR UPDATE USING (auth.uid() = author_id);
-CREATE POLICY "posts_delete" ON posts FOR DELETE USING (auth.uid() = author_id);
-
--- Comments: 所有人可读，登录用户可创建，作者可删
-CREATE POLICY "comments_select" ON comments FOR SELECT USING (true);
-CREATE POLICY "comments_insert" ON comments FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "comments_delete" ON comments FOR DELETE USING (auth.uid() = author_id);
-
--- Likes: 所有人可读，登录用户可创建/删除自己的
-CREATE POLICY "likes_select" ON likes FOR SELECT USING (true);
-CREATE POLICY "likes_insert" ON likes FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "likes_delete" ON likes FOR DELETE USING (auth.uid() = user_id);
+-- [校园墙 Posts/Comments/Likes 策略已迁移至 init_campus_wall.sql]
 
 -- Chat: 仅自己可读写
 CREATE POLICY "chat_sessions_all" ON chat_sessions USING (auth.uid() = user_id);

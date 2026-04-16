@@ -937,10 +937,12 @@ const mySchool = computed(() => {
   const meta = user.value?.user_metadata
   return meta?.university || meta?.school || ''
 })
+void mySchool
 const myRegion = computed(() => {
   const meta = user.value?.user_metadata
   return meta?.region || meta?.city || ''
 })
+void myRegion
 
 // ====== 热门标签统计 ======
 const trendingTags = computed(() => {
@@ -1038,7 +1040,7 @@ const hourlyActivity = computed(() => {
   return hours
 })
 
-function filterByTag(tag: string) {
+function filterByTag(_tag: string) {
   activeTab.value = '推荐'
 }
 void filterByTag

@@ -1,0 +1,22 @@
+{
+  "name": "@spark-alliance/local-ai",
+  "version": "1.0.0",
+  "description": "Spark Alliance 本地 AI 服务 - Gemma 4B via Ollama",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "setup": "node scripts/setup-ollama.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

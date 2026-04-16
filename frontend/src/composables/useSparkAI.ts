@@ -11,71 +11,12 @@ function getEdgeFunctionUrl(): string {
   return `${base}/functions/v1/assistant-chat`
 }
 
-const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
-
-function getNvidiaApiKey(): string | null {
-  return import.meta.env.VITE_NVIDIA_API_KEY || null
-}
-
-const SPARK_SYSTEM_PROMPT = `你是「星火助手」，Spark Alliance 校园智能平台的核心 AI 伙伴。
-
-你是一位经验丰富、热情开朗的学长/学姐，真心关心每位同学。
-说话自然亲和、有点俏皮，像朋友聊天。善于倾听和共情，先理解需求再给建议。
-绝不暴露底层模型名称，你就是「星火助手」。适当使用 emoji。
-不要机械一问一答，要有连贯对话感。遇到模糊问题主动追问。
-给建议结合具体场景，避免空洞鸡汤。代码必须完整可运行。
-拒绝违法、色情、暴力内容，用温和幽默方式转移话题。`
-
-async function directNvidiaCall(
-  messages: Array<{ role: string; content: string }>,
-  modelMode: ModelMode,
-  stream: boolean,
-  signal?: AbortSignal,
-): Promise<Response> {
-  const apiKey = getNvidiaApiKey()
-  if (!apiKey) throw new Error('AI 服务密钥未配置')
-
-  const modelOpt = MODEL_OPTIONS[modelMode]
-  const modelsToTry = [modelOpt.id, ...modelOpt.fallbacks]
-  let lastError = ''
-
-  for (const modelId of modelsToTry) {
-    try {
-      const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelId,
-          stream,
-          temperature: 0.75,
-          top_p: 0.9,
-          max_tokens: modelOpt.maxTokens,
-          messages: [
-            { role: 'system', content: SPARK_SYSTEM_PROMPT },
-            ...messages,
-          ],
-        }),
-        signal,
-      })
-      if (res.ok) return res
-      lastError = await res.text().catch(() => `HTTP ${res.status}`)
-    } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') throw e
-      lastError = e instanceof Error ? e.message : String(e)
-    }
-  }
-  throw new Error(`AI 服务不可用: ${lastError.slice(0, 100)}`)
-}
-
 export type ModelMode = 'default' | 'thinking' | 'fast'
 
 export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallbacks: string[]; label: string; desc: string; icon: string; maxTokens: number }> = {
-  default: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct', 'meta/llama3-70b-instruct'], label: '均衡', desc: 'DeepSeek R1 · 全能均衡', icon: '⚡', maxTokens: 4096 },
-  thinking: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct'], label: '深度思考', desc: 'DeepSeek R1 · 推理增强', icon: '🧠', maxTokens: 8192 },
-  fast: { id: 'meta/llama-3.1-8b-instruct', fallbacks: ['microsoft/phi-3-mini-128k-instruct'], label: '极速', desc: 'Llama 3.1 8B · 快速回复', icon: '🚀', maxTokens: 2048 },
+  default: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '均衡', desc: '星火 Gamma4 · 全能均衡', icon: '⚡', maxTokens: 4096 },
+  thinking: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '深度思考', desc: '星火 Gamma4 · 推理增强', icon: '🧠', maxTokens: 8192 },
+  fast: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '极速', desc: '星火 Gamma4 · 快速回复', icon: '🚀', maxTokens: 2048 },
 }
 
 export const ABILITY_TOOLS = [
@@ -342,8 +283,8 @@ export function useSparkAI() {
         if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
         if (edgeErr instanceof Error && (edgeErr.message === '请先登录后再使用 AI 助手' || edgeErr.message === '请求过于频繁，请等待几秒后重试')) throw edgeErr
 
-        console.warn('[SparkAI] Edge Function 不可用，降级直连 NVIDIA API:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
-        res = await directNvidiaCall(contextMessages, currentModel.value, true, abortController.value!.signal)
+        console.warn('[SparkAI] Edge Function 不可用:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
+        throw new Error('AI 服务暂时不可用，请稍后重试')
       }
 
       clearTimeout(timeout)

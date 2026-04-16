@@ -127,6 +127,26 @@
                 </option>
               </select>
             </div>
+            <!-- 重复日（周重复时选择星期几） -->
+            <div v-if="form.recurrence_type === 'weekly' || form.recurrence_type === 'biweekly'" class="ev-field">
+              <label>重复日</label>
+              <div class="ev-weekday-picker">
+                <button
+                  v-for="d in WEEKDAY_OPTIONS"
+                  :key="d.value"
+                  type="button"
+                  class="ev-weekday-btn"
+                  :class="{ active: form.recurrence_days.includes(d.value) }"
+                  @click="toggleWeekday(d.value)"
+                >{{ d.label }}</button>
+              </div>
+            </div>
+            <!-- 重复结束日期 -->
+            <div v-if="form.recurrence_type !== 'none'" class="ev-field">
+              <label>重复截止</label>
+              <input v-model="form.recurrence_end" type="date" class="ev-input" placeholder="不填则永久重复" />
+              <span v-if="!form.recurrence_end" class="ev-hint">不设截止日期将持续重复</span>
+            </div>
 
             <!-- 提醒 -->
             <div class="ev-field">
@@ -307,6 +327,22 @@ const formatTime = (iso: string) => {
 }
 
 const recurrenceLabel = (type: string) => RECURRENCE_OPTIONS.find(o => o.value === type)?.label || type
+
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: '一' },
+  { value: 2, label: '二' },
+  { value: 3, label: '三' },
+  { value: 4, label: '四' },
+  { value: 5, label: '五' },
+  { value: 6, label: '六' },
+  { value: 0, label: '日' },
+]
+
+function toggleWeekday(day: number) {
+  const idx = form.value.recurrence_days.indexOf(day)
+  if (idx >= 0) form.value.recurrence_days.splice(idx, 1)
+  else form.value.recurrence_days.push(day)
+}
 
 const typeConfig = computed(() => {
   if (!props.event) return EVENT_TYPES.task

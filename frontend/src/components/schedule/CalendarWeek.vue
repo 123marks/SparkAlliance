@@ -87,9 +87,18 @@ const isSameDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear()
   && left.getMonth() === right.getMonth()
   && left.getDate() === right.getDate()
+void isSameDay
 
-const getEventsForDay = (date: Date): ScheduleEvent[] =>
-  props.events.filter(event => !event.all_day && isSameDay(new Date(event.start_time), date))
+const getEventsForDay = (date: Date): ScheduleEvent[] => {
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayEnd = new Date(dayStart.getTime() + 86400000 - 1)
+  return props.events.filter(event => {
+    if (event.all_day) return false
+    const s = new Date(event.start_time)
+    const end = event.end_time ? new Date(event.end_time) : s
+    return s <= dayEnd && end >= dayStart
+  })
+}
 
 const getEventLayoutsForDay = (date: Date): TimedEventLayout<ScheduleEvent>[] =>
   buildTimedEventLayouts(getEventsForDay(date))

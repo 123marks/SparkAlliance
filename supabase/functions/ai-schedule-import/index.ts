@@ -2,10 +2,11 @@
  * ai-schedule-import Edge Function
  *
  * 接收前端传来的图片URL或文本，调用 AI 识别课表/日程
- * 支持 Gemini 和 通义千问VL 双通道
+ * 支持 本地Gemma + Gemini + 通义千问VL 三通道
  *
  * 环境变量：
- * - AI_PROVIDER: gemini | qwen
+ * - AI_PROVIDER: local | gemini | qwen (默认 local)
+ * - LOCAL_AI_URL: 本地 AI 服务地址（默认 http://localhost:3721）
  * - GEMINI_API_KEY: Google Gemini API Key
  * - QWEN_API_KEY: 通义千问 API Key
  * - AI_DAILY_LIMIT: 每日调用上限（默认 5）
@@ -53,6 +54,32 @@ function buildPrompt(today: string, semesterStart: string): string {
     "description": "张教授"
   }
 ]`
+}
+
+// ====== 本地 Gemma AI 调用 ======
+async function callLocalAI(baseUrl: string, _imageUrl: string | null, fileText: string | null, prompt: string) {
+  let fullPrompt = prompt
+  if (fileText) {
+    fullPrompt += `\n\n以下是需要识别的文本内容：\n${fileText}`
+  }
+
+  const response = await fetch(`${baseUrl}/api/spark/schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: fullPrompt }],
+      temperature: 0.1,
+      max_tokens: 4096,
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`本地 AI 服务错误 (${response.status}): ${errText}`)
+  }
+
+  const data = await response.json()
+  return data.content || ''
 }
 
 // ====== Gemini API 调用 ======
@@ -200,11 +227,12 @@ Deno.serve(async (req) => {
 
     // 解析请求体
     const body = await req.json()
-    const { imageUrl, fileText, today, semesterStart } = body as {
+    const { imageUrl, fileText, today, semesterStart, userPrompt } = body as {
       imageUrl?: string
       fileText?: string
       today?: string
       semesterStart?: string
+      userPrompt?: string
     }
 
     if (!imageUrl && !fileText) {
@@ -239,14 +267,21 @@ Deno.serve(async (req) => {
     }
 
     // ====== 调用 AI ======
-    const provider = Deno.env.get('AI_PROVIDER') || 'gemini'
-    const prompt = buildPrompt(
+    const provider = Deno.env.get('AI_PROVIDER') || 'local'
+    let prompt = buildPrompt(
       today || new Date().toISOString().split('T')[0],
       semesterStart || '2026-02-23'
     )
 
+    if (userPrompt && userPrompt.trim()) {
+      prompt += `\n\n用户额外说明：${userPrompt.trim()}`
+    }
+
     let rawText = ''
-    if (provider === 'qwen') {
+    if (provider === 'local') {
+      const localUrl = Deno.env.get('LOCAL_AI_URL') || 'http://localhost:3721'
+      rawText = await callLocalAI(localUrl, imageUrl || null, fileText || null, prompt)
+    } else if (provider === 'qwen') {
       const qwenKey = Deno.env.get('QWEN_API_KEY')
       if (!qwenKey) throw new Error('QWEN_API_KEY 未配置')
       rawText = await callQwen(qwenKey, imageUrl || null, fileText || null, prompt)

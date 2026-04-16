@@ -4,6 +4,7 @@
  */
 import { ref } from 'vue'
 import { supabase } from '../supabase'
+import { mentorAssist } from '../utils/localAI'
 
 // ====== 类型定义 ======
 
@@ -274,9 +275,14 @@ export function useMentor() {
 
       const { data, error, count } = await query
       if (error) throw error
-      articles.value = (data || []) as unknown as MentorArticle[]
+      const items = (data || []) as unknown as MentorArticle[]
       totalCount.value = count || 0
-      return articles.value
+      if (page > 1) {
+        articles.value = [...articles.value, ...items]
+      } else {
+        articles.value = items
+      }
+      return items
     } catch (e) {
       console.error('获取文章失败:', e)
       return []
@@ -295,21 +301,18 @@ export function useMentor() {
         .single()
       if (error) throw error
 
-      // 浏览量 +1
-      await supabase.from('mentor_articles')
-        .update({ view_count: (data.view_count || 0) + 1 })
-        .eq('id', articleId)
+      // 浏览量 +1（原子）
+      await supabase.rpc('increment_article_view', { article_id_input: articleId })
 
       // 检查是否已点赞/收藏
       const { data: { user: u } } = await supabase.auth.getUser()
       if (u) {
-        const { data: bk } = await supabase
-          .from('mentor_bookmarks')
-          .select('id')
-          .eq('user_id', u.id)
-          .eq('article_id', articleId)
-          .maybeSingle()
+        const [{ data: bk }, { data: lk }] = await Promise.all([
+          supabase.from('mentor_bookmarks').select('id').eq('user_id', u.id).eq('article_id', articleId).maybeSingle(),
+          supabase.from('mentor_article_likes').select('id').eq('user_id', u.id).eq('article_id', articleId).maybeSingle(),
+        ])
         ;(data as any).is_bookmarked = !!bk
+        ;(data as any).is_liked = !!lk
       }
 
       currentArticle.value = data as unknown as MentorArticle
@@ -359,22 +362,11 @@ export function useMentor() {
         }
       }
 
-      // AI 生成摘要
       let summary = ''
       try {
-        const resp = await fetch('/api/mimo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'MiMo-7B-RL',
-            messages: [{ role: 'user', content: `请用50字以内概括这篇文章的核心内容：\n\n${article.title}\n\n${article.content.slice(0, 500)}` }],
-            temperature: 0.3, max_tokens: 100,
-          }),
-        })
-        if (resp.ok) {
-          const result = await resp.json()
-          summary = result.choices?.[0]?.message?.content || ''
-        }
+        summary = await mentorAssist(
+          `请用50字以内概括这篇文章的核心内容：\n\n${article.title}\n\n${article.content.slice(0, 500)}`
+        )
       } catch { /* AI 不可用时静默 */ }
 
       const { data, error } = await supabase.from('mentor_articles').insert({
@@ -404,16 +396,26 @@ export function useMentor() {
     }
   }
 
-  /** 点赞文章 */
+  /** 点赞/取消点赞文章（防重复，触发器自动更新 like_count） */
   async function likeArticle(articleId: string): Promise<boolean> {
+    const { data: { user: u } } = await supabase.auth.getUser()
+    if (!u) return false
     try {
-      // 直接 +1（简化实现，生产环境需要防重复）
-      const { error } = await supabase.from('mentor_articles')
-        .update({ like_count: (currentArticle.value?.like_count || 0) + 1 })
-        .eq('id', articleId)
-      if (error) throw error
-      if (currentArticle.value?.id === articleId) {
-        currentArticle.value.like_count++
+      const { data: existing } = await supabase.from('mentor_article_likes')
+        .select('id').eq('user_id', u.id).eq('article_id', articleId).maybeSingle()
+
+      if (existing) {
+        await supabase.from('mentor_article_likes').delete().eq('id', existing.id)
+        if (currentArticle.value?.id === articleId) {
+          currentArticle.value.like_count = Math.max(0, currentArticle.value.like_count - 1)
+          currentArticle.value.is_liked = false
+        }
+      } else {
+        await supabase.from('mentor_article_likes').insert({ user_id: u.id, article_id: articleId })
+        if (currentArticle.value?.id === articleId) {
+          currentArticle.value.like_count++
+          currentArticle.value.is_liked = true
+        }
       }
       return true
     } catch (e) {
@@ -448,7 +450,7 @@ export function useMentor() {
     }
   }
 
-  /** 获取文章评论 */
+  /** 获取文章评论（联表查作者昵称） */
   async function fetchComments(articleId: string): Promise<MentorComment[]> {
     const { data, error } = await supabase
       .from('mentor_comments')
@@ -456,7 +458,22 @@ export function useMentor() {
       .eq('article_id', articleId)
       .order('created_at', { ascending: true })
     if (error) { console.error(error); return [] }
-    comments.value = data || []
+
+    const items = (data || []) as MentorComment[]
+    const userIds = [...new Set(items.map(c => c.user_id))]
+    if (userIds.length) {
+      const { data: profiles } = await supabase.from('spark_profiles')
+        .select('user_id, nickname, avatar_url').in('user_id', userIds)
+      if (profiles) {
+        const pm = new Map(profiles.map(p => [p.user_id, p]))
+        items.forEach(c => {
+          const p = pm.get(c.user_id)
+          if (p) { c.user_name = p.nickname; c.user_avatar = p.avatar_url }
+        })
+      }
+    }
+
+    comments.value = items
     return comments.value
   }
 
@@ -517,28 +534,17 @@ export function useMentor() {
         career: 'career',
         postgrad: 'academic',
       }
-      // 使用 AI 从文章提炼任务
       let tasks: { title: string; due_date?: string }[] = []
       try {
-        const resp = await fetch('/api/mimo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'MiMo-7B-RL',
-            messages: [{ role: 'user', content: `根据这篇学习经验分享，提炼3-5个可执行的学习任务。
+        const text = await mentorAssist(
+          `根据这篇学习经验分享，提炼3-5个可执行的学习任务。
 标题：${article.title}
 摘要：${article.summary || article.content.slice(0, 300)}
 
-返回JSON数组格式：[{"title":"任务名"},...]` }],
-            temperature: 0.4, max_tokens: 300,
-          }),
-        })
-        if (resp.ok) {
-          const result = await resp.json()
-          const text = result.choices?.[0]?.message?.content || ''
-          const match = text.match(/\[[\s\S]*\]/)
-          if (match) tasks = JSON.parse(match[0])
-        }
+返回JSON数组格式：[{"title":"任务名"},...]`
+        )
+        const match = text.match(/\[[\s\S]*\]/)
+        if (match) tasks = JSON.parse(match[0])
       } catch { /* fallback */ }
 
       if (tasks.length === 0) {
@@ -636,31 +642,21 @@ export function useMentor() {
           `${m.display_name}(${m.major || '未知专业'}, 标签: ${m.expertise_tags.join('/')}, 评分: ${m.avg_rating}, 咨询数: ${m.consultation_count})`
         ).join('\n')
 
-        const resp = await fetch('/api/mimo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'MiMo-7B-RL',
-            messages: [{ role: 'user', content: `学生咨询问题: "${description}"
+        const text = await mentorAssist(
+          `学生咨询问题: "${description}"
 候选学长列表：
 ${mentorList}
 
 请选出最匹配的学长（0号开始），给出匹配度（0-100）和一句话理由。
-返回JSON: {"index":0, "score":85, "reason":"..."}` }],
-            temperature: 0.3, max_tokens: 150,
-          }),
-        })
-        if (resp.ok) {
-          const result = await resp.json()
-          const text = result.choices?.[0]?.message?.content || ''
-          const match = text.match(/\{[\s\S]*\}/)
-          if (match) {
-            const parsed = JSON.parse(match[0])
-            const idx = Math.min(parsed.index || 0, mentors.length - 1)
-            bestMentor = mentors[idx]
-            bestScore = parsed.score || 70
-            bestReason = parsed.reason || '根据专业领域推荐'
-          }
+返回JSON: {"index":0, "score":85, "reason":"..."}`
+        )
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) {
+          const parsed = JSON.parse(match[0])
+          const idx = Math.min(parsed.index || 0, mentors.length - 1)
+          bestMentor = mentors[idx]
+          bestScore = parsed.score || 70
+          bestReason = parsed.reason || '根据专业领域推荐'
         }
       } catch { /* fallback 使用第一个 */ }
 

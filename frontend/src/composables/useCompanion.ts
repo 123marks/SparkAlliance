@@ -22,6 +22,7 @@ import { ref, computed } from 'vue'
 import { requestAssistantChat } from '../utils/assistantApi'
 import { supabase } from '../supabase'
 import { companionChat } from '../utils/localAI'
+import { loadPersist, savePersist } from '../utils/persist'
 
 // ============ 类型定义 ============
 
@@ -119,6 +120,7 @@ export interface ChatMsg {
   read_at?: string       // 读取时间
   created_at: string
   synced?: boolean       // 是否已同步到数据库
+  voice_transcript?: string  // 语音转文字内容
   mentions?: string[]    // @提及的 spark_id 列表
   quote_msg?: { sender_name: string; content: string }  // 引用消息
 }
@@ -188,6 +190,7 @@ export interface Moment {
   comments: MomentComment[]
   shares: number
   is_pinned: boolean      // 是否置顶
+  synced?: boolean        // 是否已同步到数据库
   tags?: string[]
   region?: string
   visible_to?: string[]   // 部分可见: 指定可见的好友 spark_id 列表
@@ -204,6 +207,8 @@ export interface MomentComment {
   author?: SparkProfile
   content: string
   created_at: string
+  image_url?: string    // 评论配图
+  likes?: string[]      // 点赞者 spark_id 列表
 }
 
 export interface ChatMessage {
@@ -302,10 +307,10 @@ const STORAGE_KEYS = {
 }
 
 function loadData<T>(key: string, fallback: T): T {
-  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : fallback } catch { return fallback }
+  return loadPersist<T>(key, fallback)
 }
 function saveData(key: string, data: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(data)) } catch { /* 空间不够就跳过 */ }
+  savePersist(key, data)
 }
 
 // ============ AI 配置 ============
@@ -1225,11 +1230,12 @@ export function useCompanion() {
   }
 
   // ------ AI 通信 ------
-  const AI_COMPANION_PROMPT = `你是「星火AI伙伴」，一个温暖贴心的校园社交助手。
+  const _AI_COMPANION_PROMPT = `你是「星火AI伙伴」，一个温暖贴心的校园社交助手。
 你的性格活泼开朗、善解人意，像一个贴心的朋友。
 回复自然随意，不要太正式，可以用 emoji。
 简短回复优先，不要长篇大论。聊天就像跟朋友发微信一样。
 涉及敏感话题时温和转移。今天是${new Date().toLocaleDateString('zh-CN')}。`
+  void _AI_COMPANION_PROMPT
 
   const lastAiError = ref<string | null>(null)
   const aiRetryCount = ref(0)

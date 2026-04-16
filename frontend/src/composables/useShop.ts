@@ -136,6 +136,8 @@ export interface SellerShop {
   bio?: string
   sparkId?: string
   university?: string
+  interests?: string[]
+  createdAt?: string
   avgRating: number
   reviewCount: number
   goodRate: number
@@ -236,8 +238,8 @@ export function useShop() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
-    // 草稿直接保存，否则进入待审核状态
-    const finalStatus = productData.status === 'draft' ? 'draft' : 'pending_review'
+    // 草稿保持 draft，否则直接上架（未来可接入真实 AI 审核 API 再启用 pending_review）
+    const finalStatus = productData.status === 'draft' ? 'draft' : 'active'
 
     const { data, error } = await supabase.from('shop_products').insert({
       seller_id: user.id,
@@ -246,16 +248,6 @@ export function useShop() {
     }).select().single()
 
     if (error) { console.error('发布商品失败:', error); return null }
-
-    // 模拟审核（实际项目接AI审核API，这里自动通过 2s 延迟）
-    if (finalStatus === 'pending_review') {
-      setTimeout(async () => {
-        await supabase.from('shop_products')
-          .update({ status: 'active', updated_at: new Date().toISOString() })
-          .eq('id', data.id)
-      }, 2000)
-    }
-
     return data.id
   }
 
@@ -265,12 +257,12 @@ export function useShop() {
     if (!user) return null
 
     const ext = file.name.split('.').pop()
-    const path = `shop/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await supabase.storage.from('campus-wall').upload(path, file, {
+    const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('shop-images').upload(path, file, {
       contentType: file.type,
     })
     if (error) { console.error('上传失败:', error); return null }
-    return supabase.storage.from('campus-wall').getPublicUrl(path).data.publicUrl
+    return supabase.storage.from('shop-images').getPublicUrl(path).data.publicUrl
   }
 
   /** 更新商品 */
@@ -395,10 +387,8 @@ export function useShop() {
       .select('*').eq('id', id).single()
     if (error || !data) return null
 
-    // 异步浏览量+1
-    supabase.from('shop_products')
-      .update({ view_count: (data.view_count || 0) + 1 })
-      .eq('id', id).then(() => { })
+    // 原子化浏览量+1
+    supabase.rpc('shop_increment_view', { p_id: id }).then(() => { })
 
     // 检查是否收藏
     const { data: { user } } = await supabase.auth.getUser()
@@ -579,19 +569,25 @@ export function useShop() {
 
   // ====== 交易管理 ======
 
-  /** 发起交易 */
+  /** 发起交易 — buyerId 可选，默认为当前登录用户；卖家发起时须显式传入买家ID */
   async function createTransaction(
     productId: string,
     sellerId: string,
     agreedPrice?: number,
     tradeTime?: string,
     tradeLocation?: string,
+    buyerId?: string,
   ): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
+    const actualBuyerId = buyerId || user.id
+    if (actualBuyerId === sellerId) {
+      console.error('buyer_id 与 seller_id 不能相同')
+      return null
+    }
     const { data, error } = await supabase.from('shop_transactions').insert({
       product_id: productId,
-      buyer_id: user.id,
+      buyer_id: actualBuyerId,
       seller_id: sellerId,
       agreed_price: agreedPrice,
       trade_time: tradeTime,
@@ -621,13 +617,14 @@ export function useShop() {
     })
   }
 
-  /** 买家确认收货 → completed */
+  /** 买家确认收货 — 仅设 buyer_confirmed，双方都确认后由触发器自动完成 */
   async function confirmReceive(transactionId: string): Promise<boolean> {
-    return updateTransaction(transactionId, {
-      buyer_confirmed: true,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    })
+    return updateTransaction(transactionId, { buyer_confirmed: true })
+  }
+
+  /** 卖家确认发货/交付 — 仅设 seller_confirmed */
+  async function confirmDelivery(transactionId: string): Promise<boolean> {
+    return updateTransaction(transactionId, { seller_confirmed: true })
   }
 
   /** 取消交易 */
@@ -708,6 +705,15 @@ export function useShop() {
   ): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
+    // 前端校验：确认当前用户参与了该已完成交易
+    const { data: tx } = await supabase.from('shop_transactions')
+      .select('buyer_id, seller_id, status')
+      .eq('id', transactionId).single()
+    if (!tx || tx.status !== 'completed'
+      || (tx.buyer_id !== user.id && tx.seller_id !== user.id)) {
+      console.error('无权评价：未参与该已完成交易')
+      return false
+    }
     const { error } = await supabase.from('shop_reviews').insert({
       transaction_id: transactionId,
       reviewer_id: user.id,
@@ -795,6 +801,8 @@ export function useShop() {
       bio: profile.bio,
       sparkId: profile.spark_id,
       university: profile.university,
+      interests: profile.interests || [],
+      createdAt: profile.created_at,
       ...credit,
       products: (prods || []) as ShopProduct[],
       reviews,
@@ -889,39 +897,57 @@ export function useShop() {
     } catch { return null }
   }
 
-  // ====== 模块打通 ======
+  // ====== 模块打通（弱耦合：try-catch 包裹，目标表不存在不影响核心功能） ======
 
-  /** 分享商品到校园墙 */
+  /** 分享商品到校园墙（弱依赖 posts 表） */
   async function shareProductToWall(product: ShopProduct): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
 
-    const { data: profile } = await supabase.from('spark_profiles')
-      .select('nickname').eq('user_id', user.id).maybeSingle()
-    const authorName = profile?.nickname || user.email?.split('@')[0] || '同学'
+    try {
+      const { data: profile } = await supabase.from('spark_profiles')
+        .select('nickname').eq('user_id', user.id).maybeSingle()
+      const authorName = profile?.nickname || user.email?.split('@')[0] || '同学'
 
-    const { error } = await supabase.from('posts').insert({
-      content: `🛒 我在星火购物发布了「${product.title}」\n💰 ¥${product.price} ${product.is_negotiable ? '(可议价)' : ''}\n\n${product.description.slice(0, 100)}\n\n#星火购物 #${CONDITION_MAP[product.condition]?.label || '二手'}`,
-      author_id: user.id,
-      author_name: authorName,
-      category: 'shop',
-      media_urls: product.images.slice(0, 3),
-      tags: ['星火购物', '二手交易'],
-    })
-    return !error
+      const { error } = await supabase.from('posts').insert({
+        content: `🛒 我在星火购物发布了「${product.title}」\n💰 ¥${product.price} ${product.is_negotiable ? '(可议价)' : ''}\n\n${product.description.slice(0, 100)}\n\n#星火购物 #${CONDITION_MAP[product.condition]?.label || '二手'}`,
+        author_id: user.id,
+        author_name: authorName,
+        category: 'shop',
+        media_urls: product.images.slice(0, 3),
+        tags: ['星火购物', '二手交易'],
+      })
+      if (error) {
+        console.warn('分享到校园墙失败（posts 表可能未就绪）:', error.message)
+        return false
+      }
+      return true
+    } catch (e) {
+      console.warn('分享到校园墙异常:', e)
+      return false
+    }
   }
 
-  /** 分享商品到星火域 */
+  /** 分享商品到星火域（弱依赖 companion_moments 表） */
   async function shareProductToMoment(product: ShopProduct): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
-    const { error } = await supabase.from('companion_moments').insert({
-      user_id: user.id,
-      content: `🛒 出售「${product.title}」¥${product.price}\n${product.description.slice(0, 80)}`,
-      media_urls: product.images.slice(0, 3),
-      visibility: 'friends',
-    })
-    return !error
+    try {
+      const { error } = await supabase.from('companion_moments').insert({
+        user_id: user.id,
+        content: `🛒 出售「${product.title}」¥${product.price}\n${product.description.slice(0, 80)}`,
+        media_urls: product.images.slice(0, 3),
+        visibility: 'friends',
+      })
+      if (error) {
+        console.warn('分享到星火域失败（companion_moments 表可能未就绪）:', error.message)
+        return false
+      }
+      return true
+    } catch (e) {
+      console.warn('分享到星火域异常:', e)
+      return false
+    }
   }
 
   // ====== 工具 ======
@@ -950,7 +976,7 @@ export function useShop() {
     searchProducts, getProductDetail, getSellerCredit,
     toggleFavorite, fetchMyFavorites,
     getOrCreateConversation, fetchConversations, fetchMessages, sendMessage, markConversationRead,
-    createTransaction, updateTransaction, acceptTransaction, setMeeting, confirmReceive, cancelTransaction,
+    createTransaction, updateTransaction, acceptTransaction, setMeeting, confirmReceive, confirmDelivery, cancelTransaction,
     fetchMyBuyOrders, fetchMySellOrders, fetchMyProducts,
     submitReview, fetchUserReviews,
     addProductComment, fetchProductComments,

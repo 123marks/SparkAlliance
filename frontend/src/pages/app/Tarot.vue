@@ -646,8 +646,8 @@ function shareToWall() { shareCaption.value = ''; shareShowQ.value = false; show
 async function doShare() {
   if (!user.value || !pickedCard.value) return
   try {
-    const { data: profile } = await supabase.from('profiles')
-      .select('nickname').eq('id', user.value.id).maybeSingle()
+    const { data: profile } = await supabase.from('spark_profiles')
+      .select('nickname').eq('user_id', user.value.id).maybeSingle()
     const authorName = profile?.nickname || user.value.email?.split('@')[0] || '同学'
 
     const content = [

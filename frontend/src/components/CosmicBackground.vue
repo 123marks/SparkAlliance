@@ -89,12 +89,12 @@ function init() {
   dustParticles = []; auroraWaves = []; pulseStars = []
   const area = w * h
 
-  const dimCount = Math.floor(area / 800)
+  const dimCount = Math.floor(area / 2400)
   for (let i = 0; i < dimCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.2 + 0.5,
-      baseAlpha: Math.random() * 0.4 + 0.22,
+      size: Math.random() * 1.0 + 0.4,
+      baseAlpha: Math.random() * 0.25 + 0.1,
       phase: Math.random() * Math.PI * 2,
       twinkleSpeed: Math.random() * 0.4 + 0.15,
       color: starColors[Math.floor(Math.random() * starColors.length)],
@@ -102,12 +102,12 @@ function init() {
     })
   }
 
-  const normalCount = Math.floor(area / 1600)
+  const normalCount = Math.floor(area / 5000)
   for (let i = 0; i < normalCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 1.8 + 1.0,
-      baseAlpha: Math.random() * 0.5 + 0.3,
+      size: Math.random() * 1.5 + 0.8,
+      baseAlpha: Math.random() * 0.3 + 0.15,
       phase: Math.random() * Math.PI * 2,
       twinkleSpeed: Math.random() * 0.6 + 0.25,
       color: starColors[Math.floor(Math.random() * starColors.length)],
@@ -115,12 +115,12 @@ function init() {
     })
   }
 
-  const brightCount = Math.floor(area / 8000) + 28
+  const brightCount = Math.floor(area / 15000) + 10
   for (let i = 0; i < brightCount; i++) {
     stars.push({
       x: Math.random() * w, y: Math.random() * h,
-      size: Math.random() * 2.6 + 1.6,
-      baseAlpha: Math.random() * 0.5 + 0.45,
+      size: Math.random() * 2.2 + 1.2,
+      baseAlpha: Math.random() * 0.35 + 0.25,
       phase: Math.random() * Math.PI * 2,
       twinkleSpeed: Math.random() * 0.9 + 0.35,
       color: starColors[Math.floor(Math.random() * 3)],
@@ -128,15 +128,15 @@ function init() {
     })
   }
 
-  const nebCount = Math.min(Math.floor(area / 60000) + 7, 12)
+  const nebCount = Math.min(Math.floor(area / 80000) + 4, 8)
   for (let i = 0; i < nebCount; i++) {
     nebulae.push({
       x: Math.random() * w, y: Math.random() * h,
-      radius: Math.random() * 500 + 220,
+      radius: Math.random() * 450 + 200,
       color: ['rgba(80,60,160,', 'rgba(40,70,140,', 'rgba(100,50,120,', 'rgba(30,80,100,', 'rgba(60,40,130,', 'rgba(70,30,90,'][Math.floor(Math.random() * 6)],
-      alpha: Math.random() * 0.065 + 0.03,
-      driftX: (Math.random() - 0.5) * 0.04,
-      driftY: (Math.random() - 0.5) * 0.03
+      alpha: Math.random() * 0.04 + 0.015,
+      driftX: (Math.random() - 0.5) * 0.03,
+      driftY: (Math.random() - 0.5) * 0.02
     })
   }
 
@@ -160,23 +160,21 @@ function init() {
     })
   }
 
-  // Aurora waves
-  const auroraCount = Math.floor(Math.random() * 2) + 2
+  const auroraCount = Math.floor(Math.random() * 2) + 1
   for (let i = 0; i < auroraCount; i++) {
     auroraWaves.push({
       y: h * 0.15 + Math.random() * h * 0.35,
-      amplitude: Math.random() * 40 + 20,
+      amplitude: Math.random() * 30 + 15,
       frequency: Math.random() * 0.003 + 0.001,
       speed: Math.random() * 0.3 + 0.1,
       phase: Math.random() * Math.PI * 2,
       color: auroraColors[Math.floor(Math.random() * auroraColors.length)],
-      alpha: Math.random() * 0.03 + 0.015,
-      width: Math.random() * 60 + 30,
+      alpha: Math.random() * 0.02 + 0.008,
+      width: Math.random() * 50 + 25,
     })
   }
 
-  // Pulse stars (occasionally flare brightly)
-  const pulseCount = Math.floor(area / 40000) + 8
+  const pulseCount = Math.floor(area / 60000) + 4
   for (let i = 0; i < pulseCount; i++) {
     pulseStars.push({
       x: Math.random() * w, y: Math.random() * h,
@@ -405,9 +403,9 @@ function drawAurora(ctx: CanvasRenderingContext2D, aurora: AuroraWave, time: num
   grad.addColorStop(1, 'transparent')
   ctx.strokeStyle = grad
   ctx.lineWidth = aurora.width
-  ctx.filter = 'blur(8px)'
+  try { ctx.filter = 'blur(8px)' } catch {}
   ctx.stroke()
-  ctx.filter = 'none'
+  try { ctx.filter = 'none' } catch {}
   ctx.restore()
 }
 
@@ -450,9 +448,16 @@ function drawPulseStar(ctx: CanvasRenderingContext2D, ps: PulseStar) {
 let time = 0
 let frameCount = 0
 function animate(ctx: CanvasRenderingContext2D) {
-  ctx.clearRect(0, 0, w, h)
   time += 0.016
   frameCount++
+
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, h)
+  bgGrad.addColorStop(0, '#06050e')
+  bgGrad.addColorStop(0.4, '#0a0818')
+  bgGrad.addColorStop(0.7, '#0d0a1a')
+  bgGrad.addColorStop(1, '#080612')
+  ctx.fillStyle = bgGrad
+  ctx.fillRect(0, 0, w, h)
 
   // Nebulae
   for (const n of nebulae) {
@@ -496,9 +501,9 @@ function animate(ctx: CanvasRenderingContext2D) {
   }
 
   // Spawn effects
-  if (Math.random() < 0.012) spawnMeteor()
-  if (Math.random() < 0.008) spawnBolide()
-  if (dustParticles.length < 60 && Math.random() < 0.05) spawnDust()
+  if (Math.random() < 0.008) spawnMeteor()
+  if (Math.random() < 0.004) spawnBolide()
+  if (dustParticles.length < 30 && Math.random() < 0.03) spawnDust()
 
   // Meteors
   for (let i = meteors.length - 1; i >= 0; i--) {

@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS shop_products (
   is_negotiable BOOLEAN DEFAULT TRUE,      -- 是否可议价
   tags TEXT[] DEFAULT '{}',                -- 标签（急出/包邮/可小刀等）
   status VARCHAR(20) DEFAULT 'active'
-    CHECK (status IN ('draft', 'active', 'sold', 'offline', 'deleted')),
+    CHECK (status IN ('draft', 'pending_review', 'active', 'sold', 'offline', 'deleted')),
   view_count INT DEFAULT 0,
   want_count INT DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS shop_messages (
   sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   message_type VARCHAR(20) DEFAULT 'text'
-    CHECK (message_type IN ('text', 'image', 'product', 'system', 'quick_reply')),
+    CHECK (message_type IN ('text', 'image', 'product', 'system', 'quick_reply', 'offer', 'offer_response')),
   product_id UUID REFERENCES shop_products(id) ON DELETE SET NULL,  -- 商品卡片消息
   is_read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS shop_transactions (
   buyer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   seller_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   status VARCHAR(20) DEFAULT 'pending'
-    CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+    CHECK (status IN ('pending', 'accepted', 'meeting', 'completed', 'cancelled')),
   agreed_price DECIMAL(10, 2),
   trade_time TIMESTAMPTZ,
   trade_location VARCHAR(200),
@@ -196,7 +196,9 @@ DROP POLICY IF EXISTS st_upd ON shop_transactions;
 CREATE POLICY st_sel ON shop_transactions FOR SELECT USING (
   auth.uid() = buyer_id OR auth.uid() = seller_id
 );
-CREATE POLICY st_ins ON shop_transactions FOR INSERT WITH CHECK (auth.uid() = buyer_id);
+CREATE POLICY st_ins ON shop_transactions FOR INSERT WITH CHECK (
+  auth.uid() = buyer_id OR auth.uid() = seller_id
+);
 CREATE POLICY st_upd ON shop_transactions FOR UPDATE USING (
   auth.uid() = buyer_id OR auth.uid() = seller_id
 );
@@ -224,7 +226,16 @@ ALTER TABLE shop_reviews ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS sr_sel ON shop_reviews;
 DROP POLICY IF EXISTS sr_ins ON shop_reviews;
 CREATE POLICY sr_sel ON shop_reviews FOR SELECT USING (true);
-CREATE POLICY sr_ins ON shop_reviews FOR INSERT WITH CHECK (auth.uid() = reviewer_id);
+-- 评价必须满足：评论者是自己 + 该交易已完成 + 评论者是交易的买家或卖家
+CREATE POLICY sr_ins ON shop_reviews FOR INSERT WITH CHECK (
+  auth.uid() = reviewer_id
+  AND EXISTS (
+    SELECT 1 FROM shop_transactions t
+    WHERE t.id = transaction_id
+      AND t.status = 'completed'
+      AND (t.buyer_id = auth.uid() OR t.seller_id = auth.uid())
+  )
+);
 
 
 -- ====== 8. shop_reports — 举报 ======
@@ -284,20 +295,28 @@ CREATE TRIGGER trg_shop_want_count
   AFTER INSERT OR DELETE ON shop_favorites
   FOR EACH ROW EXECUTE FUNCTION shop_update_want_count();
 
--- 交易完成自动更新商品状态为 sold
-CREATE OR REPLACE FUNCTION shop_auto_sold()
+-- 双方确认后自动完成交易 + 更新商品状态为 sold
+CREATE OR REPLACE FUNCTION shop_auto_complete_and_sold()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
+  -- 双方都已确认且尚未完成 → 自动标记 completed
+  IF NEW.buyer_confirmed = TRUE AND NEW.seller_confirmed = TRUE
+     AND NEW.status != 'completed' AND NEW.status != 'cancelled' THEN
+    NEW.status := 'completed';
+    NEW.completed_at := NOW();
+  END IF;
+  -- 状态变为 completed → 商品标记 sold
+  IF NEW.status = 'completed' AND (OLD.status IS DISTINCT FROM 'completed') THEN
     UPDATE shop_products SET status = 'sold', sold_at = NOW() WHERE id = NEW.product_id;
   END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_shop_auto_sold ON shop_transactions;
-CREATE TRIGGER trg_shop_auto_sold
-  AFTER UPDATE ON shop_transactions
-  FOR EACH ROW EXECUTE FUNCTION shop_auto_sold();
+DROP TRIGGER IF EXISTS trg_shop_auto_complete ON shop_transactions;
+CREATE TRIGGER trg_shop_auto_complete
+  BEFORE UPDATE ON shop_transactions
+  FOR EACH ROW EXECUTE FUNCTION shop_auto_complete_and_sold();
 
 -- 发消息时自动更新会话最后消息和未读数
 CREATE OR REPLACE FUNCTION shop_update_conversation()
@@ -363,6 +382,30 @@ ALTER TABLE shop_messages ADD CONSTRAINT shop_messages_message_type_check
 
 -- 评价增加标签列（物美价廉/发货快等快选标签）
 ALTER TABLE shop_reviews ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+
+-- ====== RPC: 原子化浏览量自增 ======
+CREATE OR REPLACE FUNCTION shop_increment_view(p_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE shop_products SET view_count = view_count + 1 WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ====== Storage: shop-images bucket ======
+-- 需在 Supabase Dashboard → Storage 中手动创建 public bucket 'shop-images'
+-- 或通过 SQL 插入（需 service_role 权限）:
+INSERT INTO storage.buckets (id, name, public) VALUES ('shop-images', 'shop-images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 允许认证用户上传到 shop-images
+CREATE POLICY shop_img_insert ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'shop-images' AND auth.role() = 'authenticated');
+-- 公开读取
+CREATE POLICY shop_img_select ON storage.objects FOR SELECT
+  USING (bucket_id = 'shop-images');
+-- 用户可删除自己上传的文件
+CREATE POLICY shop_img_delete ON storage.objects FOR DELETE
+  USING (bucket_id = 'shop-images' AND auth.uid()::text = (storage.foldername(name))[1]);
 
 -- =============================================
 -- 完成！请在 Supabase SQL Editor 中执行

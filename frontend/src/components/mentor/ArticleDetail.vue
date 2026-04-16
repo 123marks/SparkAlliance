@@ -77,6 +77,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import DOMPurify from 'dompurify'
 import type { MentorArticle, MentorComment } from '../../composables/useMentor'
 import { useMentor, ARTICLE_CATEGORIES } from '../../composables/useMentor'
 
@@ -105,15 +106,15 @@ function formatTime(dateStr: string): string {
   return formatTimeAgo(dateStr)
 }
 
-// 简单 Markdown 渲染（标题/加粗/列表/换行）
 function renderContent(text: string): string {
-  return text
+  const html = text
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/\n/g, '<br/>')
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'li', 'br', 'p', 'ul', 'ol'] })
 }
 
 function submitComment() {

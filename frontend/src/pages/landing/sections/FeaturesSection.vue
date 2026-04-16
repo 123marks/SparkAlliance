@@ -95,11 +95,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { reactive } from 'vue'
+import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
 
-const isVisible = ref(false)
-const sectionRef = ref<HTMLElement | null>(null)
-let observer: IntersectionObserver | null = null
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.08 })
+void sectionRef  // 用于模板 ref 绑定
 
 // 追光效果状态
 const spotlightStyles = reactive<Record<number, Record<string, string>>>({})
@@ -168,18 +168,6 @@ const futureFeatures = [
   { title: '星火共创', to: '/app/cocreate', statusText: '已上线', badgeClass: 'live', iconBg: 'rgba(139,92,246,0.12)', svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>' },
 ]
 
-onMounted(() => {
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      isVisible.value = true
-      observer?.disconnect()
-    }
-  }, { threshold: 0.08 })
-
-  if (sectionRef.value) observer.observe(sectionRef.value)
-})
-
-onBeforeUnmount(() => { observer?.disconnect() })
 </script>
 
 <style scoped>

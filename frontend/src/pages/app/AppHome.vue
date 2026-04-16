@@ -504,8 +504,8 @@ async function loadDashboard() {
         .select('id, title, start_time, end_time, priority')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .gte('start_time', todayRange.start)
         .lt('start_time', todayRange.end)
+        .gte('end_time', todayRange.start)
         .order('start_time', { ascending: true })
         .limit(6), [] as ScheduleEventRow[]),
       safeQuery(() => supabase.from('shop_products').select('id', { count: 'exact', head: true }).eq('seller_id', userId).eq('status', 'active'), null),

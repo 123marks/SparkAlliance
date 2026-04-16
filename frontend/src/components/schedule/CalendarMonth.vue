@@ -81,8 +81,15 @@ const isSameDay = (a: Date, b: Date) =>
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate()
 
-const getEventsForDate = (date: Date): ScheduleEvent[] =>
-  props.events.filter(e => isSameDay(new Date(e.start_time), date))
+const getEventsForDate = (date: Date): ScheduleEvent[] => {
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayEnd = new Date(dayStart.getTime() + 86400000 - 1)
+  return props.events.filter(e => {
+    const s = new Date(e.start_time)
+    const end = e.end_time ? new Date(e.end_time) : s
+    return s <= dayEnd && end >= dayStart
+  })
+}
 
 const colorMap: Record<string, string> = {
   course: '#4f8ef7', exam: '#ef4444', task: '#f97316',

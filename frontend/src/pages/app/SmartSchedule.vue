@@ -125,6 +125,9 @@ if (routeModule === 'planner' || routeModule === 'tarot') {
   panelKey.value = routeModule as 'planner' | 'tarot'
   showPanel.value = true
 }
+
+// 深层路由参数透传：tab/goalId 等由面板组件自行读取 route.query
+// 例如 ?module=planner&tab=goals&goalId=xxx 会打开规划面板，面板内部按 tab/goalId 定位
 </script>
 
 <style scoped>

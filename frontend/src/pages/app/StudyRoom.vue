@@ -315,11 +315,32 @@
               </select>
             </div>
             <div class="sr-form-group half">
-              <label>休息时长</label>
+              <label>短休息</label>
               <select v-model.number="createForm.shortBreak" class="sr-select">
                 <option :value="3">3分钟</option>
                 <option :value="5">5分钟</option>
                 <option :value="10">10分钟</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sr-form-row">
+            <div class="sr-form-group half">
+              <label>长休息</label>
+              <select v-model.number="createForm.longBreak" class="sr-select">
+                <option :value="10">10分钟</option>
+                <option :value="15">15分钟</option>
+                <option :value="20">20分钟</option>
+                <option :value="30">30分钟</option>
+              </select>
+            </div>
+            <div class="sr-form-group half">
+              <label>长休息间隔</label>
+              <select v-model.number="createForm.longBreakInterval" class="sr-select">
+                <option :value="2">每2个番茄</option>
+                <option :value="3">每3个番茄</option>
+                <option :value="4">每4个番茄</option>
+                <option :value="6">每6个番茄</option>
               </select>
             </div>
           </div>
@@ -420,6 +441,8 @@ const createForm = ref({
   password: '',
   focusDuration: 25,
   shortBreak: 5,
+  longBreak: 15,
+  longBreakInterval: 4,
 })
 
 // 筛选后的房间
@@ -437,7 +460,10 @@ const weekChartData = computed(() => {
   const result = dayLabels.map((label, i) => {
     const d = new Date(today)
     d.setDate(today.getDate() - (dayOfWeek - 1 - i))
-    const dateStr = d.toISOString().slice(0, 10)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const dateStr = `${y}-${m}-${day}`
     const stat = recentStats.value.find(s => s.stat_date === dateStr)
     return {
       label,
@@ -488,13 +514,14 @@ async function handleCreateRoom() {
   const roomId = await createRoom(
     f.name.trim(), f.roomType, f.maxMembers,
     f.category, f.description, f.password || undefined,
+    f.focusDuration, f.shortBreak, f.longBreak, f.longBreakInterval,
   )
   if (roomId) {
     showCreateModal.value = false
     activeTab.value = 'focus'
     showToast('房间已创建 🎉')
     // 重置表单
-    createForm.value = { name: '', description: '', category: 'general', roomType: 'public', maxMembers: 20, password: '', focusDuration: 25, shortBreak: 5 }
+    createForm.value = { name: '', description: '', category: 'general', roomType: 'public', maxMembers: 20, password: '', focusDuration: 25, shortBreak: 5, longBreak: 15, longBreakInterval: 4 }
   } else {
     showToast('创建失败')
   }
@@ -574,7 +601,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  // 页面离开时停止计时器（但不中断会话，会话由数据库持久化）
+  if (currentSession.value && currentSession.value.status === 'focusing') {
+    interruptFocusSession(currentSession.value.id, '离开页面')
+  }
   stopTimer()
 })
 </script>

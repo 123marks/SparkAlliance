@@ -8,10 +8,11 @@ const corsHeaders = {
 type AssistantKind = 'spark' | 'companion'
 type ModelMode = 'default' | 'thinking' | 'fast'
 
+// 统一使用 gamma4 (gemma-3-27b-it)，通过 NVIDIA NIM API 调用
 const MODEL_MAP: Record<ModelMode, { id: string; fallbacks: string[]; temperature: number; maxTokens: number }> = {
-  default: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct'], temperature: 0.75, maxTokens: 4096 },
-  thinking: { id: 'deepseek-ai/deepseek-r1', fallbacks: ['meta/llama-3.1-70b-instruct'], temperature: 0.65, maxTokens: 8192 },
-  fast: { id: 'meta/llama-3.1-8b-instruct', fallbacks: ['microsoft/phi-3-mini-128k-instruct'], temperature: 0.8, maxTokens: 2048 },
+  default: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.75, maxTokens: 4096 },
+  thinking: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.6, maxTokens: 8192 },
+  fast: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.8, maxTokens: 2048 },
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -29,6 +30,45 @@ function isMessageArray(value: unknown): value is Array<{ role: 'user' | 'assist
       && ['user', 'assistant'].includes((item as { role: string }).role)
       && typeof (item as { content?: string }).content === 'string'
   })
+}
+
+// 输入安全检查
+const SENSITIVE_PATTERNS = [
+  /(?:赌博|gambling|casino)/i,
+  /(?:色情|pornograph|xxx|nsfw|黄色|裸体)/i,
+  /(?:毒品|drug\s+deal|narcotic|吸毒|贩毒)/i,
+  /(?:恐怖袭击|terroris[mt]|bomb\s+threat)/i,
+  /(?:枪支|炸弹|武器制造|制毒)/i,
+  /(?:传销|非法集资|洗钱)/i,
+  /(?:自杀|自残|自我伤害|suicide|self[- ]harm)/i,
+  /(?:代写|代考|作弊|买答案)/i,
+]
+
+function checkInputSafety(text: string): { blocked: boolean; content: string } {
+  for (const pattern of SENSITIVE_PATTERNS) {
+    if (pattern.test(text)) {
+      return { blocked: true, content: '这个话题不太合适哦，我们聊点别的吧！我可以帮你管理日程、辅导学习、规划目标 😊' }
+    }
+  }
+  return { blocked: false, content: text }
+}
+
+// 响应过滤：隐藏模型身份
+const MODEL_IDENTITY_FILTERS: { pattern: RegExp; replacement: string }[] = [
+  { pattern: /(?:我是.*?(?:GPT|Claude|Gemini|Gemma|LLaMA|DeepSeek|Llama|Mistral|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
+  { pattern: /(?:作为(?:一个)?(?:AI|人工智能|语言模型|大模型|机器人))/gi, replacement: '作为星火助手' },
+  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Meta\s+AI|NVIDIA)/gi, replacement: '星火团队' },
+  { pattern: /\bGemma\b/gi, replacement: '星火' },
+  { pattern: /\bDeepSeek\b/gi, replacement: '星火' },
+  { pattern: /(?:我的训练数据|我的知识截止)/gi, replacement: '我了解的信息' },
+]
+
+function sanitizeOutput(text: string): string {
+  let result = text
+  for (const filter of MODEL_IDENTITY_FILTERS) {
+    result = result.replace(filter.pattern, filter.replacement)
+  }
+  return result
 }
 
 function buildSparkPrompt(today: string): string {
@@ -140,6 +180,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: '消息内容不能为空' }, 400)
     }
 
+    // 输入安全检查
+    const lastUserMsg = [...sanitizedMessages].reverse().find(m => m.role === 'user')
+    if (lastUserMsg) {
+      const safety = checkInputSafety(lastUserMsg.content)
+      if (safety.blocked) {
+        return jsonResponse({ content: safety.content, model: 'spark-ai', assistant, _blocked: true })
+      }
+    }
+
     const providerApiKey = Deno.env.get('NVIDIA_API_KEY') || Deno.env.get('NV_API_KEY')
     if (!providerApiKey) {
       return jsonResponse({ error: 'AI 服务密钥未配置' }, 500)
@@ -206,7 +255,8 @@ Deno.serve(async (req) => {
 
     const data = await upstream.json()
     const message = data.choices?.[0]?.message || {}
-    const content = typeof message.content === 'string' ? message.content : ''
+    const rawContent = typeof message.content === 'string' ? message.content : ''
+    const content = sanitizeOutput(rawContent)
     const reasoning = typeof message.reasoning_content === 'string' ? message.reasoning_content : ''
 
     return jsonResponse({

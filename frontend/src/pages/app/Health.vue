@@ -275,6 +275,12 @@ import WeeklyReport from '../../components/health/WeeklyReport.vue'
 
 const { user } = useAuth()
 
+function getLocalDate(offset = 0): string {
+  const d = new Date()
+  if (offset) d.setDate(d.getDate() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // ====== Tabs ======
 const tabs = [{ key: 'checkin', icon: '❤️', label: '今日打卡' }, { key: 'records', icon: '📊', label: '健康档案' }, { key: 'plaza', icon: '🌐', label: '健康广场' }]
 const activeTab = ref('checkin')
@@ -382,9 +388,8 @@ async function doSave() {
   if (!user.value) return; saving.value = true
   try {
     const urls: Record<string, string> = {}
-    // 问题6修复：只上传有新文件的项
     for (const k of Object.keys(files)) { if (files[k]) urls[k] = await uploadFile(files[k]!, k.includes('meal') ? 'meals' : 'exercise') }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getLocalDate()
     const mealsJson: Record<string, any> = {}
     mealSlots.value.forEach((m, i) => { mealsJson[i < 3 ? ['breakfast','lunch','dinner'][i] : `snack_${i-2}`] = { done: m.done, name: m.name, tags: selectedTags.value, note: mealNote.value, image_url: i === 0 ? (urls.mealImg||'') : '', video_url: i === 0 ? (urls.mealVid||'') : '' } })
     const ai = [aiMeal.value, aiSleep.value, aiExercise.value, aiWater.value].filter(Boolean).join(' | ')
@@ -406,19 +411,22 @@ async function doSave() {
 
 async function uploadFile(file: File, folder: string) {
   const path = `${user.value!.id}/${folder}/${Date.now()}.${file.name.split('.').pop()}`
-  // 问题1修复：bucket 设为 private，使用 signed URL 保护隐私
-  try { await supabase.storage.createBucket('health-images', { public: false }) } catch (_) {}
-  const { error } = await supabase.storage.from('health-images').upload(path, file); if (error) throw error
-  // 返回 1 小时有效的签名 URL
-  const { data: signedData, error: signErr } = await supabase.storage.from('health-images').createSignedUrl(path, 3600)
-  if (signErr || !signedData?.signedUrl) throw new Error('文件上传成功但获取访问链接失败')
-  return signedData.signedUrl
+  const { error } = await supabase.storage.from('health-images').upload(path, file)
+  if (error) throw error
+  return path
 }
+
+async function getMediaUrl(storagePath: string): Promise<string> {
+  if (!storagePath || storagePath.startsWith('http')) return storagePath
+  const { data, error } = await supabase.storage.from('health-images').createSignedUrl(storagePath, 3600)
+  return (!error && data?.signedUrl) ? data.signedUrl : ''
+}
+void getMediaUrl
 
 async function updateStreak(today: string) {
   if (!user.value) return
   const { data } = await supabase.from('health_streaks').select('*').eq('user_id', user.value.id).maybeSingle()
-  const yday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  const yday = getLocalDate(-1)
   if (data) { let ns = data.current_streak; if (data.last_checkin_date === yday) ns++; else if (data.last_checkin_date !== today) ns = 1; await supabase.from('health_streaks').update({ current_streak: ns, longest_streak: Math.max(ns, data.longest_streak), last_checkin_date: today }).eq('user_id', user.value.id); streak.value = ns }
   else { await supabase.from('health_streaks').insert({ user_id: user.value.id, current_streak: 1, longest_streak: 1, last_checkin_date: today }); streak.value = 1 }
 }
@@ -426,7 +434,7 @@ async function updateStreak(today: string) {
 // ====== 加载今日 ======
 async function loadToday() {
   if (!user.value) return
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalDate()
   const { data } = await supabase.from('health_checkins').select('*').eq('user_id', user.value.id).eq('date', today).maybeSingle()
   if (data) {
     existingId.value = data.id; const m = data.meals as any || {}
@@ -461,11 +469,20 @@ function areaPath(vals: number[]) { const pts = vals.map((v, i) => `${i * 50},${
 
 async function loadRecordsTab() {
   if (!user.value) return
-  // 加载本周数据
+  const weekStart = getLocalDate(-6)
+  const today = getLocalDate()
+  const { data: records } = await supabase
+    .from('health_checkins')
+    .select('date,meals,sleep_start,sleep_end,exercise_minutes,water_intake')
+    .eq('user_id', user.value.id)
+    .gte('date', weekStart)
+    .lte('date', today)
+    .order('date')
+  const recordMap = new Map((records || []).map((r: any) => [r.date, r]))
   const sArr: number[] = [], mArr: number[] = [], eArr: number[] = [], wArr: number[] = []
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
-    const { data } = await supabase.from('health_checkins').select('meals,sleep_start,sleep_end,exercise_minutes,water_intake').eq('user_id', user.value.id).eq('date', d).maybeSingle()
+    const d = getLocalDate(-i)
+    const data = recordMap.get(d) as any
     if (data) {
       if (data.sleep_start && data.sleep_end) { let diff = (new Date(data.sleep_end).getTime() - new Date(data.sleep_start).getTime()) / 3600000; if (diff < 0) diff += 24; sArr.push(Math.round(diff*10)/10) } else sArr.push(0)
       const ml = data.meals as any || {}; mArr.push(Math.round(([ml.breakfast?.done, ml.lunch?.done, ml.dinner?.done].filter(Boolean).length / 3) * 100))
@@ -474,7 +491,6 @@ async function loadRecordsTab() {
     } else { sArr.push(0); mArr.push(0); eArr.push(0); wArr.push(0) }
   }
   weekData.value = { sleep: sArr, meal: mArr, ex: eArr, water: wArr }
-  // 加载历史
   historyPage.value = 0; await loadHistory()
 }
 
@@ -527,28 +543,35 @@ async function loadPlaza() {
     const { data, error } = await query; if (error) throw error
     if (!data?.length) { pPosts.value = []; return }
     const ids = data.map((p: any) => p.id)
-    // 并行批量查询：所有点赞 + 当前用户的点赞 + 所有评论
-    const [likesRes, myLikesRes, commentsRes] = await Promise.all([
+    const userIds = [...new Set(data.map((p: any) => p.user_id))]
+    const [likesRes, myLikesRes, commentsRes, profilesRes] = await Promise.all([
       supabase.from('health_likes').select('checkin_id, type').in('checkin_id', ids),
       supabase.from('health_likes').select('checkin_id, type').in('checkin_id', ids).eq('user_id', user.value.id),
       supabase.from('health_comments').select('*').in('checkin_id', ids).order('created_at'),
+      supabase.from('spark_profiles').select('user_id, nickname, avatar_url').in('user_id', userIds),
     ])
     const allLikes = likesRes.data || []
     const myLikes = myLikesRes.data || []
     const allComments = commentsRes.data || []
+    const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.user_id, p]))
     const posts = data.map((p: any) => {
       const postLikes = allLikes.filter((l: any) => l.checkin_id === p.id)
       const postMyLikes = myLikes.filter((l: any) => l.checkin_id === p.id)
       const postComments = allComments.filter((c: any) => c.checkin_id === p.id)
+      const profile = profileMap.get(p.user_id)
       return {
         ...p,
-        nickname: p.user_id === user.value!.id ? '我' : '用户',
+        nickname: p.user_id === user.value!.id ? '我' : (profile?.nickname || '匿名用户'),
+        avatar_url: profile?.avatar_url || '',
         like_count: postLikes.filter((l: any) => l.type === 'like').length,
         clap_count: postLikes.filter((l: any) => l.type === 'clap').length,
         user_liked: postMyLikes.some((l: any) => l.type === 'like'),
         user_clapped: postMyLikes.some((l: any) => l.type === 'clap'),
         comment_count: postComments.length,
-        comments: postComments.slice(0, 20),
+        comments: postComments.slice(0, 20).map((c: any) => {
+          const cp = profileMap.get(c.user_id)
+          return { ...c, nickname: c.user_id === user.value!.id ? '我' : (cp?.nickname || '匿名') }
+        }),
         showComments: false, newComment: ''
       }
     })
@@ -557,29 +580,41 @@ async function loadPlaza() {
 }
 
 async function toggleLike(post: any, type: 'like' | 'clap') {
-  if (!user.value) return; const isL = type === 'like' ? post.user_liked : post.user_clapped
-  if (isL) { await supabase.from('health_likes').delete().eq('checkin_id', post.id).eq('user_id', user.value.id).eq('type', type); if (type==='like'){post.user_liked=false;post.like_count--}else{post.user_clapped=false;post.clap_count--} }
-  else { await supabase.from('health_likes').insert({ checkin_id: post.id, user_id: user.value.id, type }); if (type==='like'){post.user_liked=true;post.like_count++}else{post.user_clapped=true;post.clap_count++} }
+  if (!user.value) return
+  const isLiked = type === 'like' ? post.user_liked : post.user_clapped
+  const flagKey = type === 'like' ? 'user_liked' : 'user_clapped'
+  const countKey = type === 'like' ? 'like_count' : 'clap_count'
+  post[flagKey] = !isLiked
+  post[countKey] += isLiked ? -1 : 1
+  const { error } = isLiked
+    ? await supabase.from('health_likes').delete().eq('checkin_id', post.id).eq('user_id', user.value.id).eq('type', type)
+    : await supabase.from('health_likes').insert({ checkin_id: post.id, user_id: user.value.id, type })
+  if (error) {
+    post[flagKey] = isLiked
+    post[countKey] += isLiked ? 1 : -1
+    showToast('操作失败，请重试', 'error')
+  }
 }
 
 async function submitComment(post: any) {
   if (!user.value || !post.newComment?.trim()) return
   const { data, error } = await supabase.from('health_comments').insert({ checkin_id: post.id, user_id: user.value.id, content: post.newComment.trim() }).select().single()
   if (error) { showToast('评论失败', 'error'); return }
-  post.comments.push({ ...data, nickname: '我' }); post.comment_count++; post.newComment = ''
+  post.comments.push({ ...data, nickname: '我' })
+  post.comment_count++
+  post.newComment = ''
 }
 
 function openReport(post: any) { reportTarget.value = post; reportReason.value = ''; reportNote.value = '' }
-// 问题2修复：对齐 reports 表 schema（post_id + reason_category），加错误检查
 async function submitReport() {
   if (!user.value || !reportTarget.value || !reportReason.value) return
   try {
-    const { error } = await supabase.from('reports').insert({
-      post_id: reportTarget.value.id,
-      comment_id: null,
+    const { error } = await supabase.from('health_reports').insert({
       reporter_id: user.value.id,
-      reason_category: reportReason.value,
-      reason_text: reportNote.value || null,
+      target_type: 'checkin',
+      target_id: reportTarget.value.id,
+      reason: reportReason.value,
+      description: reportNote.value || null,
       status: 'pending'
     })
     if (error) throw error

@@ -6,6 +6,7 @@
  */
 import { ref, computed } from 'vue'
 import { supabase } from '../supabase'
+import bcrypt from 'bcryptjs'
 
 // ====== 类型定义 ======
 
@@ -101,6 +102,18 @@ export interface RankingItem {
     rank: number
 }
 
+// ====== 工具：本地日期 ======
+
+/** 获取本地日期字符串 YYYY-MM-DD，offset 为天数偏移（0=今天，-1=昨天） */
+function getLocalDate(offset: number = 0): string {
+    const d = new Date()
+    d.setDate(d.getDate() + offset)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 // ====== 常量 ======
 
 /** 房间分类配置 */
@@ -158,18 +171,28 @@ export function useStudyRoom() {
         category: RoomCategory = 'general',
         description: string = '',
         password?: string,
+        focusDuration: number = 25,
+        shortBreak: number = 5,
+        longBreak: number = 15,
+        longBreakInterval: number = 4,
     ): Promise<string | null> {
         const user = await getUser()
         if (!user) return null
+
+        const hashedPwd = password ? await bcrypt.hash(password, 10) : null
 
         const { data, error } = await supabase.from('study_rooms').insert({
             creator_id: user.id,
             name,
             description: description || null,
             room_type: roomType,
-            password_hash: password || null, // 生产环境应前端hash
+            password_hash: hashedPwd,
             max_members: maxMembers,
             category,
+            focus_duration: focusDuration,
+            short_break: shortBreak,
+            long_break: longBreak,
+            long_break_interval: longBreakInterval,
         }).select('id').single()
 
         if (error || !data) return null
@@ -199,7 +222,7 @@ export function useStudyRoom() {
             const creatorIds = [...new Set(rooms.map(r => r.creator_id))]
             if (creatorIds.length) {
                 const { data: profiles } = await supabase.from('spark_profiles')
-                    .select('user_id, nickname, avatar')
+                    .select('user_id, nickname, avatar_url')
                     .in('user_id', creatorIds)
                 if (profiles) {
                     const profileMap = new Map(profiles.map(p => [p.user_id, p]))
@@ -207,7 +230,7 @@ export function useStudyRoom() {
                         const p = profileMap.get(r.creator_id)
                         if (p) {
                             r.creator_nickname = p.nickname
-                            r.creator_avatar = p.avatar
+                            r.creator_avatar = p.avatar_url
                         }
                     })
                 }
@@ -227,11 +250,14 @@ export function useStudyRoom() {
         const user = await getUser()
         if (!user) return false
 
-        // 私密房间校验密码
+        // 私密房间校验密码（bcrypt）
         if (password !== undefined) {
             const { data: room } = await supabase.from('study_rooms')
                 .select('password_hash').eq('id', roomId).single()
-            if (room?.password_hash && room.password_hash !== password) return false
+            if (room?.password_hash) {
+                const match = await bcrypt.compare(password, room.password_hash)
+                if (!match) return false
+            }
         }
 
         // 检查是否已在房间中
@@ -308,13 +334,13 @@ export function useStudyRoom() {
         const userIds = members.map(m => m.user_id)
         if (userIds.length) {
             const { data: profiles } = await supabase.from('spark_profiles')
-                .select('user_id, nickname, avatar')
+                .select('user_id, nickname, avatar_url')
                 .in('user_id', userIds)
             if (profiles) {
                 const pm = new Map(profiles.map(p => [p.user_id, p]))
                 members.forEach(m => {
                     const p = pm.get(m.user_id)
-                    if (p) { m.nickname = p.nickname; m.avatar = p.avatar }
+                    if (p) { m.nickname = p.nickname; m.avatar = p.avatar_url }
                 })
             }
         }
@@ -538,7 +564,7 @@ export function useStudyRoom() {
         const user = await getUser()
         if (!user) return
 
-        const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+        const today = getLocalDate()
         const hour = String(new Date().getHours())
 
         // upsert今日统计
@@ -575,7 +601,7 @@ export function useStudyRoom() {
         const user = await getUser()
         if (!user) return null
 
-        const today = new Date().toISOString().slice(0, 10)
+        const today = getLocalDate()
         const { data } = await supabase.from('study_daily_stats')
             .select('*').eq('user_id', user.id).eq('stat_date', today).maybeSingle()
 
@@ -588,7 +614,7 @@ export function useStudyRoom() {
         const user = await getUser()
         if (!user) return []
 
-        const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+        const since = getLocalDate(-days)
         const { data } = await supabase.from('study_daily_stats')
             .select('*').eq('user_id', user.id)
             .gte('stat_date', since)
@@ -599,7 +625,7 @@ export function useStudyRoom() {
 
     /** 获取周排行榜 */
     async function fetchWeeklyRanking(): Promise<RankingItem[]> {
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+        const weekAgo = getLocalDate(-7)
 
         // 聚合本周每个用户的总学习时长
         const { data } = await supabase.from('study_daily_stats')
@@ -628,14 +654,14 @@ export function useStudyRoom() {
         // 联表查昵称
         const userIds = sorted.map(([uid]) => uid)
         const { data: profiles } = await supabase.from('spark_profiles')
-            .select('user_id, nickname, avatar')
+            .select('user_id, nickname, avatar_url')
             .in('user_id', userIds)
         const pm = new Map((profiles || []).map(p => [p.user_id, p]))
 
         const ranking: RankingItem[] = sorted.map(([uid, agg], i) => ({
             user_id: uid,
             nickname: pm.get(uid)?.nickname || '用户',
-            avatar: pm.get(uid)?.avatar || null,
+            avatar: pm.get(uid)?.avatar_url || null,
             total_minutes: agg.minutes,
             total_sessions: agg.sessions,
             rank: i + 1,
@@ -677,13 +703,9 @@ export function useStudyRoom() {
 
         // 从今天往回数连续天数
         let streak = 0
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
 
         for (let i = 0; i < data.length; i++) {
-            const expectedDate = new Date(today)
-            expectedDate.setDate(expectedDate.getDate() - i)
-            const dateStr = expectedDate.toISOString().slice(0, 10)
+            const dateStr = getLocalDate(-i)
             if (data[i].stat_date === dateStr) {
                 streak++
             } else {

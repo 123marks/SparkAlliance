@@ -117,7 +117,7 @@
         <!-- 操作按钮 -->
         <div class="mt-consult-acts">
           <button v-if="c.status === 'matched' && isMentor(c)" class="mt-consult-act accept" @click="handleAccept(c.id)">✅ 接单</button>
-          <button v-if="c.status === 'accepted' || c.status === 'in_progress'" class="mt-consult-act complete" @click="handleComplete(c.id)">✔ 完成</button>
+          <button v-if="(c.status === 'accepted' || c.status === 'in_progress') && isMentor(c)" class="mt-consult-act complete" @click="handleComplete(c.id)">✔ 完成</button>
           <button v-if="c.status === 'completed' && isStudent(c)" class="mt-consult-act review" @click="openReview(c)">⭐ 评价</button>
         </div>
         <!-- 评价展示 -->
@@ -279,7 +279,7 @@ import MentorApply from '../../components/mentor/MentorApply.vue'
 const {
   articles, loading, totalCount, myProfile, consultations,
   fetchMyProfile, fetchTopMentors: fetchTop, fetchArticles,
-  fetchArticleDetail, fetchRecommendedArticles,
+  fetchArticleDetail, fetchRecommendedArticles, createArticle,
   likeArticle, toggleBookmark, fetchComments, addComment,
   shareArticleToWall, createGoalFromArticle,
   fetchMyConsultations, acceptConsultation, completeConsultation, reviewConsultation,
@@ -433,7 +433,7 @@ async function openArticle(article: MentorArticle) {
 async function handleLike() {
   if (!detailArticle.value) return
   await likeArticle(detailArticle.value.id)
-  showToast('❤️ 已点赞')
+  showToast(detailArticle.value.is_liked ? '❤️ 已点赞' : '已取消点赞')
 }
 
 async function handleBookmark() {
@@ -478,7 +478,6 @@ function handleCoverSelect(e: Event) {
 async function handlePublish() {
   if (publishing.value) return
   publishing.value = true
-  const { createArticle } = useMentor()
   const id = await createArticle({
     title: writeForm.value.title.trim(),
     content: writeForm.value.content.trim(),
@@ -489,7 +488,7 @@ async function handlePublish() {
   })
   publishing.value = false
   if (id) {
-    showToast('🎉 文章发布成功！积分+5')
+    showToast(myProfile.value ? '🎉 文章发布成功！积分+5' : '🎉 文章发布成功！')
     showWrite.value = false
     writeForm.value = { title: '', content: '', category: 'academic', tags: [] }
     writeCoverFile.value = null
@@ -523,7 +522,7 @@ async function handleAccept(id: string) {
 
 async function handleComplete(id: string) {
   const ok = await completeConsultation(id)
-  if (ok) { showToast('✔ 咨询已完成，日程已同步'); fetchMyConsultations() }
+  if (ok) { showToast('✔ 咨询已完成'); fetchMyConsultations() }
 }
 
 function openReview(c: Consultation) {

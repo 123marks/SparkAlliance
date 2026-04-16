@@ -264,7 +264,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
 
@@ -317,18 +317,42 @@ interface Comment {
   createdAt: string
 }
 
-const messages = ref<SparkMessage[]>([
-  { id: '1', authorId: 'a1', authorName: '张老师', category: 'to_youth', content: '年轻的时候不要害怕犯错，怕的是不敢尝试。每一次跌倒都是你认识自己的机会。三十年后你会感谢今天那个勇敢的自己。', mediaUrls: [], visibility: 'public', likeCount: 324, commentCount: 56, liked: false, createdAt: '2026-03-28T10:00:00Z' },
-  { id: '2', authorId: 'a2', authorName: '星火少年', category: 'to_self', content: '嘿，二十岁的自己，现在的焦虑都会过去的。保持热爱，保持勇敢。你比你想象中要强大得多。记住，所有的弯路都不是白走的。', mediaUrls: [], visibility: 'public', likeCount: 256, commentCount: 42, liked: false, createdAt: '2026-03-28T12:30:00Z' },
-  { id: '3', authorId: 'a3', authorName: '李工程师', category: 'to_youth', content: '代码写不出来没关系，工作做不好也没关系。人生不是一场竞赛，是一段旅程。找到让你发光的那件事，然后坚持下去。', mediaUrls: [], visibility: 'public', likeCount: 198, commentCount: 31, liked: false, createdAt: '2026-03-27T09:15:00Z' },
-  { id: '4', authorId: 'a4', authorName: '未来的我', category: 'to_future', content: '致2030年的自己：希望你已经实现了自由职业的梦想，有一份热爱的工作，一群志同道合的朋友，和内心的平静。如果还没有，也没关系，继续走。', mediaUrls: [], visibility: 'public', likeCount: 412, commentCount: 89, liked: true, createdAt: '2026-03-27T14:00:00Z' },
-  { id: '5', authorId: 'a5', authorName: '自由摄影师小何', category: 'inspiration', content: '今天在一个陌生城市的街角看到一位老奶奶在给流浪猫喂食，阳光刚好照在她满是皱纹的脸上。那一刻我突然觉得，温柔是这个世界上最强大的力量。', mediaUrls: [], visibility: 'public', likeCount: 567, commentCount: 103, liked: false, createdAt: '2026-03-26T16:45:00Z' },
-  { id: '6', authorId: 'a6', authorName: '王同学', category: 'to_self', content: '别再熬夜了，真的。身体好才能走更远的路。现在觉得无所谓的事，十年后可能会后悔。爱惜自己，从今天开始。', mediaUrls: [], visibility: 'public', likeCount: 189, commentCount: 27, liked: false, createdAt: '2026-03-26T20:00:00Z' },
-  { id: '7', authorId: 'a7', authorName: '创业者阿明', category: 'to_youth', content: '不要等到万事俱备才开始，因为那一天永远不会来。我26岁创业时什么都不懂，边做边学。最坏的结果不过是重头再来，而你会比任何人都强大。', mediaUrls: [], visibility: 'public', likeCount: 345, commentCount: 67, liked: false, createdAt: '2026-03-25T11:30:00Z' },
-  { id: '8', authorId: 'a8', authorName: '匿名用户', category: 'to_self', content: '这段时间真的很累很迷茫，不知道自己到底在坚持什么。但每次想放弃的时候，就会想起最初为什么出发。加油吧，平凡的我。', mediaUrls: [], visibility: 'public', likeCount: 478, commentCount: 95, liked: true, createdAt: '2026-03-25T08:00:00Z' },
-  { id: '9', authorId: 'a9', authorName: '赵医生', category: 'to_youth', content: '年轻人，请珍惜你的牙齿、你的眼睛和你的腰。这不是开玩笑。每天刷两次牙、少看手机、坐直身体，这些小事会影响你一辈子。', mediaUrls: [], visibility: 'public', likeCount: 623, commentCount: 142, liked: false, createdAt: '2026-03-24T15:00:00Z' },
-  { id: '10', authorId: 'a10', authorName: '前端开发小陈', category: 'inspiration', content: '做了三年前端，最大的感悟是：技术只是工具，真正有价值的是你解决问题的能力和与人沟通的能力。别只低头写代码，多抬头看看这个世界。', mediaUrls: [], visibility: 'public', likeCount: 291, commentCount: 48, liked: false, createdAt: '2026-03-24T10:30:00Z' },
-])
+const messages = ref<SparkMessage[]>([])
+
+/** 从数据库加载寄语 */
+async function loadMessages() {
+  const { data, error } = await supabase.from('spark_messages')
+    .select('*')
+    .eq('visibility', 'public')
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error || !data?.length) return
+
+  // 查询当前用户的点赞状态
+  let likedSet = new Set<string>()
+  if (user.value) {
+    const msgIds = data.map(m => m.id)
+    const { data: likes } = await supabase.from('spark_message_likes')
+      .select('message_id').eq('user_id', user.value.id).in('message_id', msgIds)
+    if (likes) likedSet = new Set(likes.map(l => l.message_id))
+  }
+
+  messages.value = data.map(m => ({
+    id: m.id,
+    authorId: m.author_id,
+    authorName: m.author_name,
+    category: m.category,
+    content: m.content,
+    mediaUrls: m.media_urls || [],
+    visibility: m.visibility,
+    likeCount: m.like_count,
+    commentCount: m.comment_count,
+    liked: likedSet.has(m.id),
+    createdAt: m.created_at,
+  }))
+}
+
+onMounted(loadMessages)
 
 const filteredMessages = computed(() => {
   if (activeCategory.value === 'all') return messages.value
@@ -341,10 +365,25 @@ const hotMessages = computed(() => {
 
 const totalLikes = computed(() => messages.value.reduce((sum, m) => sum + m.likeCount, 0))
 
-// ============ 交互 ============
-const toggleLike = (msg: SparkMessage) => {
-  msg.liked = !msg.liked
-  msg.likeCount += msg.liked ? 1 : -1
+// ============ 交互：点赞走 DB ============
+const toggleLike = async (msg: SparkMessage) => {
+  if (!user.value) return
+  const wasLiked = msg.liked
+  // 乐观更新
+  msg.liked = !wasLiked
+  msg.likeCount += wasLiked ? -1 : 1
+  try {
+    if (wasLiked) {
+      await supabase.from('spark_message_likes')
+        .delete().eq('message_id', msg.id).eq('user_id', user.value.id)
+    } else {
+      await supabase.from('spark_message_likes')
+        .insert({ message_id: msg.id, user_id: user.value.id })
+    }
+  } catch {
+    msg.liked = wasLiked
+    msg.likeCount += wasLiked ? 1 : -1
+  }
 }
 
 // ============ 时间格式化 ============
@@ -421,49 +460,56 @@ const uploadFiles = async (files: File[]): Promise<string[]> => {
 }
 
 const submitMessage = async () => {
-  if (!composeContent.value.trim() || isSubmitting.value) return
+  if (!composeContent.value.trim() || isSubmitting.value || !user.value) return
   isSubmitting.value = true
 
   try {
-    // 上传媒体文件（如果有）
     let mediaUrls: string[] = []
     if (composeFiles.value.length > 0) {
       mediaUrls = await uploadFiles(composeFiles.value)
+      if (mediaUrls.length < composeFiles.value.length) {
+        alert('部分文件上传失败，已跳过')
+      }
     }
 
-    const newMsg: SparkMessage = {
-      id: Date.now().toString(),
-      authorId: user.value?.id || 'self',
-      authorName: user.value?.user_metadata?.nickname || '星火用户',
+    const authorName = user.value.user_metadata?.nickname || '星火用户'
+    const visibility = composePrivate.value ? 'private' : 'public'
+
+    const { data, error } = await supabase.from('spark_messages').insert({
+      author_id: user.value.id,
+      author_name: authorName,
       category: composeCategory.value,
       content: composeContent.value,
-      mediaUrls,
-      visibility: composePrivate.value ? 'private' : 'public',
+      media_urls: mediaUrls,
+      visibility,
+    }).select('*').single()
+
+    if (error || !data) {
+      alert('发布失败，请重试')
+      return
+    }
+
+    messages.value.unshift({
+      id: data.id,
+      authorId: data.author_id,
+      authorName: data.author_name,
+      category: data.category,
+      content: data.content,
+      mediaUrls: data.media_urls || [],
+      visibility: data.visibility,
       likeCount: 0,
       commentCount: 0,
       liked: false,
-      createdAt: new Date().toISOString(),
-    }
+      createdAt: data.created_at,
+    })
 
-    // 写入 Supabase 数据库（如果表存在则持久化）
-    if (user.value) {
-      await supabase.from('spark_messages').insert({
-        author_id: user.value.id,
-        author_name: newMsg.authorName,
-        category: newMsg.category,
-        content: newMsg.content,
-        media_urls: newMsg.mediaUrls,
-        visibility: newMsg.visibility,
-      }).then(() => {})
-    }
-
-    messages.value.unshift(newMsg)
     composeContent.value = ''
     composeFiles.value = []
     composePreviewUrls.value = []
     showComposer.value = false
   } catch (err) {
     console.error('发布失败', err)
+    alert('发布失败，请重试')
   } finally {
     isSubmitting.value = false
   }
@@ -474,23 +520,33 @@ const activeMessage = ref<SparkMessage | null>(null)
 const detailComments = ref<Comment[]>([])
 const newComment = ref('')
 
-const openDetail = (msg: SparkMessage) => {
+const openDetail = async (msg: SparkMessage) => {
   activeMessage.value = msg
-  // 模拟加载评论
-  detailComments.value = [
-    { id: 'c1', authorName: '小李', content: '太有感触了，转发到星火域', createdAt: '2026-03-28T12:00:00Z' },
-    { id: 'c2', authorName: '阿华', content: '句句说到心坎里', createdAt: '2026-03-28T13:00:00Z' },
-    { id: 'c3', authorName: '星火少年', content: '保存了，给自己看', createdAt: '2026-03-28T14:30:00Z' },
-  ]
+  const { data } = await supabase.from('spark_message_comments')
+    .select('*').eq('message_id', msg.id).order('created_at', { ascending: true })
+  detailComments.value = (data || []).map(c => ({
+    id: c.id,
+    authorName: c.author_name,
+    content: c.content,
+    createdAt: c.created_at,
+  }))
 }
 
-const submitComment = () => {
-  if (!newComment.value.trim() || !activeMessage.value) return
+const submitComment = async () => {
+  if (!newComment.value.trim() || !activeMessage.value || !user.value) return
+  const authorName = user.value.user_metadata?.nickname || '星火用户'
+  const { data, error } = await supabase.from('spark_message_comments').insert({
+    message_id: activeMessage.value.id,
+    author_id: user.value.id,
+    author_name: authorName,
+    content: newComment.value.trim(),
+  }).select('*').single()
+  if (error || !data) return
   detailComments.value.push({
-    id: Date.now().toString(),
-    authorName: user.value?.user_metadata?.nickname || '星火用户',
-    content: newComment.value,
-    createdAt: new Date().toISOString(),
+    id: data.id,
+    authorName: data.author_name,
+    content: data.content,
+    createdAt: data.created_at,
   })
   activeMessage.value.commentCount++
   newComment.value = ''
@@ -509,9 +565,17 @@ const startDM = (msg: SparkMessage) => {
   showDM.value = true
 }
 
-const sendDM = () => {
-  if (!dmContent.value.trim()) return
-  // 后续对接 Supabase spark_direct_messages 表
+const sendDM = async () => {
+  if (!dmContent.value.trim() || !user.value) return
+  const { error } = await supabase.from('spark_direct_messages').insert({
+    sender_id: user.value.id,
+    receiver_id: dmReceiverId.value,
+    content: dmContent.value.trim(),
+  })
+  if (error) {
+    alert('私信发送失败')
+    return
+  }
   alert(`✅ 私信已发送给 ${dmReceiverName.value}`)
   showDM.value = false
   dmContent.value = ''

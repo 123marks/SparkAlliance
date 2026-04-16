@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <!-- 宇宙深空动态背景 -->
   
   <div class="profile-page" v-if="!isLoading">
@@ -486,9 +486,9 @@ async function loadProfile() {
   try {
     // 获取用户资料
     const { data: profileData } = await supabase
-      .from('profiles')
+      .from('spark_profiles')
       .select('*')
-      .eq('id', profileId.value)
+      .eq('user_id', profileId.value)
       .single()
 
     if (profileData) {
@@ -635,10 +635,10 @@ async function loadFollowers() {
     if (data && data.length > 0) {
       const ids = data.map(d => d.follower_id)
       const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, nickname, avatar_url, bio, college')
-        .in('id', ids)
-      followersList.value = profiles || []
+        .from('spark_profiles')
+        .select('user_id, nickname, avatar_url, bio, university')
+        .in('user_id', ids)
+      followersList.value = (profiles || []).map(p => ({ ...p, id: p.user_id, college: p.university }))
     } else {
       followersList.value = []
     }
@@ -657,10 +657,10 @@ async function loadFollowing() {
     if (data && data.length > 0) {
       const ids = data.map(d => d.following_id)
       const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, nickname, avatar_url, bio, college')
-        .in('id', ids)
-      followingList.value = profiles || []
+        .from('spark_profiles')
+        .select('user_id, nickname, avatar_url, bio, university')
+        .in('user_id', ids)
+      followingList.value = (profiles || []).map(p => ({ ...p, id: p.user_id, college: p.university }))
     } else {
       followingList.value = []
     }

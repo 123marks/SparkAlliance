@@ -84,6 +84,25 @@ CREATE POLICY "所有人可查看点赞" ON health_likes FOR SELECT USING (TRUE)
 CREATE POLICY "用户可管理自己的评论" ON health_comments FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "所有人可查看评论" ON health_comments FOR SELECT USING (TRUE);
 
+-- 5. 健康内容举报表（独立于 shop_reports，语义明确）
+CREATE TABLE IF NOT EXISTS health_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reporter_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  target_type VARCHAR(20) NOT NULL CHECK (target_type IN ('checkin', 'comment')),
+  target_id UUID NOT NULL,
+  reason VARCHAR(50) NOT NULL,
+  description TEXT,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processed', 'dismissed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_reports_reporter ON health_reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_health_reports_status ON health_reports(status);
+
+ALTER TABLE health_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "用户可提交举报" ON health_reports FOR INSERT WITH CHECK (auth.uid() = reporter_id);
+CREATE POLICY "用户可查看自己的举报" ON health_reports FOR SELECT USING (auth.uid() = reporter_id);
+
 -- ====== Storage Bucket ======
 -- 在 Supabase Dashboard → Storage 中创建:
 -- Bucket名: health-images  (Private)

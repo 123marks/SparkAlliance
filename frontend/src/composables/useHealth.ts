@@ -302,7 +302,7 @@ export function useHealth() {
       .eq('user_id', user.value.id)
       .maybeSingle()
 
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+    const yesterday = getLocalDate(-1)
 
     if (data) {
       let newStreak = data.current_streak
@@ -503,19 +503,25 @@ export function useHealth() {
   async function loadWeekData(): Promise<{ sleep: number[]; meal: number[]; exercise: number[]; water: number[] }> {
     if (!user.value) return { sleep: [], meal: [], exercise: [], water: [] }
 
+    const weekStart = getLocalDate(-6)
+    const today = getLocalDate()
+
+    const { data: records } = await supabase
+      .from('health_checkins')
+      .select('date,meals,sleep_start,sleep_end,exercise_minutes,water_intake')
+      .eq('user_id', user.value.id)
+      .gte('date', weekStart)
+      .lte('date', today)
+      .order('date')
+
+    const recordMap = new Map((records || []).map(r => [r.date, r]))
     const sArr: number[] = [], mArr: number[] = [], eArr: number[] = [], wArr: number[] = []
 
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
-      const { data } = await supabase
-        .from('health_checkins')
-        .select('meals,sleep_start,sleep_end,exercise_minutes,water_intake')
-        .eq('user_id', user.value.id)
-        .eq('date', d)
-        .maybeSingle()
+      const d = getLocalDate(-i)
+      const data = recordMap.get(d)
 
       if (data) {
-        // 睡眠
         if (data.sleep_start && data.sleep_end) {
           let diff = (new Date(data.sleep_end).getTime() - new Date(data.sleep_start).getTime()) / 3600000
           if (diff < 0) diff += 24
@@ -523,12 +529,9 @@ export function useHealth() {
         } else {
           sArr.push(0)
         }
-        // 饮食
         const meals = data.meals as MealsData
         mArr.push(calculateMealScore(meals))
-        // 运动
         eArr.push(Math.min(100, Math.round(((data.exercise_minutes || 0) / 30) * 100)))
-        // 饮水
         wArr.push(Math.min(100, Math.round(((data.water_intake || 0) / 2000) * 100)))
       } else {
         sArr.push(0)
@@ -567,37 +570,32 @@ export function useHealth() {
     const path = `${user.value.id}/${folder}/${Date.now()}.${file.name.split('.').pop()}`
 
     try {
-      // 尝试创建 bucket（如果不存在）
-      try {
-        await supabase.storage.createBucket('health-images', { public: false })
-      } catch (_) {}
-
       const { error: uploadError } = await supabase.storage
         .from('health-images')
         .upload(path, file)
 
       if (uploadError) throw uploadError
 
-      // 返回1小时有效的签名 URL
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from('health-images')
-        .createSignedUrl(path, 3600)
-
-      if (signErr || !signedData?.signedUrl) {
-        throw new Error('获取访问链接失败')
-      }
-
-      return signedData.signedUrl
+      return path
     } catch (e) {
       console.error('文件上传失败:', e)
       return null
     }
   }
 
+  async function getSignedUrl(storagePath: string): Promise<string> {
+    if (!storagePath || storagePath.startsWith('http')) return storagePath
+    const { data, error } = await supabase.storage
+      .from('health-images')
+      .createSignedUrl(storagePath, 3600)
+    return (!error && data?.signedUrl) ? data.signedUrl : ''
+  }
+
   // ====== 工具函数 ======
 
-  function getLocalDate(): string {
+  function getLocalDate(offset = 0): string {
     const d = new Date()
+    if (offset) d.setDate(d.getDate() + offset)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
@@ -656,6 +654,7 @@ export function useHealth() {
     loadWeekData,
     loadHistory,
     uploadHealthFile,
+    getSignedUrl,
 
     // 挑战
     loadChallenges,

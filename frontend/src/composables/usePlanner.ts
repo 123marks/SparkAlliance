@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { supabase } from '../supabase'
 import { useAuth } from './useAuth'
+import { plannerDecompose, plannerReview } from '../utils/localAI'
 
 // ====== 类型定义 ======
 
@@ -560,19 +561,7 @@ export function usePlanner() {
 5. 所有日期 <= ${deadline}，且 >= 今天 ${getLocalDate()}
 6. difficulty 从 1-5，前期任务偏低，后期偏高`
 
-      const resp = await fetch('/api/mimo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'MiMo-7B-RL',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          max_tokens: 4096,
-        }),
-      })
-      if (!resp.ok) throw new Error(`AI API ${resp.status}`)
-      const result = await resp.json()
-      const text = result.choices?.[0]?.message?.content || ''
+      const text = await plannerDecompose(prompt)
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('AI 未返回有效 JSON')
       const plan = JSON.parse(jsonMatch[0]) as AIPlan
@@ -832,21 +821,10 @@ export function usePlanner() {
   async function aiReviewTask(taskTitle: string, goalTitle?: string): Promise<string> {
     try {
       const context = goalTitle ? `（属于目标「${goalTitle}」）` : ''
-      const prompt = `你是学习助手。用户刚完成了任务「${taskTitle}」${context}。请给出一句简短的鼓励或建议（20字以内），帮助用户保持动力。只返回纯文本。`
-      const resp = await fetch('/api/mimo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'MiMo-7B-RL',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7, max_tokens: 100,
-        }),
-      })
-      if (!resp.ok) throw new Error('AI 不可用')
-      const result = await resp.json()
-      return result.choices?.[0]?.message?.content?.trim() || '🎉 做得好，继续加油！'
+      const prompt = `用户刚完成了任务「${taskTitle}」${context}。请给出一句简短的鼓励或建议（20字以内），帮助用户保持动力。只返回纯文本。`
+      const text = await plannerReview(prompt)
+      return text.trim() || '🎉 做得好，继续加油！'
     } catch {
-      // 本地 fallback 鼓励语
       const phrases = [
         '🎉 做得好，继续加油！', '⭐ 每一步都是进步！',
         '🔥 今天又近了一步！', '💪 坚持就是胜利！',
@@ -902,32 +880,20 @@ export function usePlanner() {
       if (content) desc += `：${content}`
       if (mediaUrl) desc += `（附带了图片/视频证据）`
 
-      const prompt = `你是学习助手。用户提交了${desc}。请根据以下维度对完成质量进行评分（1-100分）并给出简短反馈（50字以内）：
+      const prompt = `用户提交了${desc}。请根据以下维度对完成质量进行评分（1-100分）并给出简短反馈（50字以内）：
 1. 完成度：是否完整完成了任务
 2. 质量：完成质量如何
 3. 时效性：是否按时完成
 
 返回JSON格式：{"score": 85, "feedback": "..."}`
 
-      const resp = await fetch('/api/mimo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'MiMo-7B-RL',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3, max_tokens: 200,
-        }),
-      })
-      if (!resp.ok) throw new Error('AI 不可用')
-      const result = await resp.json()
-      const text = result.choices?.[0]?.message?.content || ''
+      const text = await plannerReview(prompt)
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('无效JSON')
       const parsed = JSON.parse(jsonMatch[0])
       const score = Math.min(100, Math.max(1, Number(parsed.score) || 75))
       const feedback = parsed.feedback || '完成不错，继续保持！'
 
-      // 回写到 task_evidence
       await supabase.from('task_evidence').update({
         ai_feedback: feedback, ai_score: score,
       }).eq('id', evidenceId)

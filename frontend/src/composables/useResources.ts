@@ -171,11 +171,21 @@ export function useResources() {
                 .select('*', { count: 'exact' })
                 .eq('status', 'active')
 
-            // 关键词搜索
+            // 关键词搜索：优先用全文搜索 RPC，降级到 ilike
             if (params.keyword && params.keyword.trim()) {
-                query = query.or(
-                    `title.ilike.%${params.keyword}%,description.ilike.%${params.keyword}%,course_name.ilike.%${params.keyword}%,subject.ilike.%${params.keyword}%`
-                )
+                const kw = params.keyword.trim()
+                const tsQuery = kw.split(/\s+/).filter(Boolean).join(' & ')
+                const { data: ftsIds } = await supabase.rpc('search_resources_fts', {
+                    query_text: tsQuery,
+                }).select('id')
+                const ftsArr = Array.isArray(ftsIds) ? ftsIds : ftsIds ? [ftsIds] : []
+                if (ftsArr.length > 0) {
+                    query = query.in('id', ftsArr.map((r: { id: string }) => r.id))
+                } else {
+                    query = query.or(
+                        `title.ilike.%${kw}%,description.ilike.%${kw}%,course_name.ilike.%${kw}%,subject.ilike.%${kw}%`
+                    )
+                }
             }
 
             // 分类筛选
@@ -248,10 +258,8 @@ export function useResources() {
         await enrichUploaderInfo([resource])
         await enrichFavoriteStatus([resource])
 
-        // 浏览量+1
-        await supabase.from('learning_resources')
-            .update({ view_count: resource.view_count + 1 })
-            .eq('id', resourceId)
+        // 浏览量+1（原子）
+        await supabase.rpc('increment_view_count', { resource_id_input: resourceId })
         resource.view_count++
 
         currentResource.value = resource
@@ -369,9 +377,7 @@ export function useResources() {
         if (existing) {
             // 取消收藏
             await supabase.from('resource_favorites').delete().eq('id', existing.id)
-            await supabase.from('learning_resources')
-                .update({ favorite_count: Math.max(0, (currentResource.value?.favorite_count || 1) - 1) })
-                .eq('id', resourceId)
+            await supabase.rpc('adjust_favorite_count', { resource_id_input: resourceId, delta: -1 })
             // 更新本地状态
             const r = resources.value.find(r => r.id === resourceId)
             if (r) { r.is_favorited = false; r.favorite_count = Math.max(0, r.favorite_count - 1) }
@@ -379,20 +385,18 @@ export function useResources() {
                 currentResource.value.is_favorited = false
                 currentResource.value.favorite_count = Math.max(0, currentResource.value.favorite_count - 1)
             }
-            return false // 当前为未收藏
+            return false
         } else {
             // 添加收藏
             await supabase.from('resource_favorites').insert({ user_id: user.id, resource_id: resourceId })
-            await supabase.from('learning_resources')
-                .update({ favorite_count: (currentResource.value?.favorite_count || 0) + 1 })
-                .eq('id', resourceId)
+            await supabase.rpc('adjust_favorite_count', { resource_id_input: resourceId, delta: 1 })
             const r = resources.value.find(r => r.id === resourceId)
             if (r) { r.is_favorited = true; r.favorite_count++ }
             if (currentResource.value?.id === resourceId) {
                 currentResource.value.is_favorited = true
                 currentResource.value.favorite_count++
             }
-            return true // 当前为已收藏
+            return true
         }
     }
 
@@ -465,12 +469,12 @@ export function useResources() {
         const userIds = [...new Set(ratings.map(r => r.user_id))]
         if (userIds.length) {
             const { data: profiles } = await supabase.from('spark_profiles')
-                .select('user_id, nickname, avatar').in('user_id', userIds)
+                .select('user_id, nickname, avatar_url').in('user_id', userIds)
             if (profiles) {
                 const pm = new Map(profiles.map(p => [p.user_id, p]))
                 ratings.forEach(r => {
                     const p = pm.get(r.user_id)
-                    if (p) { r.nickname = p.nickname; r.avatar = p.avatar }
+                    if (p) { r.nickname = p.nickname; r.avatar = p.avatar_url }
                 })
             }
         }
@@ -493,16 +497,13 @@ export function useResources() {
             resource_id: resourceId,
         })
 
-        // 下载次数+1
+        // 下载次数+1（原子）
+        await supabase.rpc('increment_download_count', { resource_id_input: resourceId })
         const r = resources.value.find(r => r.id === resourceId)
         if (r) r.download_count++
         if (currentResource.value?.id === resourceId) {
             currentResource.value.download_count++
         }
-
-        await supabase.from('learning_resources')
-            .update({ download_count: (currentResource.value?.download_count || 0) })
-            .eq('id', resourceId)
     }
 
     // ========================
@@ -532,13 +533,13 @@ export function useResources() {
         if (!uploaderIds.length) return
 
         const { data: profiles } = await supabase.from('spark_profiles')
-            .select('user_id, nickname, avatar').in('user_id', uploaderIds)
+            .select('user_id, nickname, avatar_url').in('user_id', uploaderIds)
         if (!profiles) return
 
         const pm = new Map(profiles.map(p => [p.user_id, p]))
         items.forEach(r => {
             const p = pm.get(r.uploader_id)
-            if (p) { r.uploader_nickname = p.nickname; r.uploader_avatar = p.avatar }
+            if (p) { r.uploader_nickname = p.nickname; r.uploader_avatar = p.avatar_url }
         })
     }
 

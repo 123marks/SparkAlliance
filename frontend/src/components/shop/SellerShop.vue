@@ -43,6 +43,10 @@
         </div>
 
         <p v-if="shop.bio" class="ss-bio">« {{ shop.bio }} »</p>
+        <div v-if="shop.interests?.length" class="ss-interests">
+          <span v-for="t in shop.interests" :key="t" class="ss-interest-tag">{{ t }}</span>
+        </div>
+        <span v-if="shop.createdAt" class="ss-joined">📅 加入于 {{ formatJoinDate(shop.createdAt) }}</span>
       </div>
 
       <!-- Tab切换：商品/评价 -->
@@ -156,6 +160,11 @@ function statusLabel(s: string) {
   return { active: '在售', sold: '已售' }[s] || s
 }
 
+function formatJoinDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 async function loadShop() {
   shop.value = await getSellerShop(props.sellerId)
 }
@@ -194,7 +203,10 @@ watch(() => props.sellerId, loadShop)
 .ss-stat:last-child{border-right:none}
 .ss-stat-n{font-size:18px;font-weight:700;color:rgba(79,142,247,.8)}
 .ss-stat-l{font-size:9px;color:rgba(255,255,255,.25)}
-.ss-bio{position:relative;z-index:1;font-size:11px;color:rgba(255,255,255,.3);margin:0;padding:0 18px 14px;font-style:italic;line-height:1.5}
+.ss-bio{position:relative;z-index:1;font-size:11px;color:rgba(255,255,255,.3);margin:0;padding:0 18px 8px;font-style:italic;line-height:1.5}
+.ss-interests{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:4px;padding:0 18px 8px}
+.ss-interest-tag{padding:3px 10px;border-radius:8px;font-size:9px;font-weight:500;background:rgba(79,142,247,.06);color:rgba(79,142,247,.55);border:1px solid rgba(79,142,247,.1)}
+.ss-joined{position:relative;z-index:1;display:block;font-size:10px;color:rgba(255,255,255,.2);padding:0 18px 14px}
 
 /* Tabs */
 .ss-tabs{display:flex;gap:4px;margin-bottom:12px}

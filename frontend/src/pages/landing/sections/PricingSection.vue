@@ -42,17 +42,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed } from 'vue'
+import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
 import PricingToggle from './components/PricingToggle.vue'
 import PricingCard from './components/PricingCard.vue'
 import PricingComparison from './components/PricingComparison.vue'
 import PricingFAQ from './components/PricingFAQ.vue'
 import TrustBadges from './components/TrustBadges.vue'
 
-const isVisible = ref(false)
-const sectionRef = ref<HTMLElement | null>(null)
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
+void sectionRef  // 用于模板 ref 绑定
 const isAnnual = ref(true)
-let observer: IntersectionObserver | null = null
 
 // 定价数据
 const freePlan = {
@@ -119,22 +119,6 @@ const annualPlan = {
   ctaLink: '/register?plan=annual'
 }
 
-onMounted(() => {
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      isVisible.value = true
-      observer?.disconnect()
-    }
-  }, { threshold: 0.15 })
-
-  if (sectionRef.value) {
-    observer.observe(sectionRef.value)
-  }
-})
-
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
 </script>
 
 <style scoped>

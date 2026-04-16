@@ -334,6 +334,7 @@ const avatarInitial = computed(() => {
   const name = userName.value
   return name ? name.charAt(0).toUpperCase() : '?'
 })
+void avatarInitial
 
 // 用户头像URL — 从 user_metadata 读取，全局唯一头像源
 const userAvatarUrl = computed(() => {

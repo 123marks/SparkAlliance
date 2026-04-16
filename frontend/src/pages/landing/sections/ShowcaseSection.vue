@@ -133,14 +133,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
+import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
 
-const isVisible = ref(false)
-const sectionRef = ref<HTMLElement | null>(null)
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
+void sectionRef  // 用于模板 ref 绑定
 const activeIdx = ref(0)
 const autoPlayDuration = 6000
-let observer: IntersectionObserver | null = null
 let autoTimer: ReturnType<typeof setInterval> | null = null
+
+watch(isVisible, (v) => { if (v) startAutoPlay() })
 
 // 选择演示
 const selectDemo = (idx: number) => {
@@ -219,19 +221,7 @@ const newsItems = [
   { rank: 5, title: '全国大学生创新创业大赛报名开启', source: '教育部', heat: '2.8w', hot: false },
 ]
 
-onMounted(() => {
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      isVisible.value = true
-      startAutoPlay()
-      observer?.disconnect()
-    }
-  }, { threshold: 0.15 })
-  if (sectionRef.value) observer.observe(sectionRef.value)
-})
-
 onBeforeUnmount(() => {
-  observer?.disconnect()
   if (autoTimer) clearInterval(autoTimer)
 })
 </script>

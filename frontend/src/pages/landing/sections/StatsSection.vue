@@ -29,11 +29,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
+import { reactive, watch } from 'vue'
+import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
 
-const isVisible = ref(false)
-const sectionRef = ref<HTMLElement | null>(null)
-let observer: IntersectionObserver | null = null
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.15 })
+void sectionRef  // 用于模板 ref 绑定
 
 // 平台亮点数据（目标数据/预期数据）
 const stats = [
@@ -107,22 +107,6 @@ watch(isVisible, (val) => {
   }
 })
 
-onMounted(() => {
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      isVisible.value = true
-      observer?.disconnect()
-    }
-  }, { threshold: 0.2 })
-
-  if (sectionRef.value) {
-    observer.observe(sectionRef.value)
-  }
-})
-
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
 </script>
 
 <style scoped>

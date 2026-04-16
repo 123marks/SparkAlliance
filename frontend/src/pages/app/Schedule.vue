@@ -374,14 +374,15 @@ const handlePushToPlanner = async (event: ScheduleEvent) => {
       showToast('请先登录', 'error')
       return
     }
-    // 创建规划任务
     const { error: err } = await supabase.from('planner_tasks').insert({
       user_id: session.session.user.id,
+      goal_id: null,
       title: event.title,
       description: event.description || `从日程同步: ${event.start_time}`,
       due_date: event.start_time.slice(0, 10),
       status: 'pending',
       is_completed: false,
+      schedule_event_id: event.id || null,
     })
     if (err) throw err
     showToast(`「${event.title}」已推送到规划`, 'success')

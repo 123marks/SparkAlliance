@@ -669,39 +669,46 @@ const sendRefineMessage = async () => {
       `[${i + 1}] ${e.title} | 类型:${e.event_type} | 时间:${e.start_time || '未定'}~${e.end_time || '未定'} | 地点:${e.location || '未定'} | 置信度:${Math.round(e.confidence * 100)}%`
     )).join('\n')
 
-    const systemPrompt = `你是智能日程助手。用户通过 AI 识别得到了以下事件列表：
+    const systemContext = `你是智能日程助手。用户通过 AI 识别得到了以下事件列表：
 ${eventsContext}
 
 用户现在要求你修改这些事件。请严格按 JSON 格式返回修改后的**完整事件列表**。
 格式：{"events":[{"title":"...","start_time":"YYYY-MM-DDTHH:mm","end_time":"YYYY-MM-DDTHH:mm","event_type":"course|exam|task|life|reminder|holiday","location":"...","confidence":0.95,"description":"..."}],"reply":"你对用户说的话"}
 只返回 JSON，不要返回其他内容。今天是 ${toLocalDateStr(new Date())}。`
 
-    const API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || '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'
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) throw new Error('请先登录后再使用 AI 精炼')
+
     const conversationHistory = refineMessages.value.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }))
 
-    const res = await fetch('/api/nvidia/chat/completions', {
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/assistant-chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
-        model: 'moonshotai/kimi-k2.5',
+        assistant: 'spark',
+        mode: 'default',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `[System Context]\n${systemContext}` },
           ...conversationHistory,
         ],
-        temperature: 0.3,
-        max_tokens: 4096,
       }),
     })
 
-    if (!res.ok) throw new Error('AI 服务响应异常')
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(typeof errData.error === 'string' ? errData.error : `AI 服务响应异常 (${res.status})`)
+    }
 
     const data = await res.json()
-    const aiContent = data.choices?.[0]?.message?.content || ''
+    const aiContent = typeof data.content === 'string' ? data.content : (data.choices?.[0]?.message?.content || '')
 
-    // 尝试解析 JSON 返回
     const jsonMatch = aiContent.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
       try {
