@@ -283,6 +283,23 @@ button {
   transition-delay: 0s !important;
 }
 
+/* ====== 减少动画偏好兜底 ====== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* 确保内容始终可见 */
+  .scroll-reveal,
+  [class*="stagger-"] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 /* ====== 全局表单控件 — 深色主题适配 ====== */
 input[type="text"],
 input[type="email"],

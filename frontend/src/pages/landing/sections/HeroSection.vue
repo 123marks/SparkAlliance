@@ -18,7 +18,7 @@
       <div class="float-icon f5">🚀</div>
     </div>
 
-    <div class="hero-content">
+    <div class="hero-content" :class="{ 'hero-ready': heroReady }">
       <!-- 状态标签 -->
       <div class="badge-wrapper stagger-1">
         <span class="badge"><span class="pulse"></span> ✦ 正在公测</span>
@@ -84,8 +84,20 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import ParticleBackground from '../../../components/ParticleBackground.vue'
 import HeroSocialProof from './components/HeroSocialProof.vue'
+
+// JS 兜底：确保 hero 内容在动画失败时仍可见
+const heroReady = ref(false)
+onMounted(() => {
+  // 正常：等待 CSS 动画完成后标记就绪
+  setTimeout(() => { heroReady.value = true }, 2000)
+  // 极端兜底：即使 setTimeout 延迟，也通过 rAF 确保
+  requestAnimationFrame(() => {
+    setTimeout(() => { heroReady.value = true }, 2200)
+  })
+})
 </script>
 
 <style scoped>
@@ -178,11 +190,21 @@ import HeroSocialProof from './components/HeroSocialProof.vue'
   to { opacity: 1; transform: translateY(0); }
 }
 
-.stagger-1 { animation: slideUpFade 0.6s ease-out 0.3s both; }
-.stagger-2 { animation: slideUpFade 0.6s ease-out 0.5s both; }
-.stagger-3 { animation: slideUpFade 0.6s ease-out 0.8s both; }
-.stagger-4 { animation: slideUpFade 0.6s ease-out 1.0s both; }
-.stagger-5 { animation: slideUpFade 0.6s ease-out 1.2s both; }
+.stagger-1 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.3s forwards; }
+.stagger-2 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.5s forwards; }
+.stagger-3 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.8s forwards; }
+.stagger-4 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 1.0s forwards; }
+.stagger-5 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 1.2s forwards; }
+
+/* JS 兜底：动画执行完毕或失败后强制可见 */
+.hero-ready .stagger-1,
+.hero-ready .stagger-2,
+.hero-ready .stagger-3,
+.hero-ready .stagger-4,
+.hero-ready .stagger-5 {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
 
 /* 状态标签 */
 .badge-wrapper { margin-bottom: 24px; }
