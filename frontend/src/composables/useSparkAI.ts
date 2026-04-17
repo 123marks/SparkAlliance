@@ -176,6 +176,7 @@ export function useSparkAI() {
     onError?: (err: string) => void,
     onThinking?: (text: string) => void,
     attachments?: FileAttachment[],
+    extraContext?: string,
   ) {
     const conversation = getCurrentConversation()
 
@@ -207,6 +208,14 @@ export function useSparkAI() {
         role: message.role as 'user' | 'assistant',
         content: message.content,
       }))
+
+    // v7.3: 如果前端传入了 extraContext（RAG 检索结果），把它作为一条系统前缀 user 消息注入
+    if (extraContext && extraContext.trim()) {
+      contextMessages.unshift({
+        role: 'user',
+        content: `[知识上下文]\n${extraContext}\n\n请基于以上知识上下文回答用户的问题。如上下文与问题无关，正常回答即可。`,
+      })
+    }
 
     isStreaming.value = true
     streamPhase.value = 'thinking'

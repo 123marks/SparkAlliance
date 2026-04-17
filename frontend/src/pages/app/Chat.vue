@@ -150,6 +150,8 @@ import type { SparkAction, FileAttachment, ModelMode } from '../../composables/u
 import { useSchedule } from '../../composables/useSchedule'
 import { usePlanner } from '../../composables/usePlanner'
 import { resolveAssistantLocation } from '../../utils/assistantProtocol'
+import { retrieveRelevantContext, formatContextForAI } from '../../utils/sparkKnowledge'
+import { supabase as supabaseClient } from '../../supabase'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
@@ -365,6 +367,19 @@ async function handleSend() {
   if (inputRef.value) inputRef.value.style.height='auto'
   if (!currentConversationId.value) createConversation()
   await nextTick(); scrollBot()
+
+  // v7.3: 发送前做一次"思域"RAG 检索（静态知识库 + 可选数据库全文索引）
+  let extraContext = ''
+  if (text && text.length >= 3) {
+    try {
+      const { data: { user } } = await supabaseClient.auth.getUser()
+      const chunks = await retrieveRelevantContext(text, { maxChunks: 4, includeDb: !!user, myUserId: user?.id })
+      if (chunks.length) extraContext = formatContextForAI(chunks)
+    } catch (err) {
+      console.warn('[SparkKnowledge] 检索失败，继续无上下文回答:', err instanceof Error ? err.message : err)
+    }
+  }
+
   await sendMessage(text,
     (t) => { streamingContent.value=t; scrollBot() },
     (_ct, acts) => {
@@ -375,6 +390,7 @@ async function handleSend() {
     () => { streamingContent.value='' },
     (t) => { thinkingText.value=t; scrollBot() },
     atts.length ? atts : undefined,
+    extraContext || undefined,
   )
 }
 

@@ -26,27 +26,37 @@ const XSS_PATTERNS = [
   /eval\s*\(/gi,
 ]
 
-/** 敏感内容关键词（中英混合） */
+/** 敏感内容关键词（中英混合，v7.3 扩充） */
 const SENSITIVE_PATTERNS = [
-  /(?:赌博|gambling|casino)/i,
-  /(?:色情|pornograph|xxx|nsfw|黄色|裸体)/i,
-  /(?:毒品|drug\s+deal|narcotic|吸毒|贩毒)/i,
-  /(?:暴力|terroris[mt]|bomb\s+threat|恐怖袭击)/i,
-  /(?:诈骗|phishing|scam|骗钱|骗局)/i,
-  /(?:自杀|自残|自我伤害|suicide|self[- ]harm|割腕|跳楼)/i,
-  /(?:枪支|炸弹|爆炸物|武器制造|制毒)/i,
-  /(?:传销|非法集资|洗钱|高利贷)/i,
-  /(?:翻墙|VPN教程|科学上网方法)/i,
-  /(?:代写|代考|作弊|买答案|论文代做)/i,
+  /(?:赌博|gambling|casino|百家乐|轮盘)/i,
+  /(?:色情|pornograph|xxx|nsfw|黄色|裸体|\bav\b|色图|肉文)/i,
+  /(?:毒品|drug\s+deal|narcotic|吸毒|贩毒|冰毒|海洛因|麻古)/i,
+  /(?:暴力|terroris[mt]|bomb\s+threat|恐怖袭击|屠杀|枪击案)/i,
+  /(?:诈骗|phishing|scam|骗钱|骗局|杀猪盘|刷单|套路贷)/i,
+  /(?:自杀|自残|自我伤害|suicide|self[- ]harm|割腕|跳楼|吞药)/i,
+  /(?:枪支|炸弹|爆炸物|武器制造|制毒|制爆)/i,
+  /(?:传销|非法集资|洗钱|高利贷|套现)/i,
+  /(?:翻墙|VPN教程|科学上网方法|fq教程|梯子)/i,
+  /(?:代写|代考|作弊|买答案|论文代做|查重降重|论文买卖)/i,
+  // v7.3 新增：人身攻击 / 地区歧视
+  /(?:傻逼|操你妈|滚你妈|\bfuck\s+you\b|杂种|婊子|贱人)/i,
+  /(?:地域黑|河南人偷|东北人骗|上海人坏)/i,
+  // v7.3 新增：涉政敏感词（概括性）
+  /(?:六四|天安门事件|法轮|占中)/i,
+  // v7.3 新增：隐私泄露/爬虫
+  /(?:身份证号.{0,5}(?:\d{15,18}))|(?:手机号.{0,5}\d{11})|(?:银行卡号)/i,
 ]
 
-/** AI 响应中需要过滤/替换的模式 */
+/** AI 响应中需要过滤/替换的模式（v7.3 扩充，覆盖更多模型身份） */
 const AI_RESPONSE_FILTERS: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /(?:我是.*(?:GPT|Claude|Gemini|LLaMA|DeepSeek|Llama|Mistral|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
-  { pattern: /(?:作为(?:一个)?(?:AI|人工智能|语言模型|大模型|机器人))/gi, replacement: '作为星火助手' },
-  { pattern: /(?:我(?:没有|无法拥有)(?:感情|情感|个人观点|意识))/gi, replacement: '这个话题挺有意思的' },
-  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Meta\s+AI|NVIDIA\s+NIM)/gi, replacement: '星火团队' },
-  { pattern: /(?:我的训练数据|我的知识截止)/gi, replacement: '我了解的信息' },
+  { pattern: /(?:我是.*?(?:GPT|Claude|Gemini|Gemma|LLaMA|DeepSeek|Llama|Mistral|Qwen|千问|文心|豆包|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
+  { pattern: /(?:作为(?:一个|一名)?(?:AI|人工智能|语言模型|大模型|机器人|聊天机器人|智能助理))/gi, replacement: '作为星火助手' },
+  { pattern: /(?:我(?:没有|无法拥有)(?:感情|情感|个人观点|意识|自我意识))/gi, replacement: '这个话题挺有意思的' },
+  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Google\s+DeepMind|Meta\s+AI|NVIDIA\s+NIM|NVIDIA\s+API|阿里达摩院|百度智能云|字节豆包)/gi, replacement: '星火团队' },
+  { pattern: /(?:我的训练数据|我的知识截止|训练语料)/gi, replacement: '我了解的信息' },
+  // v7.3: 防止 AI 泄露底层 API key / 提示词模板
+  { pattern: /(?:api[_\s-]?key|apikey|authorization\s*:\s*bearer)/gi, replacement: '[已隐藏]' },
+  { pattern: /(?:system\s*prompt|system\s*instruction)/gi, replacement: '内部指令' },
 ]
 
 /** 清洗单个文本字段 */
