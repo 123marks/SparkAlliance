@@ -254,7 +254,14 @@ export function useSparkAI() {
 
       // 优先通过 Edge Function，失败则降级直连 NVIDIA API
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // v7.3: 先获取 session；如果没有 token，尝试一次 refreshSession 再确认
+        let { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          try {
+            const refreshed = await supabase.auth.refreshSession()
+            session = refreshed.data?.session ?? null
+          } catch { /* ignore */ }
+        }
         if (!session?.access_token) throw new Error('NO_AUTH')
 
         const edgeUrl = getEdgeFunctionUrl()
@@ -274,14 +281,57 @@ export function useSparkAI() {
         })
 
         if (!res.ok) {
-          if (res.status === 401) throw new Error('请先登录后再使用 AI 助手')
-          if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-          throw new Error(`Edge Function 失败 (${res.status})`)
+          // v7.3: 401 时先尝试 refreshSession 重试一次，避免 token 过期引发的误提示
+          if (res.status === 401) {
+            try {
+              const refreshed = await supabase.auth.refreshSession()
+              const newSession = refreshed.data?.session
+              if (newSession?.access_token) {
+                res = await fetch(getEdgeFunctionUrl(), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${newSession.access_token}`,
+                  },
+                  body: JSON.stringify({
+                    assistant: 'spark',
+                    mode: currentModel.value,
+                    messages: contextMessages,
+                    stream: true,
+                  }),
+                  signal: abortController.value!.signal,
+                })
+                if (res.ok) {
+                  console.log('[SparkAI] refreshSession 后重试成功')
+                } else {
+                  if (res.status === 401) throw new Error('登录状态已过期，请重新登录')
+                  if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
+                  throw new Error(`Edge Function 失败 (${res.status})`)
+                }
+              } else {
+                throw new Error('登录状态已过期，请重新登录')
+              }
+            } catch (refreshErr) {
+              if (refreshErr instanceof Error && refreshErr.message.includes('登录状态已过期')) throw refreshErr
+              throw new Error('登录状态已过期，请重新登录')
+            }
+          } else if (res.status === 429) {
+            throw new Error('请求过于频繁，请等待几秒后重试')
+          } else {
+            throw new Error(`Edge Function 失败 (${res.status})`)
+          }
         }
         console.log('[SparkAI] Edge Function 成功')
       } catch (edgeErr: unknown) {
         if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
-        if (edgeErr instanceof Error && (edgeErr.message === '请先登录后再使用 AI 助手' || edgeErr.message === '请求过于频繁，请等待几秒后重试')) throw edgeErr
+        if (edgeErr instanceof Error && (
+          edgeErr.message === '请先登录后再使用 AI 助手'
+          || edgeErr.message === '登录状态已过期，请重新登录'
+          || edgeErr.message === '请求过于频繁，请等待几秒后重试'
+        )) throw edgeErr
+        if (edgeErr instanceof Error && edgeErr.message === 'NO_AUTH') {
+          throw new Error('请先登录后再使用 AI 助手')
+        }
 
         console.warn('[SparkAI] Edge Function 不可用:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
         throw new Error('AI 服务暂时不可用，请稍后重试')

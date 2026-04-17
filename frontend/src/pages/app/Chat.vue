@@ -66,9 +66,10 @@
                 </button>
                 <div v-show="!collapsedThinking[idx]" class="think-body">{{ msg.reasoning || thinkingText }}</div>
               </div>
-              <div v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' && !msg.content && !msg.reasoning && !thinkingText" class="think-block">
-                <div class="think-toggle"><span class="think-status spinning">💭</span><span>正在思考...</span></div>
+              <div v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' && !msg.content && !msg.reasoning && !thinkingText" class="think-block think-block-loading">
+                <div class="think-toggle"><span class="think-status spinning">💭</span><span>{{ thinkingHint }}</span></div>
                 <div class="think-dots"><span></span><span></span><span></span></div>
+                <div class="think-sub-hint">{{ thinkingSubHint }}</div>
               </div>
               <!-- AI 回复（含导航链接渲染） -->
               <div v-if="msg.role === 'assistant' && msg.content" class="md-body" v-html="renderMd(msg.content)" @click="handleMdClick"></div>
@@ -167,6 +168,38 @@ const inputRef = ref<HTMLTextAreaElement|null>(null)
 const fileInput = ref<HTMLInputElement|null>(null)
 const streamingContent = ref('')
 const thinkingText = ref('')
+
+// v7.3: 思考阶段动态提示（让用户知道 AI 正在工作，不是卡死）
+const thinkingHints = ['正在连接星火大脑…', '正在思考你的问题…', '正在梳理上下文…', '正在组织回复…', '马上就好…']
+const thinkingSubHints = [
+  '✨ Gemma 大模型推理中，复杂问题可能需要数秒',
+  '🔮 正在从记忆和知识库中检索相关信息',
+  '🧩 正在对多个候选答案进行权衡比较',
+  '📝 正在润色语言，确保回复既准确又友好',
+  '⚡ 即将开始输出，请稍等…',
+]
+const thinkingHint = ref(thinkingHints[0])
+const thinkingSubHint = ref(thinkingSubHints[0])
+let thinkingHintTimer: ReturnType<typeof setInterval> | null = null
+
+function startThinkingHintRotation() {
+  if (thinkingHintTimer) return
+  let i = 0
+  thinkingHint.value = thinkingHints[0]
+  thinkingSubHint.value = thinkingSubHints[0]
+  thinkingHintTimer = setInterval(() => {
+    i = (i + 1) % thinkingHints.length
+    thinkingHint.value = thinkingHints[i]
+    thinkingSubHint.value = thinkingSubHints[i]
+  }, 1800)
+}
+function stopThinkingHintRotation() {
+  if (thinkingHintTimer) { clearInterval(thinkingHintTimer); thinkingHintTimer = null }
+}
+watch(() => isStreaming.value, (v) => {
+  if (v) startThinkingHintRotation()
+  else stopThinkingHintRotation()
+})
 const isRec = ref(false)
 const isDragging = ref(false)
 const showToast = ref(false)
@@ -196,15 +229,21 @@ function onDragEnter(e: DragEvent) { e.preventDefault(); dragCount++; isDragging
 function onDragLeave() { dragCount--; if (dragCount <= 0) { isDragging.value = false; dragCount = 0 } }
 function onDrop(e: DragEvent) { isDragging.value = false; dragCount = 0; if (e.dataTransfer?.files) processFiles(e.dataTransfer.files) }
 
-// LaTeX 渲染
+// LaTeX 渲染（v7.3：包装一层 .formula-wrap 以支持一键复制 LaTeX 源）
 function renderLatex(text: string): string {
   text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_: string, expr: string) => {
-    try { return katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<span class="latex-err">$$${expr}$$</span>` }
+    try {
+      const html = katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })
+      const enc = encodeURIComponent(expr.trim())
+      return `<span class="formula-wrap formula-block" data-latex="${enc}"><button class="formula-copy" data-copy-text="${enc}" title="复制 LaTeX">⧉</button>${html}</span>`
+    } catch { return `<span class="latex-err">$$${expr}$$</span>` }
   })
   text = text.replace(/(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+?)\$/g, (_: string, expr: string) => {
-    try { return katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<span class="latex-err">$${expr}$</span>` }
+    try {
+      const html = katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })
+      const enc = encodeURIComponent(expr.trim())
+      return `<span class="formula-wrap formula-inline" data-latex="${enc}"><button class="formula-copy" data-copy-text="${enc}" title="复制 LaTeX">⧉</button>${html}</span>`
+    } catch { return `<span class="latex-err">$${expr}$</span>` }
   })
   return text
 }
@@ -239,7 +278,7 @@ function renderMd(content: string): string {
     c = renderLatex(c)
     c = c.replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
     const html = marked.parse(c) as string
-    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['class','style','data-path','data-copy-text'] })
+    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['class','style','data-path','data-copy-text','data-latex','title'] })
   } catch { return DOMPurify.sanitize(content.replace(/\n/g, '<br>')) }
 }
 
@@ -251,6 +290,18 @@ function handleMdClick(e: Event) {
     navigator.clipboard.writeText(decodeURIComponent(copyButton.dataset.copyText))
     copyButton.textContent = '✓ 已复制'
     setTimeout(() => { copyButton.textContent = '复制' }, 1500)
+    return
+  }
+
+  // v7.3 公式 LaTeX 一键复制
+  const formulaCopy = element.closest('.formula-copy') as HTMLElement | null
+  if (formulaCopy?.dataset?.copyText) {
+    e.preventDefault()
+    navigator.clipboard.writeText(decodeURIComponent(formulaCopy.dataset.copyText))
+    const origTitle = formulaCopy.title
+    formulaCopy.textContent = '✓'
+    formulaCopy.title = '已复制 LaTeX'
+    setTimeout(() => { formulaCopy.textContent = '⧉'; formulaCopy.title = origTitle }, 1200)
     return
   }
 
@@ -293,7 +344,8 @@ const displayMsgs = computed(() => {
   const msgs = (conv?.messages.filter(m => m.role !== 'system') || []).map(m => ({
     ...m, displayContent: m.content.replace(/\n\n(📄|🖼️) \*\*.*?\*\*/g, '').replace(/```[\s\S]*?```/g, '').trim() || m.content,
   }))
-  if (isStreaming.value && streamingContent.value) {
+  // v7.3: 在 streaming 阶段总是追加 assistant 占位气泡（即使 streamingContent 为空，也能显示"正在思考"）
+  if (isStreaming.value) {
     return [...msgs, { role: 'assistant' as const, content: streamingContent.value, reasoning: thinkingText.value || undefined, attachments: undefined, displayContent: streamingContent.value }]
   }
   return msgs
@@ -669,8 +721,15 @@ watch(currentConversationId, () => nextTick(scrollBot))
 @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
 .think-chevron { margin-left:auto; transition:transform .2s; color:rgba(255,255,255,.1); } .think-chevron.collapsed { transform:rotate(-90deg); }
 .think-body { padding:6px 10px 10px; font-size:12px; line-height:1.7; color:rgba(255,255,255,.18); white-space:pre-wrap; word-break:break-word; border-top:1px solid rgba(139,92,246,.025); }
-.think-dots { display:flex; gap:3px; padding:6px 10px; } .think-dots span { width:5px; height:5px; border-radius:50%; background:rgba(139,92,246,.15); animation:tdot 1.4s infinite ease-in-out; } .think-dots span:nth-child(2){animation-delay:.2s} .think-dots span:nth-child(3){animation-delay:.4s}
-@keyframes tdot { 0%,80%,100%{transform:scale(.5);opacity:.2} 40%{transform:scale(1);opacity:.5} }
+.think-dots { display:flex; gap:3px; padding:6px 10px; } .think-dots span { width:5px; height:5px; border-radius:50%; background:rgba(139,92,246,.35); animation:tdot 1.4s infinite ease-in-out; } .think-dots span:nth-child(2){animation-delay:.2s} .think-dots span:nth-child(3){animation-delay:.4s}
+@keyframes tdot { 0%,80%,100%{transform:scale(.5);opacity:.2} 40%{transform:scale(1);opacity:.8} }
+
+/* v7.3: 加载态强化 - 让思考中 UI 更醒目，配浅色 sub-hint */
+.think-block.think-block-loading { background:linear-gradient(135deg, rgba(139,92,246,.05), rgba(59,130,246,.03)); border:1px solid rgba(139,92,246,.12); box-shadow:0 0 0 0 rgba(139,92,246,.3); animation:thinkingPulse 2s ease-in-out infinite; }
+@keyframes thinkingPulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,.15)} 50%{box-shadow:0 0 0 6px rgba(139,92,246,0)} }
+.think-block.think-block-loading .think-toggle { color:rgba(196,181,253,.85); font-size:12px; font-weight:600; }
+.think-sub-hint { padding:0 10px 10px; font-size:10.5px; color:rgba(255,255,255,.25); font-style:italic; animation:hintFade .5s ease-out; letter-spacing:.3px; }
+@keyframes hintFade { from{opacity:0;transform:translateY(-2px)} to{opacity:1;transform:translateY(0)} }
 
 /* Markdown */
 .md-body { color:rgba(255,255,255,.78); font-size:13px; line-height:1.8; word-break:break-word; }
@@ -688,13 +747,109 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .md-body :deep(code:not(.hljs)) { padding:1px 5px; border-radius:4px; background:rgba(139,92,246,.05); color:rgba(139,92,246,.65); font-size:11px; font-family:'JetBrains Mono','Fira Code',monospace; }
 .md-body :deep(.katex-display) { margin:12px 0; padding:10px 16px; background:rgba(255,255,255,.012); border-radius:8px; border:1px solid rgba(255,255,255,.025); overflow-x:auto; }
 .md-body :deep(.katex) { font-size:1.05em; color:rgba(255,255,255,.85); }
-.md-body :deep(.codeblock) { margin:8px 0; border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,.035); background:rgba(12,10,24,.9); }
-.md-body :deep(.cb-head) { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(255,255,255,.012); border-bottom:1px solid rgba(255,255,255,.025); }
-.md-body :deep(.cb-lang) { font-size:10px; color:rgba(255,255,255,.13); font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-.md-body :deep(.cb-copy) { background:rgba(139,92,246,.035); border:1px solid rgba(139,92,246,.06); border-radius:5px; padding:3px 10px; font-size:10px; color:rgba(139,92,246,.45); cursor:pointer; font-weight:500; }
-.md-body :deep(.cb-copy:hover) { background:rgba(139,92,246,.07); color:rgba(139,92,246,.65); }
-.md-body :deep(pre) { margin:0; padding:14px; overflow-x:auto; } .md-body :deep(pre code) { font-size:12px; line-height:1.65; font-family:'JetBrains Mono','Fira Code',monospace; }
-.md-body :deep(pre::-webkit-scrollbar) { height:4px; } .md-body :deep(pre::-webkit-scrollbar-thumb) { background:rgba(255,255,255,.05); border-radius:4px; }
+/* v7.3 代码块：星空背景 + 醒目复制按钮 + 语言标签 */
+.md-body :deep(.codeblock) {
+  margin:10px 0;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid rgba(139,92,246,.15);
+  background:
+    radial-gradient(ellipse at top right, rgba(139,92,246,.08), transparent 60%),
+    radial-gradient(ellipse at bottom left, rgba(59,130,246,.05), transparent 55%),
+    linear-gradient(180deg, rgba(8,6,20,.96) 0%, rgba(12,10,24,.98) 100%);
+  box-shadow: 0 4px 20px rgba(0,0,0,.35), inset 0 0 20px rgba(139,92,246,.04);
+  position:relative;
+}
+/* 代码块星光装饰 */
+.md-body :deep(.codeblock)::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.35), transparent),
+    radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,.25), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(139,92,246,.3), transparent),
+    radial-gradient(1px 1px at 90% 20%, rgba(255,255,255,.2), transparent);
+  background-size: 100% 100%;
+  pointer-events:none;
+  opacity:.7;
+}
+.md-body :deep(.cb-head) {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:8px 14px;
+  background:linear-gradient(90deg, rgba(139,92,246,.08), rgba(139,92,246,.02));
+  border-bottom:1px solid rgba(139,92,246,.12);
+  position:relative;
+  z-index:1;
+}
+.md-body :deep(.cb-lang) {
+  font-size:11px;
+  color:rgba(196,181,253,.7);
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:1.2px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.md-body :deep(.cb-lang)::before {
+  content:'';
+  width:6px; height:6px; border-radius:50%;
+  background:linear-gradient(135deg, #8b5cf6, #3b82f6);
+  box-shadow:0 0 6px rgba(139,92,246,.5);
+}
+.md-body :deep(.cb-copy) {
+  background:rgba(139,92,246,.12);
+  border:1px solid rgba(139,92,246,.25);
+  border-radius:6px;
+  padding:4px 12px;
+  font-size:11px;
+  color:rgba(196,181,253,.9);
+  cursor:pointer;
+  font-weight:600;
+  transition:all .18s ease;
+}
+.md-body :deep(.cb-copy:hover) {
+  background:rgba(139,92,246,.22);
+  color:#fff;
+  border-color:rgba(139,92,246,.45);
+  transform:translateY(-1px);
+  box-shadow:0 3px 10px rgba(139,92,246,.25);
+}
+.md-body :deep(pre) { margin:0; padding:16px; overflow-x:auto; position:relative; z-index:1; }
+.md-body :deep(pre code) { font-size:12.5px; line-height:1.7; font-family:'JetBrains Mono','Fira Code','SF Mono',monospace; }
+.md-body :deep(pre::-webkit-scrollbar) { height:6px; } .md-body :deep(pre::-webkit-scrollbar-thumb) { background:rgba(139,92,246,.25); border-radius:4px; }
+.md-body :deep(pre::-webkit-scrollbar-thumb:hover) { background:rgba(139,92,246,.45); }
+
+/* v7.3 公式包装 + LaTeX 复制按钮 */
+.md-body :deep(.formula-wrap) {
+  position:relative;
+  display:inline-block;
+  transition:background .2s;
+}
+.md-body :deep(.formula-wrap.formula-block) { display:block; margin:10px 0; padding:8px 12px; border-radius:8px; }
+.md-body :deep(.formula-wrap:hover) { background:rgba(139,92,246,.04); }
+.md-body :deep(.formula-wrap:hover .formula-copy) { opacity:.9; }
+.md-body :deep(.formula-copy) {
+  position:absolute;
+  top:2px; right:2px;
+  width:22px; height:22px;
+  padding:0;
+  border-radius:5px;
+  background:rgba(139,92,246,.15);
+  border:1px solid rgba(139,92,246,.25);
+  color:rgba(196,181,253,.9);
+  font-size:12px;
+  cursor:pointer;
+  opacity:0;
+  transition:all .2s;
+  line-height:1;
+}
+.md-body :deep(.formula-copy:hover) {
+  background:rgba(139,92,246,.3);
+  transform:scale(1.1);
+}
 
 /* 导航链接按钮（AI回复中的可点击跳转） */
 .md-body :deep(.nav-link) { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:6px; border:1px solid rgba(139,92,246,.12); background:rgba(139,92,246,.04); color:rgba(139,92,246,.7); font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; margin:2px 0; }

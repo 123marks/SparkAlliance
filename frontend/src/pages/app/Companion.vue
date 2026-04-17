@@ -1284,7 +1284,7 @@ function openAvatarPreview(avatarUrl:string|undefined, avatar:string, name:strin
 }
 // 个人名片弹窗
 const profilePopupVisible = ref(false)
-const profilePopupData = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string;is_starred?:boolean;region?:string;identity?:string}>({ spark_id: '', nickname: '', avatar: '' })
+const profilePopupData = ref<{spark_id:string;nickname:string;avatar:string;avatar_url?:string;remark?:string;bio?:string;is_starred?:boolean;region?:string;identity?:string;university?:string;major?:string}>({ spark_id: '', nickname: '', avatar: '' })
 const profilePopupMomentCount = ref(0)
 const profilePopupIsSelf = ref(false)
 // 消息右键菜单
@@ -1572,7 +1572,13 @@ function handleViewChatFriend(){if(!activeChat.value||activeChat.value.type!=='p
 function handleViewMsgSender(msg:ChatMsg){if(msg.sender_type==='ai')return;if(msg.sender_id===myProfile.value?.spark_id){showSelfProfile();return};const f=friends.value.find(f=>f.spark_id===msg.sender_id);if(f){showProfilePopup(f);return};profilePopupData.value={spark_id:msg.sender_id,nickname:msg.sender_name,avatar:msg.sender_avatar||'',avatar_url:msg.sender_avatar_url};profilePopupMomentCount.value=0;profilePopupIsSelf.value=false;profilePopupVisible.value=true}
 // 显示他人资料卡
 function showProfilePopup(f:Friend){
-  profilePopupData.value={spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,avatar_url:f.avatar_url||f.profile?.avatar_url,remark:f.remark,bio:f.bio,is_starred:f.is_starred,region:f.profile?.region,identity:f.profile?.identity}
+  profilePopupData.value={
+    spark_id:f.spark_id,nickname:f.nickname,avatar:f.avatar,
+    avatar_url:f.avatar_url||f.profile?.avatar_url,
+    remark:f.remark,bio:f.bio,is_starred:f.is_starred,
+    region:f.profile?.region,identity:f.profile?.identity,
+    university:f.profile?.university,major:f.profile?.major,
+  }
   profilePopupMomentCount.value=moments.value.filter(m=>m.author_id===f.spark_id).length
   profilePopupIsSelf.value=false
   profilePopupVisible.value=true
@@ -1580,7 +1586,13 @@ function showProfilePopup(f:Friend){
 // 显示自己资料卡
 function showSelfProfile(){
   if(!myProfile.value)return
-  profilePopupData.value={spark_id:myProfile.value.spark_id,nickname:myProfile.value.nickname,avatar:myProfile.value.avatar,avatar_url:myProfile.value.avatar_url,remark:undefined,bio:myProfile.value.bio,region:myProfile.value.region,identity:myProfile.value.identity}
+  profilePopupData.value={
+    spark_id:myProfile.value.spark_id,nickname:myProfile.value.nickname,
+    avatar:myProfile.value.avatar,avatar_url:myProfile.value.avatar_url,
+    remark:undefined,bio:myProfile.value.bio,
+    region:myProfile.value.region,identity:myProfile.value.identity,
+    university:myProfile.value.university,major:myProfile.value.major,
+  }
   profilePopupMomentCount.value=moments.value.filter(m=>m.author_id===myProfile.value?.spark_id).length
   profilePopupIsSelf.value=true
   profilePopupVisible.value=true
@@ -1591,11 +1603,49 @@ function handleProfileAction(action:string){
     if(sid){toggleStarFriend(sid);const f=friends.value.find(f=>f.spark_id===sid);profilePopupData.value={...profilePopupData.value,is_starred:f?.is_starred};showToast(f?.is_starred?'已设为星标':'已取消星标')}
     return
   }
+  if(action==='recommend'){
+    // 多选推荐：打开转发选择器，目标是好友卡片本人
+    const sid=profilePopupData.value.spark_id
+    if(!sid)return
+    forwardMsgId.value='recommend-'+sid  // 特殊标记，在 executeForward 里识别
+    forwardSearch.value=''
+    forwardTab.value='friends'
+    forwardTargets.value=[]
+    showForwardPicker.value=true
+    // 关闭 ProfilePopup 以让 forwardPicker 可见（但保留 profilePopupData 用于推荐内容）
+    profilePopupVisible.value=false
+    recommendingSparkId.value=sid
+    recommendingProfile.value={...profilePopupData.value}
+    return
+  }
+  if(action==='search'){
+    const sid=profilePopupData.value.spark_id
+    if(sid){
+      showToast('搜索聊天记录：功能已预留，敬请期待')
+    }
+    profilePopupVisible.value=false
+    return
+  }
+  if(action==='clear-chat'){
+    const sid=profilePopupData.value.spark_id
+    if(sid && confirm('确定清空与该好友的聊天记录？')){
+      clearPrivateChat(sid)
+      showToast('已清空聊天记录')
+    }
+    profilePopupVisible.value=false
+    return
+  }
   profilePopupVisible.value=false
   if(action==='chat'){const sid=profilePopupData.value.spark_id;if(sid&&sid!==myProfile.value?.spark_id)openPrivateChat(sid)}
   else if(action==='moments'){switchTab('moments')}
+  else if(action==='permissions'){showToast('权限设置：在好友资料→星火域权限')}
+  else if(action==='block'){const sid=profilePopupData.value.spark_id;if(sid){blockFriend(sid);showToast('已加入黑名单')}}
   else showToast(`${action}功能开发中`)
 }
+
+// 推荐好友（多选目标）状态
+const recommendingSparkId=ref<string>('')
+const recommendingProfile=ref<any>(null)
 function handleProfileRemarkUpdate(remark:string){
   const sid=profilePopupData.value.spark_id
   if(sid)setFriendRemark(sid,remark)
@@ -1720,6 +1770,28 @@ function removeForwardTarget(id: string) {
   forwardTargets.value = forwardTargets.value.filter(t => t.id !== id)
 }
 function executeForward() {
+  // v7.3: 推荐好友名片模式
+  if (forwardMsgId.value.startsWith('recommend-')) {
+    const rec = recommendingProfile.value
+    const recSid = recommendingSparkId.value
+    if (!rec || !recSid) { showForwardPicker.value=false; return }
+    const content = `[推荐好友] ${rec.nickname}（${recSid}）${rec.bio ? '\n' + rec.bio.slice(0, 40) : ''}`
+    for (const target of forwardTargets.value) {
+      if (target.id === recSid) continue // 不推荐给本人
+      if (target.type === 'friend') sendPrivateMsg(target.id, content, 'share', {
+        type: 'contact', title: rec.nickname, route: `/profile/${recSid}`,
+      })
+      else if (target.type === 'group') sendGroupMsg(target.id, content)
+    }
+    showToast(`已推荐给 ${forwardTargets.value.map(t=>t.name).join('、')}`)
+    showForwardPicker.value = false
+    forwardTargets.value = []
+    forwardMsgId.value = ''
+    recommendingSparkId.value = ''
+    recommendingProfile.value = null
+    return
+  }
+
   const msgIds = multiSelectMode.value && selectedMsgIds.value.length > 0
     ? selectedMsgIds.value : [forwardMsgId.value]
   const msgs = chatMessages.value.filter(m => msgIds.includes(m.id))

@@ -15,29 +15,37 @@
           />
           <div class="pp-info">
             <div class="pp-name-row">
-              <h3>{{ displayName }}</h3>
-              <button class="pp-more-btn" @click="showMoreMenu = !showMoreMenu">⋯</button>
+              <h3>
+                {{ displayName }}
+                <span v-if="profile.is_starred" class="pp-star" title="星标朋友">⭐</span>
+              </h3>
+              <div class="pp-more-wrap">
+                <button class="pp-more-btn" @click.stop="showMoreMenu = !showMoreMenu">⋯</button>
+                <!-- ⋯ 更多操作菜单（定位到按钮下方） -->
+                <Transition name="pp-fade">
+                  <div v-if="showMoreMenu" class="pp-more-menu" @click.stop>
+                    <button @click="startEditRemark">📝 设置备注</button>
+                    <button @click="handleAction('permissions')">🔐 星火域权限</button>
+                    <button @click="handleAction('recommend')">👥 推荐给朋友（多选）</button>
+                    <button @click="handleAction('star')">{{ profile.is_starred ? '☆ 取消星标朋友' : '⭐ 设为星标朋友' }}</button>
+                    <button @click="handleAction('search')">🔍 搜索聊天记录</button>
+                    <button @click="handleAction('clear-chat')">🧹 清空聊天记录</button>
+                    <button class="warn" @click="handleAction('block')">🚫 加入黑名单</button>
+                  </div>
+                </Transition>
+              </div>
             </div>
             <p class="pp-sub">昵称：{{ profile.nickname }}</p>
             <p class="pp-sub">星火ID：{{ profile.spark_id }}</p>
-            <p v-if="profile.region || profile.identity" class="pp-sub pp-tags">
-              <span v-if="profile.region" class="pp-tag">📍 {{ profile.region }}</span>
-              <span v-if="profile.identity" class="pp-tag">🎓 {{ profile.identity }}</span>
+            <!-- 地区 + 身份 / 学校 信息（显示在星火号下方） -->
+            <p v-if="profile.region || profile.identity || profile.university || profile.major" class="pp-sub pp-tags">
+              <span v-if="profile.region" class="pp-tag pp-tag-region">📍 {{ profile.region }}</span>
+              <span v-if="profile.identity" class="pp-tag pp-tag-identity">🎓 {{ profile.identity }}</span>
+              <span v-else-if="profile.university" class="pp-tag pp-tag-identity">🎓 {{ profile.university }}{{ profile.major ? ' · ' + profile.major : '' }}</span>
             </p>
-            <p v-if="profile.bio" class="pp-sub">{{ profile.bio }}</p>
+            <p v-if="profile.bio" class="pp-sub pp-bio">{{ profile.bio }}</p>
           </div>
         </div>
-
-        <!-- ⋯ 更多操作菜单 -->
-        <Transition name="pp-fade">
-          <div v-if="showMoreMenu" class="pp-more-menu">
-            <button @click="startEditRemark">📝 设置备注</button>
-            <button @click="emit('action', 'permissions')">🔐 设置星火域权限</button>
-            <button @click="emit('action', 'recommend')">👤 推荐给朋友</button>
-            <button @click="emit('action', 'star')">{{ profile.is_starred ? '☆ 取消星标朋友' : '⭐ 设为星标朋友' }}</button>
-            <button class="warn" @click="emit('action', 'block')">🚫 加入黑名单</button>
-          </div>
-        </Transition>
 
         <!-- 备注编辑区 -->
         <div v-if="editingRemark" class="pp-section">
@@ -121,6 +129,8 @@ export interface ProfileData {
   is_starred?: boolean
   region?: string
   identity?: string
+  university?: string
+  major?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -170,24 +180,41 @@ function saveRemark() {
   emit('update-remark', remarkInput.value.trim())
   editingRemark.value = false
 }
+
+function handleAction(action: string) {
+  showMoreMenu.value = false
+  emit('action', action)
+}
+
+// 点击外部关闭菜单
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => { showMoreMenu.value = false }, true)
+}
 </script>
 
 <style scoped>
 .pp-overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
-.pp-card{width:380px;max-height:85vh;overflow-y:auto;background:rgba(14,11,28,.97);border:1px solid rgba(255,255,255,.06);border-radius:18px;box-shadow:0 16px 64px rgba(0,0,0,.5);padding:0}
+.pp-card{position:relative;width:380px;max-height:85vh;overflow-y:visible;background:rgba(14,11,28,.97);border:1px solid rgba(255,255,255,.06);border-radius:18px;box-shadow:0 16px 64px rgba(0,0,0,.5);padding:0}
 .pp-card.pp-right{position:fixed;right:0;top:0;bottom:0;border-radius:0;border-left:1px solid rgba(255,255,255,.06)}
 
 /* 头部 */
 .pp-header{display:flex;gap:14px;padding:20px;border-bottom:1px solid rgba(255,255,255,.03)}
 .pp-info{flex:1;min-width:0}
-.pp-name-row{display:flex;align-items:center;justify-content:space-between}
-.pp-name-row h3{margin:0;font-size:16px;color:white;font-weight:700}
-.pp-more-btn{background:none;border:none;color:rgba(255,255,255,.25);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .12s}.pp-more-btn:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.5)}
-.pp-sub{font-size:11px;color:rgba(255,255,255,.2);margin:3px 0 0}
-.pp-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.pp-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);font-size:10px;color:rgba(139,92,246,.5)}
+.pp-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pp-name-row h3{margin:0;font-size:16px;color:white;font-weight:700;display:flex;align-items:center;gap:6px}
+.pp-star{font-size:13px;filter:drop-shadow(0 0 4px rgba(251,191,36,.5));animation:ppStarPulse 2.4s ease-in-out infinite}
+@keyframes ppStarPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.pp-more-wrap{position:relative;flex-shrink:0}
+.pp-more-btn{background:none;border:none;color:rgba(255,255,255,.35);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .12s;line-height:1}.pp-more-btn:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.7)}
+.pp-sub{font-size:11px;color:rgba(255,255,255,.35);margin:3px 0 0;line-height:1.5}
+.pp-bio{color:rgba(255,255,255,.45);font-style:italic}
+.pp-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.pp-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.14);font-size:10px;color:rgba(196,181,253,.85);font-weight:500}
+.pp-tag-region{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.14);color:rgba(147,197,253,.85)}
+.pp-tag-identity{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.16);color:rgba(110,231,183,.9)}
 
-/* 更多菜单 */
-.pp-more-menu{position:absolute;right:20px;top:60px;background:rgba(30,28,44,.98);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:4px;box-shadow:0 8px 32px rgba(0,0,0,.5);min-width:160px;z-index:10}
+/* 更多菜单：定位到三点按钮正下方 */
+.pp-more-menu{position:absolute;right:0;top:calc(100% + 6px);background:rgba(30,28,44,.98);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:4px;box-shadow:0 12px 40px rgba(0,0,0,.6);min-width:180px;z-index:20;backdrop-filter:blur(16px)}
 .pp-more-menu button{display:flex;width:100%;gap:6px;padding:8px 14px;border:none;background:none;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer;border-radius:7px;transition:all .12s}.pp-more-menu button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
 .pp-more-menu button.warn{color:rgba(239,68,68,.5)}.pp-more-menu button.warn:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.8)}
 
