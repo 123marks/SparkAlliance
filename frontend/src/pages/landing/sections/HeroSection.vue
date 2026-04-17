@@ -18,20 +18,20 @@
       <div class="float-icon f5">🚀</div>
     </div>
 
-    <div class="hero-content" :class="{ 'hero-ready': heroReady }">
+    <div class="hero-content">
       <!-- 状态标签 -->
-      <div class="badge-wrapper stagger-1">
+      <div class="badge-wrapper" :style="hs(1)">
         <span class="badge"><span class="pulse"></span> ✦ 正在公测</span>
       </div>
 
       <!-- 主标题 -->
-      <h1 class="main-title stagger-2">
+      <h1 class="main-title" :style="hs(2)">
         <span class="text-gradient">星火联盟</span><br/>专属数字时空
       </h1>
-      <p class="subtitle stagger-3">接入 DeepSeek / 豆包 / 千问等顶级大模型 API，一站式赋能大学生与青年群体的学习、协作与成长</p>
+      <p class="subtitle" :style="hs(3)">接入 DeepSeek / 豆包 / 千问等顶级大模型 API，一站式赋能大学生与青年群体的学习、协作与成长</p>
 
       <!-- 功能亮点 -->
-      <div class="highlight-tags stagger-4">
+      <div class="highlight-tags" :style="hs(4)">
         <router-link to="/app/chat" class="hl-tag clickable">🤖 多模型AI助手</router-link>
         <router-link to="/app/wall" class="hl-tag clickable">📝 校园动态墙</router-link>
         <router-link to="/app/talent" class="hl-tag clickable">💼 人才双向匹配</router-link>
@@ -41,16 +41,16 @@
       </div>
 
       <!-- CTA 按钮 -->
-      <div class="cta-group stagger-5">
+      <div class="cta-group" :style="hs(5)">
         <router-link to="/register" class="btn-primary-large spring-hover">极速启航 &rarr;</router-link>
         <router-link to="/docs" class="btn-ghost-large spring-hover">探索特性 &#9654;</router-link>
       </div>
 
       <!-- 社交证明 -->
-      <HeroSocialProof class="stagger-5" />
+      <HeroSocialProof :style="hs(5)" />
 
       <!-- 状态信息 -->
-      <div class="hero-stats stagger-5">
+      <div class="hero-stats" :style="hs(5)">
         <div class="stat-item">
           <span class="stat-num">12+</span>
           <span class="stat-label">核心功能模块</span>
@@ -69,7 +69,7 @@
     </div>
 
     <!-- 底部滚动引导 -->
-    <div class="scroll-hint stagger-5">
+    <div class="scroll-hint" :style="hs(5)">
       <span class="scroll-text">向下探索</span>
       <div class="scroll-arrow">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -84,16 +84,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, type CSSProperties } from 'vue'
 import ParticleBackground from '../../../components/ParticleBackground.vue'
 import HeroSocialProof from './components/HeroSocialProof.vue'
 
 // 页面加载后立刻开始 stagger 入场动画
 const heroReady = ref(false)
 onMounted(() => {
-  // 下一帧开始动画，保证 DOM 已绑定
-  requestAnimationFrame(() => { heroReady.value = true })
+  // 下一帧开始动画，保证 DOM 已绘制初始态
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { heroReady.value = true })
+  })
+  // 3秒硬兜底
+  setTimeout(() => { heroReady.value = true }, 3000)
 })
+
+const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'
+
+/** Hero stagger inline style */
+function hs(stagger: number): CSSProperties {
+  const delay = 0.1 + (stagger - 1) * 0.15
+  return {
+    opacity: heroReady.value ? 1 : 0,
+    transform: heroReady.value ? 'none' : 'translateY(40px)',
+    transition: `opacity 0.7s ${EASE} ${delay}s, transform 0.7s ${EASE} ${delay}s`,
+  }
+}
 </script>
 
 <style scoped>
@@ -180,29 +196,7 @@ onMounted(() => {
   padding: 0 20px;
 }
 
-/* 动画序列 — 使用 transition 确保兼容性（避免 scoped CSS hash keyframes 问题） */
-
-/* 默认隐藏 stagger 元素 */
-.stagger-1, .stagger-2, .stagger-3, .stagger-4, .stagger-5 {
-  opacity: 0;
-  transform: translateY(40px);
-}
-
-/* heroReady 后通过 transition 依次入场 */
-.stagger-1 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
-.stagger-2 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s; }
-.stagger-3 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s; }
-.stagger-4 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s; }
-.stagger-5 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.85s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.85s; }
-
-.hero-ready .stagger-1,
-.hero-ready .stagger-2,
-.hero-ready .stagger-3,
-.hero-ready .stagger-4,
-.hero-ready .stagger-5 {
-  opacity: 1;
-  transform: translateY(0);
-}
+/* 动画现由 inline style 控制（hs() 函数），无需 CSS class */
 
 /* 状态标签 */
 .badge-wrapper { margin-bottom: 24px; }

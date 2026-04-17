@@ -2,7 +2,7 @@
   <section class="stats-section" ref="sectionRef">
     <div class="stats-bg-glow"></div>
     <div class="stats-container">
-      <div class="stats-header" :class="{ 'is-visible': isVisible }">
+      <div class="stats-header" :style="rs(isVisible, 'up')">
         <span class="section-eyebrow">平台数据</span>
         <h2 class="section-title">为校园而生的力量</h2>
       </div>
@@ -12,8 +12,7 @@
           v-for="(stat, index) in stats"
           :key="stat.label"
           class="stat-block"
-          :class="{ 'is-visible': isVisible }"
-          :style="{ transitionDelay: `${0.2 + index * 0.1}s` }"
+          :style="rs(isVisible, 'scale', 0.2 + index * 0.12)"
         >
           <div class="stat-number" :style="{ color: stat.color }">
             <SlotCounter
@@ -33,11 +32,10 @@
 </template>
 
 <script setup lang="ts">
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 import SlotCounter from '../../../components/SlotCounter.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.15 })
-void sectionRef  // 用于模板 ref 绑定
 
 // 平台亮点数据（目标数据/预期数据）
 const stats = [
@@ -109,14 +107,6 @@ const stats = [
 .stats-header {
   text-align: center;
   margin-bottom: 80px;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.stats-header.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .stats-grid {
@@ -131,23 +121,13 @@ const stats = [
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
-  opacity: 0;
-  transform: translateY(40px) scale(0.95);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              background 0.3s ease,
-              border-color 0.3s ease;
-}
-
-.stat-block.is-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 .stat-block:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.1);
-  transform: translateY(-4px);
+  transform: translateY(-4px) !important;
 }
 
 .stat-number {

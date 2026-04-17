@@ -2,7 +2,7 @@
   <section id="features" class="features-section" ref="sectionRef">
     <div class="features-container">
       <!-- Section 头部 -->
-      <div class="features-header" :class="{ 'is-visible': isVisible }">
+      <div class="features-header" :style="rs(isVisible, 'up')">
         <span class="section-eyebrow">核心功能</span>
         <h2 class="section-title">一站式校园智能平台</h2>
         <p class="section-subtitle">覆盖你校园生活的方方面面，从学习到社交，从日程到求职</p>
@@ -15,8 +15,7 @@
           :key="feature.title"
           :to="feature.to"
           class="feature-card"
-          :class="{ 'is-visible': isVisible }"
-          :style="{ transitionDelay: `${0.1 + index * 0.1}s` }"
+          :style="rs(isVisible, 'scale', 0.15 + index * 0.12)"
           @mousemove="handleSpotlight($event, index)"
           @mouseleave="resetSpotlight(index)"
         >
@@ -59,8 +58,7 @@
           :key="feature.title"
           :to="feature.to"
           class="feature-card-sm"
-          :class="{ 'is-visible': isVisible }"
-          :style="{ transitionDelay: `${0.4 + index * 0.08}s` }"
+          :style="rs(isVisible, index % 2 === 0 ? 'left' : 'right', 0.4 + index * 0.1)"
         >
           <div class="sm-icon" :style="{ background: feature.iconBg }">
             <span v-html="feature.svg"></span>
@@ -80,8 +78,7 @@
           :key="feature.title"
           :to="feature.to"
           class="feature-card-xs"
-          :class="{ 'is-visible': isVisible }"
-          :style="{ transitionDelay: `${0.7 + index * 0.08}s` }"
+          :style="rs(isVisible, 'up', 0.7 + index * 0.1)"
         >
           <div class="xs-icon" :style="{ background: feature.iconBg }">
             <span v-html="feature.svg"></span>
@@ -96,10 +93,9 @@
 
 <script setup lang="ts">
 import { reactive } from 'vue'
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.08 })
-void sectionRef  // 用于模板 ref 绑定
 
 // 追光效果状态
 const spotlightStyles = reactive<Record<number, Record<string, string>>>({})
@@ -184,14 +180,6 @@ const futureFeatures = [
 .features-header {
   text-align: center;
   margin-bottom: 72px;
-  opacity: 0;
-  transform: translateY(40px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.features-header.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* === 核心功能大卡片网格 === */
@@ -208,24 +196,14 @@ const futureFeatures = [
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 20px;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(40px) scale(0.96);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s ease,
-              border-color 0.3s ease;
-}
-.feature-card.is-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
 }
 .feature-card:hover {
-  transform: translateY(-8px) scale(1.01);
+  transform: translateY(-8px) scale(1.01) !important;
   box-shadow: 0 20px 48px rgba(0,0,0,0.4);
   border-color: rgba(139, 92, 246, 0.3);
   transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
               box-shadow 0.3s ease,
-              border-color 0.3s ease;
+              border-color 0.3s ease !important;
 }
 
 /* hover 发光效果 */
@@ -381,24 +359,14 @@ const futureFeatures = [
   display: flex;
   align-items: center;
   gap: 16px;
-  opacity: 0;
-  transform: translateX(-30px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s ease,
-              border-color 0.3s ease;
-}
-.feature-card-sm.is-visible {
-  opacity: 1;
-  transform: translateX(0);
 }
 .feature-card-sm:hover {
-  transform: translateY(-3px);
+  transform: translateY(-3px) !important;
   box-shadow: 0 12px 30px rgba(0,0,0,0.3);
   border-color: rgba(255,255,255,0.12);
   transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
               box-shadow 0.3s ease,
-              border-color 0.3s ease;
+              border-color 0.3s ease !important;
 }
 
 .sm-icon {
@@ -431,16 +399,8 @@ const futureFeatures = [
   display: flex;
   align-items: center;
   gap: 12px;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.feature-card-xs.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.feature-card-xs:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
+.feature-card-xs:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
 .xs-icon {
   width: 32px; height: 32px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;

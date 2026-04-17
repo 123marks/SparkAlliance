@@ -1,6 +1,6 @@
 <template>
   <section id="pricing" class="pricing-section" ref="sectionRef">
-    <div class="pricing-header" :class="{ 'is-visible': isVisible }">
+    <div class="pricing-header" :style="rs(isVisible, 'up')">
       <span class="eyebrow">会员计划</span>
       <h2 class="title">选择适合你的方案</h2>
       <p class="subtitle">基础功能永久免费，AI 调用需消耗额度，升级解锁无限 AI 与专属权益</p>
@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 import PricingToggle from './components/PricingToggle.vue'
 import PricingCard from './components/PricingCard.vue'
 import PricingComparison from './components/PricingComparison.vue'
@@ -51,7 +51,6 @@ import PricingFAQ from './components/PricingFAQ.vue'
 import TrustBadges from './components/TrustBadges.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
-void sectionRef  // 用于模板 ref 绑定
 const isAnnual = ref(true)
 
 // 定价数据
@@ -133,14 +132,6 @@ const annualPlan = {
 .pricing-header {
   text-align: center;
   margin-bottom: 48px;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.pricing-header.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .eyebrow {

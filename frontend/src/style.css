@@ -368,42 +368,8 @@ select:disabled {
   padding: var(--space-4);
 }
 
-/* ====== 入场兜底 ======
- * 如果 JS 完全失败（useRevealOnScroll 未运行），
- * 5s 后通过全局 transition-based 安全网确保内容可见。
- * 注意：不使用 animation（scoped CSS 会 hash keyframe 名称导致冲突）
+/* ====== 入场动画现由 inline style 控制（rs() 函数） ======
+ * 不再使用全局 @keyframes / animation 兜底。
+ * inline style 具有最高优先级，消除了 scoped CSS hash、
+ * animation vs transition 优先级等所有冲突场景。
  */
-@keyframes __safeReveal {
-  to { opacity: 1; transform: none; }
-}
-.landing-page .features-header,
-.landing-page .feature-card,
-.landing-page .feature-card-sm,
-.landing-page .feature-card-xs,
-.landing-page .stats-header,
-.landing-page .stat-block,
-.landing-page .showcase-header,
-.landing-page .showcase-body,
-.landing-page .roadmap-header,
-.landing-page .timeline-item,
-.landing-page .testimonials-section .header,
-.landing-page .pricing-header,
-.landing-page .cta-container {
-  animation: __safeReveal 0s forwards 5s;
-}
-/* is-visible 生效后取消兜底 */
-.landing-page .features-header.is-visible,
-.landing-page .feature-card.is-visible,
-.landing-page .feature-card-sm.is-visible,
-.landing-page .feature-card-xs.is-visible,
-.landing-page .stats-header.is-visible,
-.landing-page .stat-block.is-visible,
-.landing-page .showcase-header.is-visible,
-.landing-page .showcase-body.is-visible,
-.landing-page .roadmap-header.is-visible,
-.landing-page .timeline-item.is-visible,
-.landing-page .testimonials-section .header.is-visible,
-.landing-page .pricing-header.is-visible,
-.landing-page .cta-container.is-visible {
-  animation: none;
-}

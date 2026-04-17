@@ -1,6 +1,6 @@
 <template>
   <section class="testimonials-section" ref="sectionRef">
-    <div class="header" :class="{ 'is-visible': isVisible }">
+    <div class="header" :style="rs(isVisible, 'up')">
       <span class="section-eyebrow">用户好评</span>
       <h2 class="section-title">听到他们的声音</h2>
       <p class="section-subtitle" style="margin: 0 auto">来自全国各大高校学生的真实反馈</p>
@@ -120,7 +120,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.08 })
 
@@ -215,14 +215,6 @@ const row2 = computed(() => testimonials.filter((_, i) => i % 2 === 1))
   text-align: center;
   margin-bottom: 64px;
   padding: 0 40px;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.header.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* 跑马灯容器 */

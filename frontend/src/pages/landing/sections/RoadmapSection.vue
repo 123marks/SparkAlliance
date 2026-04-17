@@ -1,7 +1,7 @@
 <template>
   <section class="roadmap-section" ref="sectionRef">
     <div class="roadmap-container">
-      <div class="roadmap-header" :class="{ 'is-visible': isVisible }">
+      <div class="roadmap-header" :style="rs(isVisible, 'up')">
         <span class="section-eyebrow">产品路线图</span>
         <h2 class="section-title">持续进化，不止于此</h2>
         <p class="section-subtitle" style="margin: 0 auto;">每一步都在为你的校园生活创造更大可能</p>
@@ -15,8 +15,8 @@
           v-for="(phase, index) in phases"
           :key="phase.title"
           class="timeline-item"
-          :class="{ 'is-visible': isVisible, active: phase.active }"
-          :style="{ transitionDelay: `${0.3 + index * 0.15}s` }"
+          :class="{ active: phase.active }"
+          :style="rs(isVisible, index % 2 === 0 ? 'up' : 'down', 0.3 + index * 0.15)"
         >
           <div class="timeline-dot" :class="{ active: phase.active }">
             <span v-if="phase.active" class="dot-pulse"></span>
@@ -36,10 +36,9 @@
 </template>
 
 <script setup lang="ts">
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.12 })
-void sectionRef  // 用于模板 ref 绑定
 
 const phases = [
   {
@@ -92,14 +91,6 @@ const phases = [
 .roadmap-header {
   text-align: center;
   margin-bottom: 80px;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.roadmap-header.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* 时间线整体 */
@@ -126,14 +117,6 @@ const phases = [
   display: flex;
   flex-direction: column;
   align-items: center;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.timeline-item.is-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .timeline-dot {

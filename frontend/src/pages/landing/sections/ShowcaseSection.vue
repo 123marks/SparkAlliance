@@ -2,14 +2,14 @@
   <section class="showcase-section" ref="sectionRef">
     <div class="container">
       <!-- 头部 -->
-      <div class="showcase-header" :class="{ 'is-visible': isVisible }">
+      <div class="showcase-header" :style="rs(isVisible, 'up')">
         <span class="eyebrow">产品体验</span>
         <h2 class="title">看见真实的星火联盟</h2>
         <p class="subtitle">每一个模块都经过精心打磨，点击左侧功能切换，右侧实时预览</p>
       </div>
 
       <!-- 左右分栏主体 -->
-      <div class="showcase-body" :class="{ 'is-visible': isVisible }">
+      <div class="showcase-body" :style="rs(isVisible, 'up', 0.15, 0.9)">
         <!-- 左侧：功能选择器 -->
         <div class="feature-selector">
           <div
@@ -134,10 +134,9 @@
 
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
-void sectionRef  // 用于模板 ref 绑定
 const activeIdx = ref(0)
 const autoPlayDuration = 6000
 let autoTimer: ReturnType<typeof setInterval> | null = null
@@ -230,15 +229,13 @@ onBeforeUnmount(() => {
 .showcase-section { padding: 120px 40px; background-color: transparent; position: relative; }
 .container { max-width: 1280px; margin: 0 auto; }
 
-.showcase-header { text-align: center; margin-bottom: 64px; opacity: 0; transform: translateY(40px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
-.showcase-header.is-visible { opacity: 1; transform: translateY(0); }
+.showcase-header { text-align: center; margin-bottom: 64px; }
 .eyebrow { color: var(--color-brand-orange); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; display: block; }
 .title { font-size: 40px; font-weight: 800; color: white; margin-bottom: 16px; }
 .subtitle { color: var(--color-text-secondary); font-size: 18px; max-width: 600px; margin: 0 auto; }
 
 /* 主体布局 */
-.showcase-body { display: grid; grid-template-columns: 340px 1fr; gap: 32px; opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s; }
-.showcase-body.is-visible { opacity: 1; transform: translateY(0); }
+.showcase-body { display: grid; grid-template-columns: 340px 1fr; gap: 32px; }
 
 /* 左侧选择器 */
 .feature-selector { display: flex; flex-direction: column; gap: 8px; }

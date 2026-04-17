@@ -1,6 +1,6 @@
 <template>
   <section class="cta-section" ref="sectionRef">
-    <div class="cta-container" :class="{ 'is-visible': isVisible }">
+    <div class="cta-container" :style="rs(isVisible, 'scale', 0, 0.9)">
       <!-- 背景装饰 -->
       <div class="glow-bg"></div>
       <div class="grid-pattern"></div>
@@ -54,10 +54,9 @@
 </template>
 
 <script setup lang="ts">
-import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.12 })
-void sectionRef  // 用于模板 ref 绑定
 
 const avatarColors = [
   'linear-gradient(135deg, #4f8ef7, #8b5cf6)',
@@ -87,14 +86,6 @@ const avatarInitials = ['李', '王', '张', '赵']
   text-align: center;
   position: relative;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(30px) scale(0.97);
-  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.cta-container.is-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
 }
 
 .glow-bg {
