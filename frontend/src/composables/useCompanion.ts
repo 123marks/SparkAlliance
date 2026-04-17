@@ -22,7 +22,7 @@ import { ref, computed } from 'vue'
 import { requestAssistantChat } from '../utils/assistantApi'
 import { supabase } from '../supabase'
 import { companionChat } from '../utils/localAI'
-import { loadPersist, savePersist } from '../utils/persist'
+import { loadPersist, savePersist, subscribePersist } from '../utils/persist'
 
 // ============ 类型定义 ============
 
@@ -80,7 +80,8 @@ export interface FriendTag {
   name: string
   color: string          // 标签颜色
   members: string[]      // 好友spark_id列表
-  priority: number       // 优先级权重
+  priority: number       // 标签本身的显示权重（越大越靠前）
+  member_priorities?: Record<string, number>  // v7.3: 标签内成员的优先级 (spark_id -> 权重, 越大越靠前)
   created_at: string
 }
 
@@ -358,7 +359,17 @@ function createCompatProfile(data: {
   }
 }
 
+// v7.3: 模块级单例，确保所有组件（如 FriendTagManager、Companion.vue）共享同一份响应式状态
+let _companionInstance: ReturnType<typeof createCompanion> | null = null
+
 export function useCompanion() {
+  if (!_companionInstance) {
+    _companionInstance = createCompanion()
+  }
+  return _companionInstance
+}
+
+function createCompanion() {
   const myProfile = ref<SparkProfile | null>(null)
   const friends = ref<Friend[]>([])
   const friendRequests = ref<FriendRequest[]>([])
@@ -516,6 +527,48 @@ export function useCompanion() {
     }
 
     hydrateCompatibilityState()
+  }
+
+  // ------ 订阅远端 full-sync 回写：当 persistSync 把云端新数据写入本地时自动刷新 refs ------
+  function subscribeRemoteUpdates() {
+    subscribePersist<SparkProfile | null>(STORAGE_KEYS.profile, (v) => {
+      if (!v) return
+      myProfile.value = v
+      hydrateCompatibilityState()
+    })
+    subscribePersist<Friend[]>(STORAGE_KEYS.friends, (v) => {
+      if (Array.isArray(v)) { friends.value = v; hydrateCompatibilityState() }
+    })
+    subscribePersist<FriendRequest[]>(STORAGE_KEYS.requests, (v) => {
+      if (Array.isArray(v)) { friendRequests.value = v; hydrateCompatibilityState() }
+    })
+    subscribePersist<GroupChat[]>(STORAGE_KEYS.groups, (v) => {
+      if (Array.isArray(v)) groups.value = v
+    })
+    subscribePersist<Moment[]>(STORAGE_KEYS.moments, (v) => {
+      if (Array.isArray(v)) { moments.value = v; hydrateCompatibilityState() }
+    })
+    subscribePersist<Favorite[]>(STORAGE_KEYS.favorites, (v) => {
+      if (Array.isArray(v)) favorites.value = v
+    })
+    subscribePersist<ChatMsg[]>(STORAGE_KEYS.aiChat, (v) => {
+      if (Array.isArray(v)) aiChatHistory.value = v
+    })
+    subscribePersist<FriendTag[]>(STORAGE_KEYS.tags, (v) => {
+      if (Array.isArray(v)) friendTags.value = v
+    })
+    subscribePersist<string[]>(STORAGE_KEYS.blacklist, (v) => {
+      if (Array.isArray(v)) blacklist.value = v
+    })
+    subscribePersist<Record<string, FriendPermissions>>(STORAGE_KEYS.friendPermissions, (v) => {
+      if (v && typeof v === 'object') friendPermissions.value = v
+    })
+    subscribePersist<Record<string, ChatMsg[]>>(STORAGE_KEYS.privateChats, (v) => {
+      if (v && typeof v === 'object') {
+        _privateChatCache = v
+        _privateChatDirty = false
+      }
+    })
   }
 
   // ------ 档案管理 ------
@@ -1248,7 +1301,10 @@ export function useCompanion() {
   ): Promise<string> {
     const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-    // 1) 本地 Gemma 4B（首选）
+    // 记录最后一次具体错误，便于 sendToAI/retryLastAI 给出准确提示
+    let lastConcreteError = ''
+
+    // 1) 本地 Gemma 4B（首选）- 通过 sparkAI → Edge Function 或 Ollama
     try {
       const content = await companionChat(messages.slice(-20), extraSystem)
       if (content) {
@@ -1256,10 +1312,17 @@ export function useCompanion() {
         return content
       }
     } catch (localErr) {
-      console.warn(`[Companion AI] 本地 Gemma 失败 (attempt ${attempt + 1}):`, localErr instanceof Error ? localErr.message : localErr)
+      const msg = localErr instanceof Error ? localErr.message : String(localErr)
+      lastConcreteError = msg
+      console.warn(`[Companion AI] Gemma 调用失败 (attempt ${attempt + 1}):`, msg)
+      // 未登录/认证失败：直接抛出，不必再重试
+      if (msg === '请先登录后再使用 AI 助手' || msg === '认证失败，请重新登录') {
+        lastAiError.value = msg
+        throw new Error(msg)
+      }
     }
 
-    // 2) Edge Function 回退
+    // 2) Edge Function 回退（assistant-chat）
     try {
       const scopedMessages = extraSystem
         ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
@@ -1275,8 +1338,12 @@ export function useCompanion() {
       }
     } catch (edgeErr) {
       const msg = edgeErr instanceof Error ? edgeErr.message : String(edgeErr)
-      console.warn(`[Companion AI] Edge Function 失败:`, msg)
-      if (msg === '请先登录后再使用 AI 助手') throw edgeErr
+      lastConcreteError = msg
+      console.warn(`[Companion AI] assistant-chat 失败:`, msg)
+      if (msg === '请先登录后再使用 AI 助手') {
+        lastAiError.value = msg
+        throw edgeErr
+      }
     }
 
     // 3) 自动重试（指数退避）
@@ -1288,8 +1355,9 @@ export function useCompanion() {
       return callAIWithRetry(messages, extraSystem, attempt + 1)
     }
 
-    lastAiError.value = 'AI_UNREACHABLE'
-    throw new Error('AI_UNREACHABLE')
+    // 保留具体错误原因，供上层 catch 生成更准确的用户提示
+    lastAiError.value = lastConcreteError || 'AI_UNREACHABLE'
+    throw new Error(lastConcreteError || 'AI_UNREACHABLE')
   }
 
   async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
@@ -1330,16 +1398,7 @@ export function useCompanion() {
       return reply
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err)
-      let friendlyText: string
-      if (raw === 'AI_UNREACHABLE') {
-        friendlyText = '暂时无法连接 AI 服务，可能是网络波动，请稍后点击重试 💫'
-      } else if (raw === '请先登录后再使用 AI 助手') {
-        friendlyText = '请先登录账号，登录后即可和我畅聊 🔐'
-      } else if (raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
-        friendlyText = '网络连接异常，请检查网络后重试 📡'
-      } else {
-        friendlyText = `服务暂时开小差了：${raw.slice(0, 60)} 🛠️`
-      }
+      const friendlyText = buildAiErrorMessage(raw)
       const errorMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
         sender_type: 'ai', content: friendlyText, type: 'text', is_read: true, created_at: now(),
@@ -1351,6 +1410,29 @@ export function useCompanion() {
       isAiTyping.value = false
       aiTypingText.value = ''
     }
+  }
+
+  /** 把底层错误消息转成给用户看的友好提示（给出具体原因而不是笼统"无法连接"） */
+  function buildAiErrorMessage(raw: string): string {
+    if (!raw) return '暂时无法连接 AI 服务，请稍后重试 💫'
+    if (raw === '请先登录后再使用 AI 助手') return '请先登录账号，登录后即可和我畅聊 🔐'
+    if (raw === '认证失败，请重新登录' || raw.includes('认证失败')) return '登录状态已过期，请重新登录 🔐'
+    if (raw.includes('AI 服务密钥未配置') || raw.includes('后端未配置 AI 模型密钥')) {
+      return '后端尚未配置 AI 服务密钥（NVIDIA_API_KEY），请联系管理员或稍后重试 🔧'
+    }
+    if (raw.includes('服务端') && raw.includes('配置缺失')) {
+      return '后端服务配置缺失，请联系管理员 🔧'
+    }
+    if (raw.includes('AI 服务暂时不可用')) return `AI 上游服务繁忙，正在恢复中… 🛠️\n(${raw.slice(0, 120)})`
+    if (raw.includes('Edge Function 错误')) return `云端服务异常（${raw.slice(-20)}），请稍后重试 🔧`
+    if (raw === 'AbortError' || raw.includes('aborted') || raw.includes('timeout')) {
+      return '请求超时了，AI 思考时间太长，请稍后再试 ⏱️'
+    }
+    if (raw.includes('Failed to fetch') || raw.includes('NetworkError') || raw.includes('ERR_NETWORK')) {
+      return '网络连接异常，请检查网络后重试 📡'
+    }
+    if (raw === 'AI_UNREACHABLE') return '暂时无法连接 AI 服务，可能是网络波动，请稍后点击重试 💫'
+    return `服务暂时开小差了：${raw.slice(0, 80)} 🛠️`
   }
 
   /** 重新发送最后一条用户消息（重试） */
@@ -1385,9 +1467,7 @@ export function useCompanion() {
       return reply
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err)
-      const friendlyText = raw === 'AI_UNREACHABLE'
-        ? '仍然无法连接，请稍后再试 💫'
-        : `重试失败：${raw.slice(0, 60)}`
+      const friendlyText = buildAiErrorMessage(raw)
       const errorMsg: ChatMsg = {
         id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI伴侣', sender_avatar: '🌟',
         sender_type: 'ai', content: friendlyText, type: 'text', is_read: true, created_at: now(),
@@ -1451,9 +1531,45 @@ export function useCompanion() {
     }
   }
 
-  function setMemberPriority(tagId: string, _friendId: string, priority: number) {
+  function setMemberPriority(tagId: string, friendId: string, priority: number) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (!tag) return
+    if (!tag.member_priorities) tag.member_priorities = {}
+    tag.member_priorities[friendId] = priority
+    saveData(STORAGE_KEYS.tags, friendTags.value)
+  }
+
+  /** 获取标签内某成员的优先级（无则返回 0） */
+  function getMemberPriority(tagId: string, friendId: string): number {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    return tag?.member_priorities?.[friendId] ?? 0
+  }
+
+  /** 设置标签本身的显示权重 */
+  function setTagPriority(tagId: string, priority: number) {
     const tag = friendTags.value.find(t => t.id === tagId)
     if (tag) { tag.priority = priority; saveData(STORAGE_KEYS.tags, friendTags.value) }
+  }
+
+  /** 更改标签颜色 */
+  function setTagColor(tagId: string, color: string) {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (tag) { tag.color = color; saveData(STORAGE_KEYS.tags, friendTags.value) }
+  }
+
+  /** 获取标签成员列表（按优先级降序 + 首字母升序） */
+  function getTagMembers(tagId: string): Friend[] {
+    const tag = friendTags.value.find(t => t.id === tagId)
+    if (!tag) return []
+    const list = friends.value.filter(f => tag.members.includes(f.spark_id))
+    return [...list].sort((a, b) => {
+      const pa = tag.member_priorities?.[a.spark_id] ?? 0
+      const pb = tag.member_priorities?.[b.spark_id] ?? 0
+      if (pb !== pa) return pb - pa
+      const na = (a.remark || a.nickname || '').toLowerCase()
+      const nb = (b.remark || b.nickname || '').toLowerCase()
+      return na.localeCompare(nb, 'zh-CN')
+    })
   }
 
   function getTagsForFriend(friendId: string): FriendTag[] {
@@ -1805,6 +1921,7 @@ export function useCompanion() {
   }
 
   init()
+  subscribeRemoteUpdates()
   // 初始化后同步头像
   setTimeout(() => syncMyGroupAvatars(), 500)
 
@@ -1821,7 +1938,8 @@ export function useCompanion() {
     searchUser, searchBySparkId, sendFriendRequest, addFriend, addFriendByQR, removeFriend, setFriendRemark,
     // 好友管理(星标/标签/拉黑/权限)
     toggleStarFriend, updateFriendRemark,
-    createTag, renameTag, deleteTag, addMemberToTag, removeMemberFromTag, setMemberPriority, getTagsForFriend,
+    createTag, renameTag, deleteTag, addMemberToTag, removeMemberFromTag,
+    setMemberPriority, getMemberPriority, setTagPriority, setTagColor, getTagMembers, getTagsForFriend,
     blockFriend, unblockFriend, isBlocked,
     updateFriendPermissions, getFriendPermissions,
     // 私聊

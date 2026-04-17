@@ -374,3 +374,27 @@ select:disabled {
 .compact-mode .bento-card {
   padding: var(--space-4);
 }
+
+/* ====== 入场动画硬兜底 ======
+ * 即使 useRevealOnScroll / IntersectionObserver / Vue transition 全部出错，
+ * 2.2 秒后强制将所有 landing section 的入场元素显示到最终状态，
+ * 杜绝"中段白屏"永久出现。
+ */
+@keyframes __revealForce {
+  to { opacity: 1; transform: none; }
+}
+.landing-page .features-header,
+.landing-page .feature-card,
+.landing-page .feature-card-sm,
+.landing-page .feature-card-xs,
+.landing-page .stats-header,
+.landing-page .stat-block,
+.landing-page .showcase-header,
+.landing-page .showcase-body,
+.landing-page .roadmap-header,
+.landing-page .timeline-item,
+.landing-page .testimonials-section .header,
+.landing-page .pricing-header,
+.landing-page .cta-container {
+  animation: __revealForce 0.01s linear 2.2s forwards;
+}

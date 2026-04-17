@@ -105,6 +105,13 @@
             <div class="cp-contact-info"><span class="cp-contact-name">{{ g.name }}</span><span class="cp-contact-id">{{ g.members.length }}人</span></div>
           </div>
         </template>
+        <!-- 好友标签组管理入口 -->
+        <div class="cp-contact-group" @click="showTagManager=true">
+          <span class="cp-cg-icon" style="background:linear-gradient(135deg,#8b5cf6,#6366f1)">🏷️</span>
+          <span class="cp-cg-text">标签组</span>
+          <span class="cp-cg-count">{{ friendTags.length }}</span>
+          <span class="cp-cg-arrow">›</span>
+        </div>
         <div class="cp-contact-group" @click="contactGroupExpand.friends=!contactGroupExpand.friends"><span class="cp-cg-icon fri">📖</span><span class="cp-cg-text">联系人</span><span class="cp-cg-count">{{ friends.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.friends}">›</span></div>
         <template v-if="contactGroupExpand.friends">
           <div v-for="f in friends" :key="f.id" class="cp-contact" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="selectContact(f)">
@@ -644,19 +651,55 @@
               </div>
             </div>
           </Transition>
-          <!-- 置顶横栏 -->
-          <div v-if="pinnedMoments.length" class="cp-pinned-bar">
-            <div class="cp-pinned-scroll">
-              <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="handlePinnedClick(m.author_id)">
-                <div class="cp-pinned-thumb-wrap">
-                  <img v-if="m.media_urls?.[0] && !isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" />
-                  <div v-else class="cp-pinned-thumb-placeholder">📌</div>
-                  <SparkAvatar class="cp-pinned-avatar" :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="xs" />
+          <!-- 置顶横栏 v8 参考微信：左标签 + 左/右箭头 + 边缘渐变蒙版 + 鼠标拖拽 + 滑动进度 -->
+          <div v-if="pinnedMoments.length" class="cp-pinned-bar-wrap">
+            <div class="cp-pinned-label">
+              <span class="cp-pinned-label-icon">📌</span>
+              <span class="cp-pinned-label-text">置顶</span>
+              <span class="cp-pinned-label-count">{{ pinnedMoments.length }}</span>
+            </div>
+            <div class="cp-pinned-scroll-wrap">
+              <button
+                v-show="pinnedHasPrev"
+                class="cp-pinned-arrow prev"
+                title="向前"
+                @click="scrollPinnedPrev"
+                aria-label="向左滑动"
+              >‹</button>
+              <div class="cp-pinned-fade left" :class="{active:pinnedHasPrev}"></div>
+              <div class="cp-pinned-fade right" :class="{active:pinnedHasMore}"></div>
+              <div
+                class="cp-pinned-scroll"
+                ref="pinnedScrollRef"
+                @scroll="handlePinnedScroll"
+                @pointerdown="onPinnedPointerDown"
+                @pointermove="onPinnedPointerMove"
+                @pointerup="onPinnedPointerUp"
+                @pointercancel="onPinnedPointerUp"
+                @pointerleave="onPinnedPointerUp"
+              >
+                <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="handlePinnedClick(m.author_id)">
+                  <div class="cp-pinned-thumb-wrap">
+                    <img v-if="m.media_urls?.[0] && !isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" draggable="false" />
+                    <div v-else class="cp-pinned-thumb-placeholder">📌</div>
+                    <SparkAvatar class="cp-pinned-avatar" :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="xs" />
+                  </div>
+                  <div class="cp-pinned-body">
+                    <b>{{ resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name }}</b>
+                    <p>{{ m.content?.slice(0, 36) || '查看动态' }}</p>
+                  </div>
                 </div>
-                <div class="cp-pinned-body">
-                  <b>{{ resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name }}</b>
-                  <p>{{ m.content?.slice(0, 36) || '查看动态' }}</p>
-                </div>
+              </div>
+              <button
+                v-show="pinnedHasMore"
+                class="cp-pinned-arrow next"
+                title="向后"
+                @click="scrollPinnedNext"
+                aria-label="向右滑动"
+              >›</button>
+              <!-- 滑动进度条（只在有溢出内容时展示） -->
+              <div v-if="pinnedHasMore || pinnedHasPrev" class="cp-pinned-progress">
+                <div class="cp-pinned-progress-bar" :style="{transform:`scaleX(${Math.max(0.08, pinnedProgress)})`}"></div>
               </div>
             </div>
           </div>
@@ -1103,6 +1146,9 @@
       @action="handleProfileAction"
       @update-remark="handleProfileRemarkUpdate"
     />
+
+    <!-- 好友标签组管理 -->
+    <FriendTagManager :visible="showTagManager" @close="showTagManager=false" />
   </div>
 </template>
 
@@ -1111,6 +1157,7 @@ import { ref, computed, nextTick, watch, reactive, onMounted, onUnmounted } from
 import { useCompanion, formatTimeAgo, formatMsgTime as formatMsgTimeUtil, shouldShowTimeSeparator, type Friend, type ChatMsg, type GroupChat } from '../../composables/useCompanion'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
+import FriendTagManager from '../../components/companion/FriendTagManager.vue'
 import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
 
@@ -1130,6 +1177,90 @@ const {
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
 
 const sideTab = ref<'chat'|'contacts'|'moments'>('chat')
+const showTagManager = ref(false)
+
+// v7.3 → v8: 置顶横滑——参考微信：左右箭头、边缘渐变、鼠标拖拽、滑动进度
+const pinnedScrollRef = ref<HTMLElement | null>(null)
+const pinnedHasMore = ref(false)     // 是否可向右滚
+const pinnedHasPrev = ref(false)     // 是否可向左滚
+const pinnedProgress = ref(0)        // 滑动进度 0-1（用于微型进度条）
+
+function handlePinnedScroll() {
+  const el = pinnedScrollRef.value
+  if (!el) return
+  const maxScroll = Math.max(1, el.scrollWidth - el.clientWidth)
+  pinnedHasMore.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4
+  pinnedHasPrev.value = el.scrollLeft > 4
+  pinnedProgress.value = Math.min(1, Math.max(0, el.scrollLeft / maxScroll))
+}
+
+function scrollPinnedNext() {
+  const el = pinnedScrollRef.value
+  if (!el) return
+  const step = Math.max(160, el.clientWidth * 0.7)
+  el.scrollTo({ left: el.scrollLeft + step, behavior: 'smooth' })
+}
+function scrollPinnedPrev() {
+  const el = pinnedScrollRef.value
+  if (!el) return
+  const step = Math.max(160, el.clientWidth * 0.7)
+  el.scrollTo({ left: Math.max(0, el.scrollLeft - step), behavior: 'smooth' })
+}
+
+// v8: 鼠标按住拖动（PC）。触摸端由原生 overflow 自带惯性
+let _pinnedDragState: { active: boolean; startX: number; startLeft: number; moved: boolean; pointerId: number } | null = null
+function onPinnedPointerDown(e: PointerEvent) {
+  const el = pinnedScrollRef.value
+  if (!el) return
+  // 忽略触摸/笔——让原生滚动接管（更好的手感）
+  if (e.pointerType !== 'mouse') return
+  _pinnedDragState = {
+    active: true,
+    startX: e.clientX,
+    startLeft: el.scrollLeft,
+    moved: false,
+    pointerId: e.pointerId,
+  }
+  el.setPointerCapture?.(e.pointerId)
+  el.classList.add('dragging')
+}
+function onPinnedPointerMove(e: PointerEvent) {
+  const st = _pinnedDragState
+  if (!st || !st.active) return
+  const el = pinnedScrollRef.value
+  if (!el) return
+  const dx = e.clientX - st.startX
+  if (Math.abs(dx) > 3) st.moved = true
+  el.scrollLeft = st.startLeft - dx
+}
+function onPinnedPointerUp(e: PointerEvent) {
+  const st = _pinnedDragState
+  const el = pinnedScrollRef.value
+  if (st && el) {
+    el.releasePointerCapture?.(st.pointerId)
+    el.classList.remove('dragging')
+  }
+  _pinnedDragState = null
+  // 若发生过拖动，吞掉后续的 click，防止误触卡片
+  if (st?.moved) {
+    e.preventDefault()
+    e.stopPropagation()
+    const stopClickOnce = (ev: Event) => { ev.stopPropagation(); ev.preventDefault() }
+    window.addEventListener('click', stopClickOnce, { capture: true, once: true })
+  }
+}
+
+// 数据或容器尺寸变化后重新计算状态
+watch(() => {
+  const list = (moments.value || []).filter(m => m.is_pinned)
+  return list.length
+}, () => {
+  nextTick(() => {
+    const el = pinnedScrollRef.value
+    if (!el) { pinnedHasMore.value = false; pinnedHasPrev.value = false; pinnedProgress.value = 0; return }
+    handlePinnedScroll()
+  })
+}, { immediate: true })
 const rightPanel = ref<'none'|'chat'|'contact'>('none')
 const activeChat = ref<{id:string;type:'private'|'group'|'ai'}|null>(null)
 const selectedContact = ref<Friend|null>(null)
@@ -1619,17 +1750,39 @@ function handleMultiDelete() {
   selectedMsgIds.value = []
 }
 
-// ===== 翻译功能（v6.6 Google翻译） =====
+// ===== 翻译功能（v7.3: 优先 AI 翻译，Google 翻译降级兜底） =====
 async function translateMessage(msg: ChatMsg) {
   if (translatedMessages[msg.id]) {
     delete translatedMessages[msg.id]
     return
   }
   showToast('正在翻译...')
+  const sourceLang = detectLanguage(msg.content)
+  const targetLang = sourceLang === 'zh' ? 'en' : 'zh-CN'
+  const text = msg.content.slice(0, 1200)
+
+  // 1) 优先 AI 翻译（Gemma 3 27B, 通过 Edge Function），质量更高、更稳定
   try {
-    const sourceLang = detectLanguage(msg.content)
-    const targetLang = sourceLang === 'zh' ? 'en' : 'zh-CN'
-    const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(msg.content.slice(0,1000))}`)
+    const { sparkAI } = await import('../../utils/localAI')
+    const prompt = targetLang === 'en'
+      ? `Translate the following Chinese text to natural, fluent English. Preserve proper nouns and tone. Only output the translation, no explanation.\n\nText: ${text}`
+      : `请把下面的文本翻译成自然、地道的中文（简体）。保留专有名词和原意，只输出译文，不要任何解释说明。\n\n文本：${text}`
+    const aiResult = await sparkAI('general', [{ role: 'user', content: prompt }], {
+      temperature: 0.3,
+      maxTokens: 800,
+    })
+    const cleaned = (aiResult || '').trim().replace(/^"|"$/g, '')
+    if (cleaned) {
+      translatedMessages[msg.id] = cleaned
+      return
+    }
+  } catch (err) {
+    console.warn('[translate] AI 翻译失败，降级到 Google：', err instanceof Error ? err.message : err)
+  }
+
+  // 2) Google 翻译降级兜底
+  try {
+    const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`)
     const data = await res.json()
     if (data?.[0]) {
       const translated = data[0].map((s: any) => s[0]).join('')
@@ -1644,6 +1797,49 @@ async function translateMessage(msg: ChatMsg) {
 function detectLanguage(text: string): string {
   const zhCount = (text.match(/[\u4e00-\u9fff]/g) || []).length
   return zhCount > text.length * 0.3 ? 'zh' : 'en'
+}
+
+/**
+ * 对 Web Speech API 的原始识别结果做 AI 后处理：
+ * - 加标点（中文语音识别默认不带标点）
+ * - 纠正同音错字（"在"/"再"、"的"/"得"/"地" 等）
+ * - 修剪明显的口癖（嗯、啊）
+ * 失败时 fallback 为原文，不影响用户已经看到的文字。
+ */
+async function polishTranscript(raw: string): Promise<string> {
+  const text = (raw || '').trim()
+  if (!text || text.length < 4) return text
+  // 避免重复请求：缓存最近 20 条
+  const cache = polishTranscript as unknown as { _c?: Map<string, string> }
+  if (!cache._c) cache._c = new Map()
+  if (cache._c.has(text)) return cache._c.get(text)!
+  try {
+    const { sparkAI } = await import('../../utils/localAI')
+    const prompt = `你是中文语音转写润色助手。下面一段文本来自语音识别，可能没有标点、存在同音错字或重复口癖。请：
+1. 添加合适的标点（句号、逗号、问号、感叹号）
+2. 纠正明显的同音错字（如"在" vs "再"、"得" vs "的" vs "地"）
+3. 去除无意义的语气词/重复（如"呃"、"啊"、"那个那个"）
+4. 保持原意、原口吻，不要添加新内容，不要解释
+5. 只输出润色后的文本本身，不加任何前缀后缀
+
+原文：${text}`
+    const polished = await sparkAI('general', [{ role: 'user', content: prompt }], {
+      temperature: 0.2,
+      maxTokens: Math.min(400, text.length * 3 + 40),
+    })
+    const out = (polished || '').trim().replace(/^["'「」『』]|["'「」『』]$/g, '')
+    if (!out || out.length > text.length * 2.5) return text // 异常输出兜底
+    cache._c.set(text, out)
+    // 控制缓存大小
+    if (cache._c.size > 50) {
+      const firstKey = cache._c.keys().next().value
+      if (firstKey !== undefined) cache._c.delete(firstKey)
+    }
+    return out
+  } catch (err) {
+    console.warn('[polishTranscript] AI 润色失败，使用原文:', err instanceof Error ? err.message : err)
+    return text
+  }
 }
 
 // ===== 语音消息功能（v6.8完全重写） =====
@@ -1724,17 +1920,23 @@ function startParallelRecognition() {
     parallelRecognition.lang = 'zh-CN'
     parallelRecognition.continuous = true        // 持续识别
     parallelRecognition.interimResults = true     // 中间结果
-    parallelRecognition.maxAlternatives = 1
+    // v7.3: 多候选取最高置信度，提升准确率
+    parallelRecognition.maxAlternatives = 3
 
     parallelRecognition.onresult = (event: any) => {
       let finalText = ''
       let interimText = ''
       for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalText += event.results[i][0].transcript
-        } else {
-          interimText += event.results[i][0].transcript
+        const result = event.results[i]
+        // v7.3: 在所有候选中选择置信度最高的
+        let bestAlt = result[0]
+        for (let j = 1; j < result.length; j++) {
+          if (result[j] && (result[j].confidence ?? 0) > (bestAlt.confidence ?? 0)) {
+            bestAlt = result[j]
+          }
         }
+        if (result.isFinal) finalText += bestAlt.transcript
+        else interimText += bestAlt.transcript
       }
       // v7.0修复：同时保留final和interim，确保短录音也能拿到结果
       collectedTranscript = finalText || interimText
@@ -1800,7 +2002,7 @@ function stopRecording() {
   mediaRecorder.stop()
 }
 
-// 完成录音 → 进入转文字流程（v7.0: 延迟等待最后识别结果）
+// 完成录音 → 进入转文字流程（v7.3: 延迟等待 + AI 润色纠错）
 function stopAndConvertToText() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
   mediaRecorder.onstop = () => {
@@ -1809,14 +2011,28 @@ function stopAndConvertToText() {
     mediaRecorder!.stream.getTracks().forEach(t => t.stop())
     isRecording.value = false
     if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-    // v7.0: 延迟600ms收集最终结果（给识别引擎时间处理最后片段）
-    setTimeout(() => {
-      const finalText = collectedTranscript || realtimeTranscript.value
+    // v7.0: 延迟800ms收集最终结果（给识别引擎时间处理最后片段）
+    setTimeout(async () => {
+      const rawText = collectedTranscript || realtimeTranscript.value
       stopParallelRecognition()
       voiceShowTextPreview.value = true
-      voiceTextConverting.value = false
-      voiceTextPreview.value = finalText || '(未识别到语音内容，请确保：\n1. 说话时靠近麦克风\n2. 使用Chrome/Edge浏览器\n3. 已授权麦克风权限)'
-    }, 600)
+
+      if (!rawText) {
+        voiceTextConverting.value = false
+        voiceTextPreview.value = '(未识别到语音内容，请确保：\n1. 说话时靠近麦克风\n2. 使用Chrome/Edge浏览器\n3. 已授权麦克风权限)'
+        return
+      }
+
+      // v7.3 → v8: 先把原始识别结果展示出来，再异步通过共享 polishTranscript 做 AI 纠错
+      voiceTextPreview.value = rawText
+      voiceTextConverting.value = true
+      try {
+        const polished = await polishTranscript(rawText)
+        if (polished && polished !== rawText) voiceTextPreview.value = polished
+      } finally {
+        voiceTextConverting.value = false
+      }
+    }, 800)
   }
   mediaRecorder.stop()
 }
@@ -1900,8 +2116,9 @@ function playVoice(msg: ChatMsg) {
   }
 }
 
-// 已发送的语音消息→转文字（打字机效果过渡）
+// 已发送的语音消息→转文字（打字机效果过渡 + v7.3 AI 润色纠错）
 const _voiceTypewriterTimers: Record<string, number> = {}
+const _voicePolishCache: Record<string, string> = {}
 async function convertVoiceToText(msg: ChatMsg) {
   if (voiceConvertedTexts[msg.id]) {
     if (_voiceTypewriterTimers[msg.id]) { clearInterval(_voiceTypewriterTimers[msg.id]); delete _voiceTypewriterTimers[msg.id] }
@@ -1910,10 +2127,28 @@ async function convertVoiceToText(msg: ChatMsg) {
   }
   voiceConverting[msg.id] = true
 
-  const fullText = (msg as any).voice_transcript || '(此语音未包含转写数据，建议发送前使用"转文字"功能)'
+  const rawText = (msg as any).voice_transcript || ''
+  let fullText = rawText || '(此语音未包含转写数据，建议发送前使用"转文字"功能)'
+
+  // v8: 使用共享 polishTranscript（带缓存/严谨的错误兜底）做 AI 纠错
+  if (rawText && rawText.length >= 2) {
+    if (_voicePolishCache[msg.id]) {
+      fullText = _voicePolishCache[msg.id]
+    } else {
+      try {
+        const polished = await polishTranscript(rawText)
+        if (polished && polished.length >= 2) {
+          fullText = polished
+          _voicePolishCache[msg.id] = polished
+        }
+      } catch {
+        fullText = rawText
+      }
+    }
+  }
 
   voiceConvertedTexts[msg.id] = ''
-  await new Promise(r => setTimeout(r, 300))
+  await new Promise(r => setTimeout(r, 200))
   voiceConverting[msg.id] = false
 
   let idx = 0
@@ -2534,7 +2769,14 @@ function renderMsgContent(content: string): string {
   return escaped.replace(/@([\w\u4e00-\u9fff\uff08\uff09\(\)]+)/g, '<span class="cp-mention-hl">@$1</span>')
 }
 
-const AI_ERROR_KEYWORDS = ['无法连接', '网络连接异常', '开小差', '仍然无法连接', '重试失败', '网络波动', 'AI_UNREACHABLE', '出了点小状况']
+// 覆盖 buildAiErrorMessage 所有可能返回的提示，保证"重新发送"按钮始终显示
+const AI_ERROR_KEYWORDS = [
+  '无法连接', '网络连接异常', '开小差', '仍然无法连接', '重试失败', '网络波动',
+  'AI_UNREACHABLE', '出了点小状况',
+  '上游服务繁忙', '云端服务异常', '请求超时', '请求超时了',
+  '服务配置缺失', '未配置 AI 服务密钥', '服务端', '后端尚未配置',
+  '登录状态已过期', '请先登录', '重新登录'
+]
 function isAiErrorMsg(content: string): boolean {
   return AI_ERROR_KEYWORDS.some(kw => content.includes(kw))
 }
@@ -3222,10 +3464,38 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-interact-body{flex:1;min-width:0}.cp-interact-body b{font-size:11px;color:rgba(255,255,255,.6);margin-right:4px}.cp-interact-body span{font-size:11px;color:rgba(255,255,255,.3)}
 .cp-interact-preview{font-size:10px;color:rgba(255,255,255,.2);margin:3px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cp-interact-item small{font-size:9px;color:rgba(255,255,255,.12);flex-shrink:0;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 置顶横栏（仿微信自适应，整数卡片不截断） */
-.cp-pinned-bar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.04)}
-.cp-pinned-scroll{display:flex;gap:10px;overflow-x:auto;padding:2px 4px;scroll-behavior:smooth;scroll-snap-type:x mandatory;-ms-overflow-style:none;scrollbar-width:none}.cp-pinned-scroll::-webkit-scrollbar{display:none}
-.cp-pinned-card{flex:0 0 calc((100% - 20px) / 3);min-width:110px;max-width:160px;scroll-snap-align:start;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);cursor:pointer;overflow:hidden;transition:all .2s ease;display:flex;flex-direction:column}
+/* 置顶横栏 v8 参考微信——左侧"置顶"标签 + 右侧横滑 + 左右箭头 + 边缘渐变 + 鼠标拖拽 + 进度条 */
+.cp-pinned-bar-wrap{display:flex;align-items:stretch;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.04);position:relative}
+.cp-pinned-label{flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 10px;border-radius:12px;background:linear-gradient(135deg,rgba(139,92,246,.18),rgba(99,102,241,.1));border:1px solid rgba(139,92,246,.22);min-width:52px}
+.cp-pinned-label-icon{font-size:14px;line-height:1}
+.cp-pinned-label-text{font-size:11px;color:rgba(255,255,255,.85);font-weight:600;letter-spacing:1px}
+.cp-pinned-label-count{font-size:9px;color:rgba(139,92,246,.9);background:rgba(0,0,0,.25);padding:1px 6px;border-radius:999px;margin-top:2px;font-weight:700}
+
+/* 滚动容器外层 —— 提供定位上下文供箭头/蒙版/进度条绝对定位 */
+.cp-pinned-scroll-wrap{flex:1;position:relative;min-width:0;display:flex;align-items:center}
+
+/* 边缘渐变蒙版（仿微信）：左/右边在可滚动时淡出卡片，提示"还有更多" */
+.cp-pinned-fade{position:absolute;top:0;bottom:12px;width:24px;pointer-events:none;z-index:2;opacity:0;transition:opacity .18s}
+.cp-pinned-fade.active{opacity:1}
+.cp-pinned-fade.left{left:0;background:linear-gradient(to right, rgba(14,11,28,.96), rgba(14,11,28,0))}
+.cp-pinned-fade.right{right:0;background:linear-gradient(to left, rgba(14,11,28,.96), rgba(14,11,28,0))}
+
+/* 箭头按钮 */
+.cp-pinned-arrow{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;padding:0;border:1px solid rgba(139,92,246,.25);background:rgba(16,12,32,.85);color:rgba(255,255,255,.85);border-radius:50%;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s;z-index:3;box-shadow:0 4px 14px rgba(0,0,0,.3);backdrop-filter:blur(8px)}
+.cp-pinned-arrow:hover{background:rgba(139,92,246,.3);color:#fff;transform:translateY(-50%) scale(1.08);box-shadow:0 6px 18px rgba(139,92,246,.3)}
+.cp-pinned-arrow.prev{left:-2px}
+.cp-pinned-arrow.next{right:-2px}
+
+/* 滚动容器 —— 禁止文本选中、原生弹性、鼠标 grab 光标 */
+.cp-pinned-scroll{flex:1;display:flex;gap:10px;overflow-x:auto;padding:2px 4px 10px;scroll-behavior:smooth;scroll-snap-type:x proximity;-ms-overflow-style:none;scrollbar-width:none;min-width:0;user-select:none;-webkit-user-select:none;-webkit-overflow-scrolling:touch;cursor:grab;overscroll-behavior-inline:contain}
+.cp-pinned-scroll::-webkit-scrollbar{display:none}
+.cp-pinned-scroll.dragging{cursor:grabbing;scroll-behavior:auto;scroll-snap-type:none}
+.cp-pinned-scroll.dragging .cp-pinned-card{pointer-events:none}
+
+/* 滑动进度条：容器底部极细条，表示当前滚动位置 */
+.cp-pinned-progress{position:absolute;left:8px;right:8px;bottom:0;height:2px;background:rgba(139,92,246,.06);border-radius:2px;overflow:hidden;z-index:2}
+.cp-pinned-progress-bar{height:100%;width:100%;background:linear-gradient(90deg,rgba(139,92,246,.45),rgba(99,102,241,.65));border-radius:2px;transform-origin:left center;transform:scaleX(0);transition:transform .15s ease-out}
+.cp-pinned-card{flex:0 0 150px;scroll-snap-align:start;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);cursor:pointer;overflow:hidden;transition:all .2s ease;display:flex;flex-direction:column}
 .cp-pinned-card:hover{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.25);transform:translateY(-2px);box-shadow:0 6px 20px rgba(139,92,246,.12)}
 .cp-pinned-thumb-wrap{position:relative;width:100%;height:72px;overflow:hidden;background:rgba(139,92,246,.06)}
 .cp-pinned-thumb{width:100%;height:100%;object-fit:cover}

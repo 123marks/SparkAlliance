@@ -1,12 +1,12 @@
 import { ref, onMounted, onBeforeUnmount, nextTick, type Ref } from 'vue'
 
 /**
- * 可靠的"滚动入场"触发：使用 IntersectionObserver 为主，
- * 并提供四重兜底确保内容一定显示：
- *   1) 元素挂载时若已在视口内，立即显示
- *   2) nextTick 后再次检测 sectionRef（防止首次 onMounted 时 ref 未绑定）
- *   3) fallbackMs 内未触发则强制显示（防止 Observer 失效/root 异常）
- *   4) prefers-reduced-motion 用户直接显示
+ * 可靠的"滚动入场"触发——鲁棒性优先：
+ *   - 页面加载后立刻把 isVisible 置为 true（让 CSS transition 作入场动画）
+ *   - 即使 JS 出错、IntersectionObserver 不触发、Vue transition 卡住，也能看见内容
+ *   - 还额外保留短 fallback 定时器（150ms）+ 视口内直触 + prefers-reduced-motion 直触
+ *
+ * 兼容原有的 `:class="{ 'is-visible': isVisible }"` 用法。
  */
 export function useRevealOnScroll(options?: {
   threshold?: number
@@ -18,10 +18,12 @@ export function useRevealOnScroll(options?: {
   let observer: IntersectionObserver | null = null
   let fallbackTimer: ReturnType<typeof setTimeout> | null = null
   let fallbackTimer2: ReturnType<typeof setTimeout> | null = null
+  let rafHandle: number | null = null
 
+  // v7.3 兜底值缩短到 150ms：section 挂载后若 IO 不触发，用户不应等半秒
   const threshold = options?.threshold ?? 0.12
   const rootMargin = options?.rootMargin ?? '0px 0px -40px 0px'
-  const fallbackMs = options?.fallbackMs ?? 500
+  const fallbackMs = options?.fallbackMs ?? 150
 
   function reveal() {
     if (isVisible.value) return
@@ -29,13 +31,14 @@ export function useRevealOnScroll(options?: {
     observer?.disconnect()
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
     if (fallbackTimer2) { clearTimeout(fallbackTimer2); fallbackTimer2 = null }
+    if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   }
 
   function tryObserve() {
-    if (isVisible.value) return
+    if (isVisible.value) return true
     if (!sectionRef.value) return false
 
-    // 初始检测：如果元素已在视口内（首屏 section），立即显示
+    // 元素已在视口内，直接显示
     try {
       const rect = sectionRef.value.getBoundingClientRect()
       const vh = window.innerHeight || document.documentElement.clientHeight
@@ -63,25 +66,34 @@ export function useRevealOnScroll(options?: {
       && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     if (reduceMotion) { reveal(); return }
 
-    // 第一次尝试绑定 Observer
+    // 第一帧后先尝试 Observer（对滚动入场有动画）
     if (!tryObserve()) {
-      // sectionRef 可能在 nextTick 后才绑定（Vue 3 模板 ref 时序）
       nextTick(() => {
         if (!tryObserve()) {
-          // 仍然没有 sectionRef，启动短 fallback
           fallbackTimer = setTimeout(reveal, fallbackMs)
         }
       })
     }
 
-    // 绝对兜底：无论如何都在 fallbackMs 后显示
+    // 硬兜底 #1：150ms 后强制显示
     fallbackTimer2 = setTimeout(reveal, fallbackMs)
+
+    // 硬兜底 #2：document 已加载完 → 下一帧直接 reveal；否则监听 window.load
+    if (typeof window !== 'undefined') {
+      const onLoad = () => reveal()
+      if (document.readyState === 'complete') {
+        rafHandle = requestAnimationFrame(() => reveal())
+      } else {
+        window.addEventListener('load', onLoad, { once: true })
+      }
+    }
   })
 
   onBeforeUnmount(() => {
     observer?.disconnect()
     if (fallbackTimer) clearTimeout(fallbackTimer)
     if (fallbackTimer2) clearTimeout(fallbackTimer2)
+    if (rafHandle !== null) cancelAnimationFrame(rafHandle)
   })
 
   return { isVisible, sectionRef }

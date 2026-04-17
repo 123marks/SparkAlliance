@@ -44,7 +44,7 @@ async function callViaEdgeFunction(
   if (!edgeUrl) throw new Error('SUPABASE_URL 未配置')
 
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.access_token) throw new Error('未登录')
+  if (!session?.access_token) throw new Error('请先登录后再使用 AI 助手')
 
   const res = await fetch(edgeUrl, {
     method: 'POST',
@@ -64,7 +64,12 @@ async function callViaEdgeFunction(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(typeof err.error === 'string' ? err.error : `Edge Function 错误 (${res.status})`)
+    const reason = typeof err.error === 'string' ? err.error : ''
+    // 透传真实错误原因给前端，便于诊断（API Key 未配 / 认证失败等）
+    if (res.status === 401) throw new Error('认证失败，请重新登录')
+    if (reason.includes('AI 服务密钥未配置')) throw new Error('后端未配置 AI 模型密钥，请联系管理员')
+    if (reason.includes('AI 服务暂时不可用')) throw new Error(reason)
+    throw new Error(reason || `Edge Function 错误 (${res.status})`)
   }
 
   const data = await res.json()
@@ -135,12 +140,17 @@ async function callLocalAI(
 
   const callOptions = { ...options, signal: combinedSignal }
 
+  // 生产环境只走 Edge Function：localhost:3721 在部署后不存在，回退只会
+  // 造成几秒钟的连接拒绝延迟再失败，反而让用户误以为"AI 彻底坏了"。
+  // 通过 VITE_LOCAL_AI_URL 显式配置才启用本地 Ollama 回退（适合开发机）。
+  const allowLocalFallback = !import.meta.env.PROD || !!import.meta.env.VITE_LOCAL_AI_URL
+
   try {
-    // 优先走 Edge Function（生产安全）；失败则降级到本地 Ollama（开发环境）
     try {
       return await callViaEdgeFunction(module, messages, callOptions)
     } catch (edgeErr) {
       if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
+      if (!allowLocalFallback) throw edgeErr
       console.warn('[LocalAI] Edge Function 不可用，降级到本地 Ollama:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
       return await callViaLocalOllama(module, messages, callOptions)
     }
