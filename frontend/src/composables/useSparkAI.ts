@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 export type { SparkAction } from '../utils/assistantProtocol'
 import { parseSparkActions, type SparkAction } from '../utils/assistantProtocol'
 import { checkAIResponseSafety, hasSensitiveContent } from '../utils/contentSafety'
+import { loadPersist, savePersist, subscribePersist } from '../utils/persist'
 
 function getEdgeFunctionUrl(): string {
   const base = import.meta.env.VITE_SUPABASE_URL
@@ -52,7 +53,23 @@ export interface Conversation {
   messages: ChatMessage[]
   createdAt: string
   updatedAt: string
+  isPinned?: boolean   // v8: 置顶会话（在列表顶部）
 }
+
+/**
+ * 一键工作流预设 —— 粒度比 ABILITY_TOOLS 更大，指向常见完整任务。
+ * 选中后自动填充 prompt 模板到输入框，用户只需补充具体内容即可发送。
+ */
+export const WORKFLOW_PRESETS: Array<{ key: string; icon: string; label: string; prompt: string; hint?: string }> = [
+  { key: 'notes', icon: '📝', label: '整理笔记', prompt: '请帮我整理并优化这段学习笔记，要求：1) 添加合理的标题和层级；2) 高亮关键概念；3) 末尾给出 3-5 条复习要点。原始笔记：\n\n', hint: '粘贴你的笔记原文' },
+  { key: 'schedule', icon: '📅', label: '生成日程', prompt: '我下周要完成：\n\n请帮我生成一份详细的每日日程表，按优先级安排，留出缓冲时间，每项标注预估耗时。', hint: '列出这周要做的事' },
+  { key: 'breakdown', icon: '🎯', label: '目标拆解', prompt: '我的目标是：\n\n截止日期：\n\n请帮我把这个目标拆解为可执行的里程碑和每日/每周具体任务。', hint: '告诉我目标和截止时间' },
+  { key: 'explain', icon: '💡', label: '讲解概念', prompt: '请用通俗的方式给我讲解"\n\n"这个概念，给出：核心定义 / 关键公式或原理 / 生活化例子 / 常见误区。', hint: '填入你想学的概念' },
+  { key: 'essay', icon: '✍️', label: '作文润色', prompt: '请帮我润色下面这段文字，让它更流畅、更有文采，但保留原意。润色后请同时给出 3 点修改说明：\n\n', hint: '粘贴你的原稿' },
+  { key: 'code_review', icon: '🧪', label: '代码审查', prompt: '请审查下面这段代码：指出潜在 bug、性能问题、最佳实践建议，并给出重构后的完整代码：\n\n```\n\n```', hint: '粘贴你的代码' },
+  { key: 'summarize', icon: '📚', label: '长文总结', prompt: '请把下面这段内容总结成结构化要点（含 3-5 个主题 + 每个主题 2-3 条要点），末尾给出一句话核心结论：\n\n', hint: '粘贴长文' },
+  { key: 'translate', icon: '🌐', label: 'AI 翻译', prompt: '请把以下文字翻译成自然地道的中文（若原文是中文则翻译为英文），保留专有名词：\n\n', hint: '粘贴原文' },
+]
 
 export type StreamPhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
@@ -110,20 +127,23 @@ export function useSparkAI() {
   const currentConversationId = ref<string | null>(null)
 
   function loadConversations() {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) conversations.value = JSON.parse(stored)
-    } catch {
-      conversations.value = []
-    }
+    const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
+    if (Array.isArray(arr)) conversations.value = sortConversations(arr)
   }
 
   function saveConversations() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations.value.slice(0, 50)))
-    } catch {
-      // Ignore quota failures and keep in-memory state.
-    }
+    // v8: 通过 persistSync 自动云同步（spark_conversations_v2 已加入 SYNC_KEYS）
+    savePersist(STORAGE_KEY, conversations.value.slice(0, 50))
+  }
+
+  /** 排序：置顶会话按 updatedAt 排前，其他会话按 updatedAt 倒序 */
+  function sortConversations(arr: Conversation[]): Conversation[] {
+    return [...arr].sort((a, b) => {
+      const ap = a.isPinned ? 1 : 0
+      const bp = b.isPinned ? 1 : 0
+      if (ap !== bp) return bp - ap
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
   }
 
   function createConversation(): Conversation {
@@ -161,6 +181,88 @@ export function useSparkAI() {
     currentConversationId.value = null
     saveConversations()
   }
+
+  /** 重命名会话（v8 闭环） */
+  function renameConversation(id: string, newTitle: string): boolean {
+    const c = conversations.value.find((item) => item.id === id)
+    if (!c) return false
+    const title = newTitle.trim().slice(0, 40)
+    if (!title) return false
+    c.title = title
+    c.updatedAt = new Date().toISOString()
+    saveConversations()
+    return true
+  }
+
+  /** 切换置顶（v8 闭环：置顶的会话总在列表顶部） */
+  function togglePinConversation(id: string): boolean {
+    const c = conversations.value.find((item) => item.id === id)
+    if (!c) return false
+    c.isPinned = !c.isPinned
+    // 重新按 isPinned + updatedAt 排序
+    conversations.value = sortConversations(conversations.value)
+    saveConversations()
+    return !!c.isPinned
+  }
+
+  /**
+   * 导出会话（v8 闭环）
+   * @param id 会话 ID
+   * @param format 'markdown' | 'json'
+   * @returns { filename, content, mime } 供前端触发下载
+   */
+  function exportConversation(id: string, format: 'markdown' | 'json' = 'markdown'): { filename: string; content: string; mime: string } | null {
+    const c = conversations.value.find((item) => item.id === id)
+    if (!c) return null
+    const safeTitle = c.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
+    const stamp = new Date().toISOString().slice(0, 10)
+    if (format === 'json') {
+      return {
+        filename: `spark-${safeTitle}-${stamp}.json`,
+        content: JSON.stringify(c, null, 2),
+        mime: 'application/json',
+      }
+    }
+    // markdown
+    const lines: string[] = []
+    lines.push(`# ${c.title}`)
+    lines.push('')
+    lines.push(`> 导出自星火助手 · ${new Date(c.createdAt).toLocaleString('zh-CN')} ~ ${new Date(c.updatedAt).toLocaleString('zh-CN')}`)
+    lines.push('')
+    for (const msg of c.messages) {
+      const who = msg.role === 'user' ? '🧑 用户' : msg.role === 'assistant' ? '⚡ 星火助手' : 'ℹ️ 系统'
+      lines.push(`## ${who}`)
+      if (msg.reasoning) {
+        lines.push('')
+        lines.push('<details><summary>💭 思考过程</summary>')
+        lines.push('')
+        lines.push(msg.reasoning)
+        lines.push('')
+        lines.push('</details>')
+      }
+      lines.push('')
+      lines.push(msg.content)
+      if (msg.attachments?.length) {
+        lines.push('')
+        for (const a of msg.attachments) lines.push(`- 附件：${a.type === 'image' ? '🖼️' : '📎'} ${a.name}${a.size ? ` (${a.size})` : ''}`)
+      }
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+    return {
+      filename: `spark-${safeTitle}-${stamp}.md`,
+      content: lines.join('\n'),
+      mime: 'text/markdown',
+    }
+  }
+
+  /** 监听 persistSync 推送：其他设备登录时自动同步会话列表 */
+  subscribePersist<Conversation[]>(STORAGE_KEY, (v) => {
+    if (Array.isArray(v)) {
+      conversations.value = sortConversations(v)
+    }
+  })
 
   function autoTitle(conversation: Conversation) {
     const firstUserMessage = conversation.messages.find((message) => message.role === 'user')
@@ -492,6 +594,9 @@ export function useSparkAI() {
     switchConversation,
     deleteConversation,
     clearAllConversations,
+    renameConversation,
+    togglePinConversation,
+    exportConversation,
     sendMessage,
     stopGenerating,
   }

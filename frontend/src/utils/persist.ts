@@ -7,17 +7,21 @@
  * 3. 跨标签页同步：订阅 storage 事件自动更新内存副本
  * 4. schema 版本号与迁移钩子
  * 5. 可插拔的远端同步适配器（Supabase）
+ * 6. 独立 meta 侧车（`__meta:<key>`）记录 updated_at，用于云端 last-write-wins 合并
  */
 
-export type PersistSyncAdapter = (key: string, value: unknown) => void | Promise<void>
+export type PersistSyncAdapter = (key: string, value: unknown, meta: { updated_at: number }) => void | Promise<void>
 
 const MEMORY_FALLBACK: Record<string, string> = {}
 const SUBSCRIBERS: Map<string, Set<(v: unknown) => void>> = new Map()
 const SYNC_ADAPTERS: Map<string, PersistSyncAdapter> = new Map()
 const PENDING_WRITES: Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null }> = new Map()
 const DEBOUNCE_MS = 200
+const META_PREFIX = '__meta:'
 
 let quotaExceeded = false
+/** 若远端同步回本地时 suppress adapter，避免把 pull 下来的数据又推回去造成循环 */
+let suppressAdapter = false
 
 function canUseLocalStorage(): boolean {
   try { return typeof window !== 'undefined' && !!window.localStorage } catch { return false }
@@ -69,6 +73,7 @@ function cleanupQuota() {
   const toRemove = Math.ceil(chatKeys.length * 0.2)
   for (let i = 0; i < toRemove; i++) {
     try { localStorage.removeItem(chatKeys[i][0]) } catch { /* ignore */ }
+    try { localStorage.removeItem(META_PREFIX + chatKeys[i][0]) } catch { /* ignore */ }
   }
   quotaExceeded = false
 }
@@ -88,8 +93,23 @@ export function loadPersist<T>(key: string, fallback: T): T {
   } catch { return fallback }
 }
 
+/** 读取 key 的最近更新时间（毫秒时间戳）；若无记录返回 0 */
+export function getPersistMeta(key: string): { updated_at: number } {
+  const raw = rawGet(META_PREFIX + key)
+  if (!raw) return { updated_at: 0 }
+  try {
+    const parsed = JSON.parse(raw)
+    return { updated_at: Number(parsed?.updated_at) || 0 }
+  } catch { return { updated_at: 0 } }
+}
+
+function writeMeta(key: string, updated_at: number) {
+  rawSet(META_PREFIX + key, JSON.stringify({ updated_at }))
+}
+
 /**
  * 写入数据（防抖 + 远端同步）
+ * 每次写入都会刷新 meta 时间戳，用于跨设备 last-write-wins 合并。
  */
 export function savePersist(key: string, data: unknown, opts?: { immediate?: boolean; version?: number }): void {
   const pending = PENDING_WRITES.get(key)
@@ -100,11 +120,15 @@ export function savePersist(key: string, data: unknown, opts?: { immediate?: boo
     let serialized: string
     try { serialized = JSON.stringify(payload) } catch { return }
     rawSet(key, serialized)
+    const updated_at = Date.now()
+    writeMeta(key, updated_at)
     PENDING_WRITES.delete(key)
     SUBSCRIBERS.get(key)?.forEach(fn => { try { fn(data) } catch { /* ignore */ } })
-    const adapter = SYNC_ADAPTERS.get(key)
-    if (adapter) {
-      try { Promise.resolve(adapter(key, data)).catch(() => { /* 远端失败不影响本地 */ }) } catch { /* ignore */ }
+    if (!suppressAdapter) {
+      const adapter = SYNC_ADAPTERS.get(key) || resolveAdapterByPrefix(key)
+      if (adapter) {
+        try { Promise.resolve(adapter(key, data, { updated_at })).catch(() => { /* 远端失败不影响本地 */ }) } catch { /* ignore */ }
+      }
     }
   }
 
@@ -113,15 +137,42 @@ export function savePersist(key: string, data: unknown, opts?: { immediate?: boo
   PENDING_WRITES.set(key, { data, timer })
 }
 
+function resolveAdapterByPrefix(key: string): PersistSyncAdapter | undefined {
+  for (const [pattern, adapter] of SYNC_ADAPTERS) {
+    if (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1))) return adapter
+  }
+  return undefined
+}
+
+/**
+ * 由同步层调用：把远端最新数据写回本地，而不触发反向同步。
+ * 同时更新 meta，使后续本地写入可正确比较时间戳。
+ */
+export function writeLocalFromRemote(key: string, data: unknown, updated_at: number) {
+  const pending = PENDING_WRITES.get(key)
+  if (pending?.timer) { clearTimeout(pending.timer); PENDING_WRITES.delete(key) }
+  let serialized: string
+  try { serialized = JSON.stringify(data) } catch { return }
+  suppressAdapter = true
+  try {
+    rawSet(key, serialized)
+    writeMeta(key, updated_at)
+  } finally {
+    suppressAdapter = false
+  }
+  SUBSCRIBERS.get(key)?.forEach(fn => { try { fn(data) } catch { /* ignore */ } })
+}
+
 export function removePersist(key: string) {
   const pending = PENDING_WRITES.get(key)
   if (pending?.timer) clearTimeout(pending.timer)
   PENDING_WRITES.delete(key)
   rawRemove(key)
+  rawRemove(META_PREFIX + key)
   SUBSCRIBERS.get(key)?.forEach(fn => { try { fn(undefined) } catch { /* ignore */ } })
 }
 
-/** 订阅 key 的变化（本地 + 跨标签页） */
+/** 订阅 key 的变化（本地 + 跨标签页 + 远端 full-sync） */
 export function subscribePersist<T = unknown>(key: string, cb: (value: T | undefined) => void): () => void {
   if (!SUBSCRIBERS.has(key)) SUBSCRIBERS.set(key, new Set())
   const set = SUBSCRIBERS.get(key)!
@@ -130,7 +181,11 @@ export function subscribePersist<T = unknown>(key: string, cb: (value: T | undef
   return () => { set.delete(wrapped) }
 }
 
-/** 注册远端同步适配器（例如同步到 Supabase） */
+/**
+ * 注册远端同步适配器。
+ * - keyOrPrefix 以 `*` 结尾时按前缀匹配，例如 `spark_chat_*`
+ * - 精确匹配优先于前缀匹配
+ */
 export function registerSyncAdapter(keyOrPrefix: string, adapter: PersistSyncAdapter) {
   SYNC_ADAPTERS.set(keyOrPrefix, adapter)
 }
@@ -143,6 +198,7 @@ export function flushAllPending() {
     let s: string
     try { s = JSON.stringify(payload) } catch { return }
     rawSet(key, s)
+    writeMeta(key, Date.now())
     SUBSCRIBERS.get(key)?.forEach(fn => { try { fn(payload) } catch { /* ignore */ } })
   })
   PENDING_WRITES.clear()
@@ -151,7 +207,7 @@ export function flushAllPending() {
 /** 跨标签页同步：监听 storage 事件 */
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (!e.key) return
+    if (!e.key || e.key.startsWith(META_PREFIX)) return
     const subs = SUBSCRIBERS.get(e.key)
     if (!subs || !subs.size) return
     try {

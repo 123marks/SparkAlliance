@@ -94,9 +94,13 @@ const phases = [
   margin-bottom: 80px;
   opacity: 0;
   transform: translateY(30px);
-  transition: all 0.6s ease-out;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.roadmap-header.is-visible { opacity: 1; transform: translateY(0); }
+.roadmap-header.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 /* 时间线整体 */
 .timeline {
@@ -124,9 +128,13 @@ const phases = [
   align-items: center;
   opacity: 0;
   transform: translateY(30px);
-  transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.timeline-item.is-visible { opacity: 1; transform: translateY(0); }
+.timeline-item.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 .timeline-dot {
   width: 14px; height: 14px;

@@ -230,14 +230,14 @@ onBeforeUnmount(() => {
 .showcase-section { padding: 120px 40px; background-color: transparent; position: relative; }
 .container { max-width: 1280px; margin: 0 auto; }
 
-.showcase-header { text-align: center; margin-bottom: 64px; opacity: 0; transform: translateY(40px); transition: all 0.6s ease-out; }
+.showcase-header { text-align: center; margin-bottom: 64px; opacity: 0; transform: translateY(40px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
 .showcase-header.is-visible { opacity: 1; transform: translateY(0); }
 .eyebrow { color: var(--color-brand-orange); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; display: block; }
 .title { font-size: 40px; font-weight: 800; color: white; margin-bottom: 16px; }
 .subtitle { color: var(--color-text-secondary); font-size: 18px; max-width: 600px; margin: 0 auto; }
 
 /* 主体布局 */
-.showcase-body { display: grid; grid-template-columns: 340px 1fr; gap: 32px; opacity: 0; transform: translateY(40px); transition: all 0.6s ease-out 0.2s; }
+.showcase-body { display: grid; grid-template-columns: 340px 1fr; gap: 32px; opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s; }
 .showcase-body.is-visible { opacity: 1; transform: translateY(0); }
 
 /* 左侧选择器 */

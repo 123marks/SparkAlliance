@@ -94,7 +94,7 @@
 
           <div v-if="filteredEvents.length === 0 && !loading" class="sch-empty-hint">
             <span>📮</span>
-            <span>当前视图还没有日程，点击右上角 <strong>新建事件</strong> 开始规划</span>
+            <span>当前视图还没有日程，点击 <button type="button" class="sch-empty-cta" @click="openCreate">新建事件</button> 开始规划</span>
           </div>
         </template>
       </div>
@@ -130,6 +130,35 @@
       @close="aiModalVisible = false"
       @imported="handleAIImport"
     />
+
+    <!-- v7.4: 自定义删除确认弹窗（替代原生 confirm） -->
+    <Transition name="confirm-fade">
+      <div v-if="deleteConfirm.show" class="sch-confirm-overlay" @click.self="deleteConfirm.show = false">
+        <div class="sch-confirm-modal">
+          <div class="sch-confirm-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="1.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <h3 class="sch-confirm-title">删除这个事件？</h3>
+          <p class="sch-confirm-desc">
+            <strong>「{{ deleteConfirm.title }}」</strong>
+            <span>将被永久删除，此操作无法撤销</span>
+          </p>
+          <div class="sch-confirm-actions">
+            <button class="sch-confirm-btn sch-confirm-cancel" @click="deleteConfirm.show = false">
+              取消
+            </button>
+            <button class="sch-confirm-btn sch-confirm-delete" @click="confirmDeleteExecute">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              确认删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <Transition name="toast-fade">
       <div v-if="toast.show" class="sch-toast" :class="toast.type">
@@ -353,8 +382,25 @@ const handleSave = async (form: EventFormData) => {
   await refreshEvents()
 }
 
-const handleDelete = async (event: ScheduleEvent) => {
-  if (!confirm(`确定删除「${event.title}」吗？`)) return
+// v7.4: 自定义删除确认
+const deleteConfirm = ref<{ show: boolean; event: ScheduleEvent | null; title: string }>({
+  show: false,
+  event: null,
+  title: '',
+})
+
+const handleDelete = (event: ScheduleEvent) => {
+  deleteConfirm.value = {
+    show: true,
+    event,
+    title: event.title,
+  }
+}
+
+const confirmDeleteExecute = async () => {
+  const event = deleteConfirm.value.event
+  if (!event) return
+  deleteConfirm.value.show = false
 
   const ok = await deleteEvent(event.id)
   if (!ok) {
@@ -593,6 +639,133 @@ const showToast = (msg: string, type: string) => {
   font-size: 13px; color: rgba(255, 255, 255, 0.25);
 }
 .sch-empty-hint strong { color: var(--color-brand-blue); }
+.sch-empty-cta {
+  background: rgba(79,142,247,.1);
+  border: 1px solid rgba(79,142,247,.25);
+  color: var(--color-brand-blue);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s;
+  display: inline-flex;
+  align-items: center;
+}
+.sch-empty-cta:hover {
+  background: rgba(79,142,247,.2);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(79,142,247,.25);
+}
+
+/* v7.4 自定义删除确认弹窗 */
+.sch-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(8px);
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.sch-confirm-modal {
+  width: min(400px, 100%);
+  background: linear-gradient(180deg, rgba(24,20,38,.98), rgba(16,14,28,.98));
+  border: 1px solid rgba(244,63,94,.22);
+  border-radius: 18px;
+  padding: 28px 24px 22px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(244,63,94,.08);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.sch-confirm-modal::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #f43f5e, transparent);
+  animation: confirmTopGlow 2s ease-in-out infinite;
+}
+@keyframes confirmTopGlow {
+  0%,100% { opacity: .3; } 50% { opacity: 1; }
+}
+.sch-confirm-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+  animation: confirmIconPulse 1.6s ease-in-out infinite;
+}
+@keyframes confirmIconPulse {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+.sch-confirm-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 12px;
+}
+.sch-confirm-desc {
+  font-size: 13px;
+  color: rgba(255,255,255,.5);
+  margin: 0 0 22px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sch-confirm-desc strong {
+  color: rgba(251,113,133,.95);
+  font-weight: 600;
+}
+.sch-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.sch-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .18s;
+  border: 1px solid transparent;
+}
+.sch-confirm-cancel {
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.75);
+}
+.sch-confirm-cancel:hover {
+  background: rgba(255,255,255,.08);
+  color: white;
+}
+.sch-confirm-delete {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  color: white;
+  box-shadow: 0 4px 16px rgba(244,63,94,.3);
+}
+.sch-confirm-delete:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(244,63,94,.45);
+  filter: brightness(1.1);
+}
+.confirm-fade-enter-active,
+.confirm-fade-leave-active { transition: opacity .2s; }
+.confirm-fade-enter-active .sch-confirm-modal,
+.confirm-fade-leave-active .sch-confirm-modal { transition: all .25s cubic-bezier(.4,1.4,.6,1); }
+.confirm-fade-enter-from,
+.confirm-fade-leave-to { opacity: 0; }
+.confirm-fade-enter-from .sch-confirm-modal { transform: scale(.85) translateY(-10px); }
+.confirm-fade-leave-to .sch-confirm-modal { transform: scale(.95); }
 
 .sch-toast {
   position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);

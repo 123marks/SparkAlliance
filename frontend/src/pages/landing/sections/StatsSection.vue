@@ -16,9 +16,13 @@
           :style="{ transitionDelay: `${0.2 + index * 0.1}s` }"
         >
           <div class="stat-number" :style="{ color: stat.color }">
-            <span class="stat-prefix" v-if="stat.prefix">{{ stat.prefix }}</span>
-            <span class="stat-value">{{ isVisible ? animatedValues[index] : '0' }}</span>
-            <span class="stat-suffix">{{ stat.suffix }}</span>
+            <SlotCounter
+              :value="stat.numericValue"
+              :active="isVisible"
+              :prefix="stat.prefix"
+              :suffix="stat.suffix"
+              :color="stat.color"
+            />
           </div>
           <div class="stat-label">{{ stat.label }}</div>
           <div class="stat-desc">{{ stat.desc }}</div>
@@ -29,8 +33,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
 import { useRevealOnScroll } from '../../../composables/useRevealOnScroll'
+import SlotCounter from '../../../components/SlotCounter.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.15 })
 void sectionRef  // 用于模板 ref 绑定
@@ -75,37 +79,7 @@ const stats = [
   }
 ]
 
-// 动画数值
-const animatedValues = reactive<string[]>(stats.map(() => '0'))
-
-function animateCountUp(index: number, target: number, duration: number) {
-  const startTime = performance.now()
-  const tick = (now: number) => {
-    const elapsed = now - startTime
-    const progress = Math.min(elapsed / duration, 1)
-    // easeOutExpo
-    const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress)
-    const current = Math.round(eased * target)
-    animatedValues[index] = String(current)
-    if (progress < 1) {
-      requestAnimationFrame(tick)
-    } else {
-      // 确保最终值与原始 value 一致
-      animatedValues[index] = stats[index].value
-    }
-  }
-  requestAnimationFrame(tick)
-}
-
-watch(isVisible, (val) => {
-  if (val) {
-    stats.forEach((stat, i) => {
-      setTimeout(() => {
-        animateCountUp(i, stat.numericValue, 1500)
-      }, i * 200)
-    })
-  }
-})
+// 无需旧的 animateCountUp 逻辑，SlotCounter 组件内部处理滚动动画
 
 </script>
 
@@ -137,9 +111,13 @@ watch(isVisible, (val) => {
   margin-bottom: 80px;
   opacity: 0;
   transform: translateY(30px);
-  transition: all 0.6s ease-out;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.stats-header.is-visible { opacity: 1; transform: translateY(0); }
+.stats-header.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 .stats-grid {
   display: grid;
@@ -154,13 +132,16 @@ watch(isVisible, (val) => {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
   opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: translateY(40px) scale(0.95);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s ease,
+              border-color 0.3s ease;
 }
 
 .stat-block.is-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
 
 .stat-block:hover {

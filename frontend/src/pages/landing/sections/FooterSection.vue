@@ -142,7 +142,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .app-footer {
-  background-color: rgba(5, 5, 10, 0.6);
+  position: relative;
+  z-index: 2;
+  background-color: rgba(5, 5, 10, 0.95);
   padding: 0 40px 40px;
 }
 

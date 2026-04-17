@@ -135,7 +135,8 @@ const annualPlan = {
   margin-bottom: 48px;
   opacity: 0;
   transform: translateY(30px);
-  transition: all 0.6s ease-out;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pricing-header.is-visible {
   opacity: 1;

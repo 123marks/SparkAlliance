@@ -88,10 +88,14 @@ const avatarInitials = ['李', '王', '张', '赵']
   position: relative;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(30px);
-  transition: all 0.6s ease-out;
+  transform: translateY(30px) scale(0.97);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.cta-container.is-visible { opacity: 1; transform: translateY(0); }
+.cta-container.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
 
 .glow-bg {
   position: absolute;

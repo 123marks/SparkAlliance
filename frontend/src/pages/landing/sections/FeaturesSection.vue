@@ -186,9 +186,13 @@ const futureFeatures = [
   margin-bottom: 72px;
   opacity: 0;
   transform: translateY(40px);
-  transition: all 0.6s ease-out;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.features-header.is-visible { opacity: 1; transform: translateY(0); }
+.features-header.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 /* === 核心功能大卡片网格 === */
 .main-grid {
@@ -205,14 +209,23 @@ const futureFeatures = [
   border-radius: 20px;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: translateY(40px) scale(0.96);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
 }
-.feature-card.is-visible { opacity: 1; transform: translateY(0); }
+.feature-card.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
 .feature-card:hover {
   transform: translateY(-8px) scale(1.01);
   box-shadow: 0 20px 48px rgba(0,0,0,0.4);
   border-color: rgba(139, 92, 246, 0.3);
+  transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
 }
 
 /* hover 发光效果 */
@@ -369,14 +382,23 @@ const futureFeatures = [
   align-items: center;
   gap: 16px;
   opacity: 0;
-  transform: translateY(30px);
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: translateX(-30px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
 }
-.feature-card-sm.is-visible { opacity: 1; transform: translateY(0); }
+.feature-card-sm.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
 .feature-card-sm:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 30px rgba(0,0,0,0.3);
   border-color: rgba(255,255,255,0.12);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
 }
 
 .sm-icon {
@@ -411,9 +433,13 @@ const futureFeatures = [
   gap: 12px;
   opacity: 0;
   transform: translateY(20px);
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.feature-card-xs.is-visible { opacity: 1; transform: translateY(0); }
+.feature-card-xs.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 .feature-card-xs:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
 .xs-icon {
   width: 32px; height: 32px; border-radius: 8px;

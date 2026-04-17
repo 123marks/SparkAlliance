@@ -61,28 +61,45 @@
       </div>
     </div>
 
-    <!-- 即将到来 -->
-    <div class="section">
-      <h4 class="section-title">即将到来</h4>
+    <!-- 即将到来（v7.4: 溢出折叠 + 展开看全部） -->
+    <div class="section upcoming-section">
+      <div class="upcoming-header">
+        <h4 class="section-title">即将到来</h4>
+        <span v-if="upcomingEvents.length > UPCOMING_INITIAL_COUNT" class="upcoming-count-badge">
+          共 {{ upcomingEvents.length }} 个
+        </span>
+      </div>
       <div v-if="upcomingEvents.length === 0" class="empty-state">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
         <span>暂无近期事件</span>
       </div>
-      <div
-        v-for="evt in upcomingEvents.slice(0, 5)" :key="evt.id"
-        class="upcoming-item"
-        @click="$emit('clickEvent', evt)"
-      >
-        <div class="upcoming-bar" :style="{ background: getEventColor(evt) }"></div>
-        <div class="upcoming-info">
-          <span class="upcoming-title">{{ evt.title }}</span>
-          <span class="upcoming-time">
-            {{ formatDate(new Date(evt.start_time)) }}
-            {{ evt.all_day ? '全天' : formatTime(evt.start_time) }}
-          </span>
+      <div class="upcoming-list" :class="{ 'is-expanded': upcomingExpanded }">
+        <div
+          v-for="evt in displayedUpcoming" :key="evt.id"
+          class="upcoming-item"
+          @click="$emit('clickEvent', evt)"
+        >
+          <div class="upcoming-bar" :style="{ background: getEventColor(evt) }"></div>
+          <div class="upcoming-info">
+            <span class="upcoming-title">{{ evt.title }}</span>
+            <span class="upcoming-time">
+              {{ formatDate(new Date(evt.start_time)) }}
+              {{ evt.all_day ? '全天' : formatTime(evt.start_time) }}
+            </span>
+          </div>
+          <span class="upcoming-countdown" v-if="getCountdown(evt)">{{ getCountdown(evt) }}</span>
         </div>
-        <span class="upcoming-countdown" v-if="getCountdown(evt)">{{ getCountdown(evt) }}</span>
       </div>
+      <button
+        v-if="upcomingEvents.length > UPCOMING_INITIAL_COUNT"
+        class="upcoming-expand-btn"
+        @click="upcomingExpanded = !upcomingExpanded"
+      >
+        <span>{{ upcomingExpanded ? '收起' : `展开查看剩余 ${upcomingEvents.length - UPCOMING_INITIAL_COUNT} 个` }}</span>
+        <svg :class="['upcoming-chev', { up: upcomingExpanded }]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
     </div>
 
     <!-- 类型筛选 -->
@@ -105,22 +122,46 @@
       </div>
     </div>
 
-    <!-- AI 智能建议 -->
+    <!-- AI 智能建议（v7.4: 支持换一换 + 基于本周/本月多维度建议 + 表情包） -->
     <div class="section ai-suggest-section" v-if="aiSuggestion">
-      <h4 class="section-title">AI 建议</h4>
-      <div class="ai-suggest-card">
+      <div class="ai-suggest-header">
+        <h4 class="section-title">AI 建议</h4>
+        <button class="ai-suggest-refresh" :class="{ spinning: refreshingSuggest }" @click="rerollSuggestion" title="换一换">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
+        </button>
+      </div>
+      <div class="ai-suggest-card" :key="suggestCycle">
         <span class="ai-suggest-icon">{{ aiSuggestion.icon }}</span>
-        <p class="ai-suggest-text">{{ aiSuggestion.text }}</p>
+        <div class="ai-suggest-content">
+          <p class="ai-suggest-text">{{ aiSuggestion.text }}</p>
+          <span class="ai-suggest-scope">{{ aiSuggestion.scope }}</span>
+        </div>
       </div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { EVENT_TYPES, type ScheduleEvent } from '../../composables/useSchedule'
 import { formatTime, formatDate } from '../../composables/useCalendar'
 import { getHolidayCountForMonth } from '../../data/holidays'
+
+// v7.4: 溢出折叠
+const UPCOMING_INITIAL_COUNT = 3
+const upcomingExpanded = ref(false)
+
+// v7.4: AI 建议换一换
+const suggestCycle = ref(0)
+const refreshingSuggest = ref(false)
+function rerollSuggestion() {
+  refreshingSuggest.value = true
+  suggestCycle.value += 1
+  setTimeout(() => { refreshingSuggest.value = false }, 600)
+}
 
 const props = defineProps<{
   upcomingEvents: ScheduleEvent[]
@@ -286,33 +327,110 @@ const getCountdown = (evt: ScheduleEvent): string | null => {
   return `${days}天`
 }
 
-// ====== AI 智能建议 ======
-const aiSuggestion = computed(() => {
-  const evts = monthEvents.value
-  if (evts.length === 0) {
-    return { icon: '📝', text: '本月还没有日程安排，从添加第一个事件开始吧！可以尝试导入课表快速填充。' }
+// v7.4: 即将到来列表折叠
+const displayedUpcoming = computed(() =>
+  upcomingExpanded.value
+    ? props.upcomingEvents
+    : props.upcomingEvents.slice(0, UPCOMING_INITIAL_COUNT)
+)
+
+// ====== AI 智能建议（v7.4 扩展：多候选 + 换一换 + 作用域 + 表情包） ======
+interface SmartSuggestion { icon: string; text: string; scope: string }
+
+// 本周事件
+const thisWeekEvents = computed(() => {
+  const monday = new Date(now)
+  const diff = now.getDay() === 0 ? -6 : 1 - now.getDay()
+  monday.setDate(now.getDate() + diff)
+  monday.setHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 7)
+  return props.events.filter(e => {
+    const t = new Date(e.start_time).getTime()
+    return t >= monday.getTime() && t < sunday.getTime()
+  })
+})
+
+const suggestionsPool = computed<SmartSuggestion[]>(() => {
+  const pool: SmartSuggestion[] = []
+  const mEvts = monthEvents.value
+  const wEvts = thisWeekEvents.value
+
+  if (mEvts.length === 0) {
+    pool.push({ icon: '📝', text: '本月还没有日程安排，先从课表或考试导入开始吧！', scope: '本月视角' })
+    pool.push({ icon: '🌱', text: '空白的日历像新土壤——种下一个小目标，21 天后回来看看惊喜 ✨', scope: '本月视角' })
+    pool.push({ icon: '🎯', text: '建议先用「智能导入」把一学期课表丢进来，10 秒搞定 ⚡', scope: '本月视角' })
+    return pool
   }
 
-  const courseCount = evts.filter(e => e.event_type === 'course').length
-  const lifeCount = evts.filter(e => e.event_type === 'life').length
-  const examCount = evts.filter(e => e.event_type === 'exam').length
+  // 按类型
+  const courseCount = mEvts.filter(e => e.event_type === 'course').length
+  const lifeCount = mEvts.filter(e => e.event_type === 'life').length
+  const examCount = mEvts.filter(e => e.event_type === 'exam').length
+  const taskCount = mEvts.filter(e => e.event_type === 'task').length
+  const weekCount = wEvts.length
 
-  if (courseCount > 0 && lifeCount === 0) {
-    return { icon: '🏃', text: '学习很充实！建议穿插一些运动或休闲活动，劳逸结合效果更好。' }
-  }
   if (examCount > 3) {
-    return { icon: '📚', text: `本月有 ${examCount} 场考试，建议提前制定复习计划，合理分配每门课的备考时间。` }
+    pool.push({ icon: '📚', text: `本月有 ${examCount} 场考试，建议按「每周 1 门」节奏复习，留 3 天终极冲刺 💪`, scope: '本月考试' })
+    pool.push({ icon: '🧠', text: `${examCount} 场考试！现在就用规划模块拆成每日小任务，避免临时抱佛脚 🙏`, scope: '本月考试' })
+  }
+  if (courseCount > 0 && lifeCount === 0) {
+    pool.push({ icon: '🏃', text: '学习硬核派！补个篮球/散步日程，多巴胺 + 专注力双提升 🎯', scope: '平衡建议' })
+    pool.push({ icon: '🧘', text: '纯学习模式启动中…给自己排一场运动或放空时间吧，大脑会感谢你 💆', scope: '平衡建议' })
+  }
+  if (taskCount > courseCount * 2 && taskCount > 5) {
+    pool.push({ icon: '📌', text: `本月 ${taskCount} 个任务较密集，试试番茄钟（25+5），防止拖延 🍅`, scope: '任务管理' })
   }
   if (densityScore.value < 40) {
-    return { icon: '⏰', text: '日程较少，可以利用空闲时间为自己设定一些小目标或学习计划。' }
+    pool.push({ icon: '⏰', text: '日程较空闲，趁机给自己设 1 个"21 天挑战"吧（英语/健身/读书都行）🎯', scope: '密度建议' })
+    pool.push({ icon: '🎨', text: '空白日历也是一种奢侈——留点时间做真正喜欢的事 ☕', scope: '密度建议' })
   }
   if (densityScore.value > 85) {
-    return { icon: '💆', text: '日程较满，注意留出休息缓冲时间，避免过度疲劳影响效率。' }
+    pool.push({ icon: '💆', text: '日程已满载！建议每天留 1 小时"什么都不做"的 buffer，防止过载 ⚡', scope: '密度建议' })
+    pool.push({ icon: '😴', text: '忙碌模式 Max——别忘了睡眠和三餐，身体是革命本钱 🛏️', scope: '密度建议' })
+  }
+  if (weekCount === 0) {
+    pool.push({ icon: '📅', text: '本周还没有安排！周计划比月计划更能落地，现在就加 3 个小目标吧 📍', scope: '本周视角' })
+  } else if (weekCount >= 15) {
+    pool.push({ icon: '🔥', text: `本周 ${weekCount} 件事！这节奏挺猛的，记得每 90 分钟站起来走两圈 🚶`, scope: '本周视角' })
+  } else if (weekCount >= 5) {
+    pool.push({ icon: '✨', text: `本周 ${weekCount} 件事安排得井井有条，继续保持 👍`, scope: '本周视角' })
   }
   if (healthScore.value >= 80) {
-    return { icon: '✨', text: '日程安排非常健康！保持这种节奏，学习与生活平衡得很好。' }
+    pool.push({ icon: '🌟', text: '日程健康度优秀！学习、生活、运动都有占比，这是理想状态 🏆', scope: '健康总评' })
   }
-  return { icon: '💡', text: '试试调整事件分布，让每天的安排更均匀，有助于建立稳定的日常节奏。' }
+
+  // 时段建议
+  const morningEvts = mEvts.filter(e => {
+    const h = new Date(e.start_time).getHours()
+    return h >= 6 && h < 12
+  }).length
+  const eveningEvts = mEvts.filter(e => {
+    const h = new Date(e.start_time).getHours()
+    return h >= 20 || h < 6
+  }).length
+  if (morningEvts < mEvts.length * 0.2) {
+    pool.push({ icon: '🌅', text: '早晨时段空荡荡的，其实 7-10 点是大脑黄金时间，放点硬核任务效率翻倍 ☀️', scope: '时段优化' })
+  }
+  if (eveningEvts > mEvts.length * 0.4) {
+    pool.push({ icon: '🌙', text: '夜间日程较多，长期熬夜会降低认知力。试试把重要任务挪到白天 💡', scope: '时段优化' })
+  }
+
+  // 通用兜底
+  if (pool.length < 3) {
+    pool.push({ icon: '💡', text: '试试把相似类型的事件聚集到同一时段，减少上下文切换成本 🎯', scope: '通用建议' })
+    pool.push({ icon: '🎁', text: '每完成 5 件事给自己一个小奖励（奶茶/剧集），坚持的秘诀 🍰', scope: '激励法' })
+    pool.push({ icon: '📊', text: '试试规划模块设定月度目标，让日程为目标服务，而不是反过来 🎯', scope: '目标拆解' })
+  }
+
+  return pool
+})
+
+const aiSuggestion = computed<SmartSuggestion>(() => {
+  const pool = suggestionsPool.value
+  if (pool.length === 0) return { icon: '📝', text: '开启星火之旅，从一个小目标开始 🚀', scope: '默认' }
+  // 使用 suggestCycle 决定当前显示项（换一换）
+  return pool[suggestCycle.value % pool.length]
 })
 </script>
 

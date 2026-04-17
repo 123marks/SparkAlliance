@@ -1,16 +1,14 @@
 /**
- * sparkKnowledge.ts — 星火域轻量 RAG（v7.3）
+ * sparkKnowledge.ts — 星火域 RAG（v8：pgvector 真向量化 + 三层检索）
  *
- * 基于静态项目知识库 + Supabase 全文索引的混合检索，
- * 为 AI 问答提供 grounded context。
+ * 三层检索链（按优先级尝试，每层失败自动降级到下一层）：
+ * 1. **真向量 RAG**：调 Edge Function `spark-rag` → NVIDIA embeddings → pgvector 最近邻（最高质量）
+ * 2. **tsvector 全文索引**：Postgres 原生全文搜索（无 embedding 时降级）
+ * 3. **静态知识库**：前端 in-memory 关键词命中（离线兜底）
  *
- * 设计：
- * - 静态知识库：项目功能模块、路由、关键概念（前端 in-memory）
- * - 动态检索：从 spark_resources / news_articles / campus_wall_posts / companion_moments
- *   的 PostgreSQL tsvector 全文索引中做 top-N 命中
- * - 返回的 context 片段会拼接后作为 `extra_context` 注入给 Edge Function → Gemma
+ * 所有敏感参数（NVIDIA_API_KEY）只在 Edge Function 服务端保存，前端明文零暴露。
  *
- * 未来升级路径：pgvector + cohere/openai embedding + HNSW 索引，但 API 层不变。
+ * API 兼容：`retrieveRelevantContext(query, opts)` 签名不变。
  */
 
 import { supabase } from '../supabase'
@@ -195,26 +193,83 @@ async function searchDatabase(query: string, k = 3, myUserId?: string): Promise<
 }
 
 /**
- * 综合检索：静态知识库 + 数据库全文索引
+ * 调用 spark-rag Edge Function 做真向量检索。
+ * - 任何失败（未部署/未登录/上游挂）静默返回空数组，触发外层降级。
+ */
+async function searchVectorRAG(query: string, k: number): Promise<KnowledgeChunk[]> {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    if (!supabaseUrl) return []
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return []
+    const res = await fetch(`${supabaseUrl}/functions/v1/spark-rag`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        action: 'search',
+        query,
+        match_count: k,
+        min_score: 0.3,
+      }),
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    if (!Array.isArray(data?.chunks)) return []
+    return data.chunks.map((c: any): KnowledgeChunk => ({
+      source: c.source || 'vector',
+      title: c.title,
+      content: c.content,
+      url: c.url,
+      score: typeof c.score === 'number' ? c.score : 0,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 综合检索：三层链路 —— 向量 RAG (spark-rag) → tsvector 全文搜索 → 静态知识库。
  * @param query 用户原始问题
  * @param options.maxChunks 返回的最大片段数（默认 5）
- * @param options.includeDb 是否查数据库（默认 true）
+ * @param options.includeDb 是否查数据库 / Edge Function（默认 true）
  * @param options.myUserId 当前登录用户 ID（用于检索其动态/笔记）
+ * @param options.preferVector 是否优先用向量 RAG（默认 true）
  */
 export async function retrieveRelevantContext(
   query: string,
-  options?: { maxChunks?: number; includeDb?: boolean; myUserId?: string },
+  options?: { maxChunks?: number; includeDb?: boolean; myUserId?: string; preferVector?: boolean },
 ): Promise<KnowledgeChunk[]> {
   const maxChunks = options?.maxChunks ?? 5
-  const staticChunks = searchStaticDocs(query, Math.ceil(maxChunks * 0.6))
+  const preferVector = options?.preferVector !== false
+  const includeDb = options?.includeDb !== false
 
+  // Layer 1：向量 RAG（高质量语义检索，若 Edge Function 可用）
+  if (includeDb && preferVector) {
+    const vectorChunks = await searchVectorRAG(query, maxChunks)
+    if (vectorChunks.length >= Math.min(3, maxChunks)) {
+      // 命中足够，直接返回（仍补充最多 1 条静态文档做锚点）
+      const staticAnchor = searchStaticDocs(query, 1)
+      // 去重：同标题只保留一个
+      const seen = new Set(vectorChunks.map(c => c.title))
+      const merged = [...vectorChunks]
+      for (const c of staticAnchor) {
+        if (!seen.has(c.title)) { merged.push(c); seen.add(c.title) }
+      }
+      return merged.slice(0, maxChunks)
+    }
+  }
+
+  // Layer 2 + 3：tsvector + 静态库（旧链路，作为向量不可用时的兜底）
+  const staticChunks = searchStaticDocs(query, Math.ceil(maxChunks * 0.6))
   let dbChunks: KnowledgeChunk[] = []
-  if (options?.includeDb !== false) {
+  if (includeDb) {
     try {
       dbChunks = await searchDatabase(query, Math.ceil(maxChunks * 0.6), options?.myUserId)
     } catch { /* 静默 */ }
   }
-
   return [...staticChunks, ...dbChunks].slice(0, maxChunks)
 }
 

@@ -88,15 +88,11 @@ import { ref, onMounted } from 'vue'
 import ParticleBackground from '../../../components/ParticleBackground.vue'
 import HeroSocialProof from './components/HeroSocialProof.vue'
 
-// JS 兜底：确保 hero 内容在动画失败时仍可见
+// 页面加载后立刻开始 stagger 入场动画
 const heroReady = ref(false)
 onMounted(() => {
-  // 正常：等待 CSS 动画完成后标记就绪
-  setTimeout(() => { heroReady.value = true }, 2000)
-  // 极端兜底：即使 setTimeout 延迟，也通过 rAF 确保
-  requestAnimationFrame(() => {
-    setTimeout(() => { heroReady.value = true }, 2200)
-  })
+  // 下一帧开始动画，保证 DOM 已绑定
+  requestAnimationFrame(() => { heroReady.value = true })
 })
 </script>
 
@@ -184,26 +180,28 @@ onMounted(() => {
   padding: 0 20px;
 }
 
-/* 动画序列 */
-@keyframes slideUpFade {
-  from { opacity: 0; transform: translateY(40px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 动画序列 — 使用 transition 确保兼容性（避免 scoped CSS hash keyframes 问题） */
+
+/* 默认隐藏 stagger 元素 */
+.stagger-1, .stagger-2, .stagger-3, .stagger-4, .stagger-5 {
+  opacity: 0;
+  transform: translateY(40px);
 }
 
-.stagger-1 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.3s forwards; }
-.stagger-2 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.5s forwards; }
-.stagger-3 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 0.8s forwards; }
-.stagger-4 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 1.0s forwards; }
-.stagger-5 { opacity: 0; transform: translateY(40px); animation: slideUpFade 0.6s ease-out 1.2s forwards; }
+/* heroReady 后通过 transition 依次入场 */
+.stagger-1 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s; }
+.stagger-2 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s; }
+.stagger-3 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s; }
+.stagger-4 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s; }
+.stagger-5 { transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.85s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.85s; }
 
-/* JS 兜底：动画执行完毕或失败后强制可见 */
 .hero-ready .stagger-1,
 .hero-ready .stagger-2,
 .hero-ready .stagger-3,
 .hero-ready .stagger-4,
 .hero-ready .stagger-5 {
-  opacity: 1 !important;
-  transform: translateY(0) !important;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* 状态标签 */

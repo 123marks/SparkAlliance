@@ -206,17 +206,10 @@ button {
   transform: translateY(0);
 }
 
-/* --- 数字计数动画辅助 --- */
-@keyframes countUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* 弹性缓动变量（ease-out-expo 近似） */
+:root {
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* --- 渐变文字 --- */
@@ -375,12 +368,12 @@ select:disabled {
   padding: var(--space-4);
 }
 
-/* ====== 入场动画硬兜底 ======
- * 即使 useRevealOnScroll / IntersectionObserver / Vue transition 全部出错，
- * 2.2 秒后强制将所有 landing section 的入场元素显示到最终状态，
- * 杜绝"中段白屏"永久出现。
+/* ====== 入场兜底 ======
+ * 如果 JS 完全失败（useRevealOnScroll 未运行），
+ * 5s 后通过全局 transition-based 安全网确保内容可见。
+ * 注意：不使用 animation（scoped CSS 会 hash keyframe 名称导致冲突）
  */
-@keyframes __revealForce {
+@keyframes __safeReveal {
   to { opacity: 1; transform: none; }
 }
 .landing-page .features-header,
@@ -396,5 +389,21 @@ select:disabled {
 .landing-page .testimonials-section .header,
 .landing-page .pricing-header,
 .landing-page .cta-container {
-  animation: __revealForce 0.01s linear 2.2s forwards;
+  animation: __safeReveal 0s forwards 5s;
+}
+/* is-visible 生效后取消兜底 */
+.landing-page .features-header.is-visible,
+.landing-page .feature-card.is-visible,
+.landing-page .feature-card-sm.is-visible,
+.landing-page .feature-card-xs.is-visible,
+.landing-page .stats-header.is-visible,
+.landing-page .stat-block.is-visible,
+.landing-page .showcase-header.is-visible,
+.landing-page .showcase-body.is-visible,
+.landing-page .roadmap-header.is-visible,
+.landing-page .timeline-item.is-visible,
+.landing-page .testimonials-section .header.is-visible,
+.landing-page .pricing-header.is-visible,
+.landing-page .cta-container.is-visible {
+  animation: none;
 }
