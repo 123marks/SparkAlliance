@@ -34,11 +34,49 @@
       <button v-if="msgCtx.canRecall" @click="msgCtxAction('recall')" class="warn">← 撤回</button>
       <button class="del" @click="msgCtxAction('delete')">🗑️ 删除</button>
     </div>
-    <!-- 碰一碰菜单（v6.7：右键头像弹出） -->
-    <div v-if="pokeMenu.show" class="cp-ctx-menu poke-ctx" :style="{top:pokeMenu.y+'px',left:pokeMenu.x+'px'}" @click.stop>
-      <div class="poke-header">👋 碰一碰 {{ pokeMenu.targetName }}</div>
-      <button @click="executePoke()">👊 碰一碰</button>
-      <button @click="pokeMenu.show=false">取消</button>
+    <!-- 碰一碰菜单（v11: 六大类 36 种姿势 · 分类九宫格 + 自定义动作） -->
+    <div v-if="pokeMenu.show" class="cp-poke-panel" :style="{top:pokeMenu.y+'px',left:pokeMenu.x+'px'}" @click.stop>
+      <div class="poke-header">
+        <span>👋 碰一碰</span>
+        <span class="poke-target">@ {{ pokeMenu.targetName }}</span>
+        <button class="poke-close" @click="pokeMenu.show=false">×</button>
+      </div>
+      <div class="poke-tabs">
+        <button
+          v-for="g in POKE_PRESETS_GROUPED"
+          :key="g.category"
+          class="poke-tab"
+          :class="{ active: pokeCategory === g.category }"
+          @click="pokeCategory = g.category"
+        >
+          <span class="poke-tab-icon">{{ g.icon }}</span>
+          <span>{{ g.category }}</span>
+        </button>
+      </div>
+      <div class="poke-grid">
+        <button
+          v-for="action in currentPokeActions"
+          :key="action"
+          class="poke-action"
+          @click="executePoke(action)"
+          :title="`你${action} ${pokeMenu.targetName}`"
+        >{{ action }}</button>
+      </div>
+      <div class="poke-custom">
+        <input
+          v-model="customPokeInput"
+          type="text"
+          maxlength="12"
+          placeholder="输入自定义动作（最多12字）"
+          class="poke-custom-input"
+          @keydown.enter="executePoke(customPokeInput.trim())"
+        />
+        <button
+          class="poke-custom-send"
+          :disabled="!customPokeInput.trim()"
+          @click="executePoke(customPokeInput.trim())"
+        >发送</button>
+      </div>
     </div>
 
     <!-- 左侧 -->
@@ -161,7 +199,17 @@
             <div v-if="shouldShowTimeSeparator(idx > 0 ? filteredChatMessages[idx-1] : null, msg)" class="cp-time-sep">{{ formatMsgTime(msg.created_at) }}</div>
             <!-- 被@提醒 -->
             <div v-if="isMentionedInMsg(msg) && msg.sender_id !== myProfile?.spark_id" class="cp-mention-alert">有人@了你</div>
-            <div class="cp-msg" :data-msg-id="msg.id" :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system',poke:msg.type==='poke','multi-select':multiSelectMode}" @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)" @click="multiSelectMode && toggleMsgSelect(msg.id)">
+            <div
+              class="cp-msg"
+              :data-msg-id="msg.id"
+              :class="{mine:msg.sender_id===myProfile?.spark_id,ai:msg.sender_type==='ai',sys:msg.type==='system',poke:msg.type==='poke','multi-select':multiSelectMode}"
+              @contextmenu.prevent="e=>showMsgCtxMenu(e,msg)"
+              @touchstart.passive="e=>msgTouchStart(e,msg)"
+              @touchend="msgTouchEnd"
+              @touchmove.passive="msgTouchMove"
+              @touchcancel="msgTouchEnd"
+              @click="multiSelectMode && toggleMsgSelect(msg.id)"
+            >
               <!-- 多选checkbox -->
               <div v-if="multiSelectMode" class="cp-msg-checkbox" :class="{checked:selectedMsgIds.includes(msg.id)}">
                 <span v-if="selectedMsgIds.includes(msg.id)">✓</span>
@@ -174,10 +222,19 @@
                 <!-- 自己头像（右侧）— 始终使用最新 profile 头像 -->
                 <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url||''" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" @dblclick="openAvatarPreview(myProfile?.avatar_url, myProfile?.avatar||'', myProfile?.nickname||'')" />
                 <div class="cp-msg-body">
+                  <!-- 他人消息：头像旁展示 群主/管理员 tag + 昵称 -->
                   <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
                     <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
                     <span v-else-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='admin'" class="cp-role-tag admin">管理员</span>
                     <span class="cp-msg-name">{{ resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name }}</span>
+                  </div>
+                  <!-- v11 修复：自己作为群主/管理员时也要显示角色 tag（气泡右上方） -->
+                  <div
+                    v-else-if="activeChat?.type==='group' && (getGroupMsgRole(msg)==='owner' || getGroupMsgRole(msg)==='admin')"
+                    class="cp-msg-meta mine"
+                  >
+                    <span v-if="getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
+                    <span v-else class="cp-role-tag admin">管理员</span>
                   </div>
                   <!-- 引用消息（气泡内部） -->
                   <div v-if="msg.quote_msg" class="cp-quote-in-bubble">
@@ -357,19 +414,62 @@
                     <div class="cs-row"><span>修改群名</span></div>
                     <div class="cs-mgmt-input"><input v-model="groupRenameInput" :placeholder="activeGroup.name" maxlength="30"><button @click="handleRenameGroup">确定</button></div>
                   </div>
-                  <!-- 成员管理（带角色标签和操作按钮） -->
+                  <!-- 成员管理（v11: 搜索 + 多选批量操作） -->
                   <div class="cs-section">
-                    <div class="cs-row"><span>成员管理 ({{activeGroup.members.length}}人)</span></div>
-                    <div v-for="m in activeGroup.members" :key="m.spark_id" class="cs-member-row">
+                    <div class="cs-row cs-mgmt-header">
+                      <span>成员管理 ({{activeGroup.members.length}}人)</span>
+                      <button class="cs-mgmt-toggle" :class="{ active: memberMultiSelect }" @click="toggleMemberMultiSelect">
+                        {{ memberMultiSelect ? '完成' : '☑️ 多选' }}
+                      </button>
+                    </div>
+                    <!-- 搜索框 -->
+                    <div class="cs-member-search">
+                      <span class="cs-member-search-icon">🔍</span>
+                      <input
+                        v-model="memberSearchQuery"
+                        type="text"
+                        placeholder="搜索成员昵称 / Spark ID"
+                        class="cs-member-search-input"
+                      />
+                      <button v-if="memberSearchQuery" class="cs-member-search-clear" @click="memberSearchQuery=''">×</button>
+                    </div>
+                    <div v-if="filteredGroupMembers.length===0" class="cs-member-empty">无匹配成员</div>
+                    <div
+                      v-for="m in filteredGroupMembers"
+                      :key="m.spark_id"
+                      class="cs-member-row"
+                      :class="{ 'multi-select': memberMultiSelect, 'checked': memberMultiSelect && selectedMemberIds.includes(m.spark_id) }"
+                      @click="memberMultiSelect && toggleMemberSelect(m)"
+                    >
+                      <div
+                        v-if="memberMultiSelect"
+                        class="cs-member-checkbox"
+                        :class="{
+                          checked: selectedMemberIds.includes(m.spark_id),
+                          disabled: !canManageMember(m)
+                        }"
+                      >
+                        <span v-if="selectedMemberIds.includes(m.spark_id)">✓</span>
+                      </div>
                       <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="xs" />
                       <span class="cs-member-name">{{ m.group_nickname||m.nickname }}</span>
                       <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                       <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                       <span v-else class="cp-role-tag member sm">成员</span>
-                      <div v-if="canManageMember(m)" class="cs-member-acts">
+                      <div v-if="!memberMultiSelect && canManageMember(m)" class="cs-member-acts">
                         <button v-if="myGroupRole==='owner'" @click="handleSetAdmin(m.spark_id, m.role!=='admin')" class="cs-act-btn">{{ m.role==='admin'?'取消管理':'设为管理' }}</button>
                         <button v-if="myGroupRole==='owner'" @click="handleTransferOwner(m.spark_id)" class="cs-act-btn warn">转让群主</button>
                         <button v-if="myGroupRole==='owner'||(myGroupRole==='admin'&&m.role==='member')" @click="handleKickMember(m.spark_id)" class="cs-act-btn danger">移出</button>
+                      </div>
+                    </div>
+                    <!-- 批量操作工具栏 -->
+                    <div v-if="memberMultiSelect && selectedMemberIds.length>0" class="cs-bulk-bar">
+                      <span class="cs-bulk-count">已选 {{ selectedMemberIds.length }} 人</span>
+                      <div class="cs-bulk-acts">
+                        <button v-if="myGroupRole==='owner'" @click="handleBulkSetAdmin(true)" class="cs-bulk-btn">批量设为管理员</button>
+                        <button v-if="myGroupRole==='owner'" @click="handleBulkSetAdmin(false)" class="cs-bulk-btn">批量取消管理</button>
+                        <button @click="handleBulkKick" class="cs-bulk-btn danger">批量移出</button>
+                        <button @click="selectedMemberIds = []" class="cs-bulk-btn">清空选择</button>
                       </div>
                     </div>
                   </div>
@@ -1166,7 +1266,7 @@ const {
   addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
   commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, retryLastAI, aiChatHistory, searchUser, searchBySparkId,
-  updateProfile, favorites, recallMessage, sendPokeMessage, setFriendRemark,
+  updateProfile, favorites, recallMessage, sendPokeMessage, POKE_PRESETS_GROUPED, setFriendRemark,
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
   setGroupRemark, setMyGroupNickname, getGroupDisplayName,
   friendTags, getTagsForFriend, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
@@ -1495,6 +1595,10 @@ const playingVoiceId = ref('')
 let currentAudio: HTMLAudioElement | null = null
 // ====== 碰一碰菜单（v6.7：右键头像弹出选项） ======
 const pokeMenu = reactive<{show:boolean;x:number;y:number;targetName:string;targetId:string}>({show:false,x:0,y:0,targetName:'',targetId:''})
+// v11: 碰一碰扩展 — 六大类 36 种姿势 + 自定义动作
+const pokeCategory = ref(POKE_PRESETS_GROUPED[0].category)
+const customPokeInput = ref('')
+const currentPokeActions = computed(() => POKE_PRESETS_GROUPED.find(g => g.category === pokeCategory.value)?.items || [])
 // ====== 语音转文字（v6.7） ======
 const voiceConvertedTexts = reactive<Record<string,string>>({})
 const voiceConverting = reactive<Record<string,boolean>>({})
@@ -1664,12 +1768,17 @@ function handlePokeAvatar(e:MouseEvent,targetName:string,targetId:string){
   pokeMenu.targetName=targetName
   pokeMenu.targetId=targetId
 }
-// 执行碰一碰
-function executePoke(){
+// 执行碰一碰（v11：支持传入任意动作文案）
+function executePoke(action?: string){
   if(!activeChat.value)return
+  const actionText = (action || '碰了碰').trim()
+  if (!actionText) return
   const chatType = activeChat.value.type==='group'?'group':'private' as 'private'|'group'
+  // v11: 临时覆盖 poke_text 让 sendPokeMessage 使用自定义动作
+  const original = myProfile.value?.poke_text
+  if (myProfile.value) myProfile.value.poke_text = actionText
   sendPokeMessage(activeChat.value.id, pokeMenu.targetName, chatType)
-  // 头像抖动动画
+  if (myProfile.value) myProfile.value.poke_text = original
   const avatarEls = document.querySelectorAll('.cp-msg .spark-avatar')
   avatarEls.forEach(el => {
     el.classList.add('poke-shake')
@@ -1677,7 +1786,8 @@ function executePoke(){
   })
   scrollChat()
   pokeMenu.show=false
-  showToast(`你碰了碰 ${pokeMenu.targetName}`)
+  customPokeInput.value = ''
+  showToast(`你${actionText} ${pokeMenu.targetName}`)
 }
 const chatFriend = computed(()=>activeChat.value?.type==='private'?friends.value.find(f=>f.spark_id===activeChat.value!.id):null)
 async function handleChatSend(){
@@ -1712,7 +1822,57 @@ function clampMenuPos(x: number, y: number, menuW = 155, menuH = 280): { x: numb
 function autoResize(e:Event){const el=e.target as HTMLTextAreaElement;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px'}
 function showCtxMenu(e:MouseEvent,type:string,id:string){const pos=clampMenuPos(e.clientX,e.clientY,155,160);ctxMenu.show=true;ctxMenu.x=pos.x;ctxMenu.y=pos.y;ctxMenu.type=type;ctxMenu.id=id}
 // 消息右键菜单(仿微信)：2分钟内可撤回
-function showMsgCtxMenu(e:MouseEvent,msg:ChatMsg){if(msg.type==='system')return;const isMine=msg.sender_id===myProfile.value?.spark_id;const elapsed=Date.now()-new Date(msg.created_at).getTime();const canRecall=isMine&&elapsed<2*60*1000;const menuH=canRecall?310:280;const pos=clampMenuPos(e.clientX,e.clientY,155,menuH);if(msg.type==='poke'){if(!canRecall)return;msgCtx.show=true;msgCtx.x=pos.x;msgCtx.y=pos.y;msgCtx.msgId=msg.id;msgCtx.canRecall=true;return};msgCtx.show=true;msgCtx.x=pos.x;msgCtx.y=pos.y;msgCtx.msgId=msg.id;msgCtx.canRecall=canRecall}
+// v11: 消息菜单触发（桌面右键 / 移动端长按）
+// 撤回权限：
+//   1) 自己发的消息 — 2 分钟内可撤回
+//   2) 群聊中 — 群主/管理员可随时撤回任何人消息（管理员不能撤回群主）
+function showMsgCtxMenu(e: MouseEvent | TouchEvent, msg: ChatMsg) {
+  if (msg.type === 'system') return
+  const isMine = msg.sender_id === myProfile.value?.spark_id
+  const elapsed = Date.now() - new Date(msg.created_at).getTime()
+  const canSelfRecall = isMine && elapsed < 2 * 60 * 1000
+  let canAdminRecall = false
+  if (activeChat.value?.type === 'group' && !isMine && activeGroup.value) {
+    const myRole = activeGroup.value.members.find(m => m.spark_id === myProfile.value?.spark_id)?.role
+    const senderRole = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)?.role
+    if (myRole === 'owner') canAdminRecall = true
+    else if (myRole === 'admin' && senderRole !== 'owner') canAdminRecall = true
+  }
+  const canRecall = canSelfRecall || canAdminRecall
+  const menuH = canRecall ? 310 : 280
+  let clientX = 0, clientY = 0
+  if (e instanceof MouseEvent) { clientX = e.clientX; clientY = e.clientY }
+  else if ((e as TouchEvent).touches?.[0]) {
+    clientX = (e as TouchEvent).touches[0].clientX
+    clientY = (e as TouchEvent).touches[0].clientY
+  } else if ((e as TouchEvent).changedTouches?.[0]) {
+    clientX = (e as TouchEvent).changedTouches[0].clientX
+    clientY = (e as TouchEvent).changedTouches[0].clientY
+  }
+  const pos = clampMenuPos(clientX, clientY, 155, menuH)
+  if (msg.type === 'poke') {
+    if (!canRecall) return
+    msgCtx.show = true; msgCtx.x = pos.x; msgCtx.y = pos.y; msgCtx.msgId = msg.id; msgCtx.canRecall = true
+    return
+  }
+  msgCtx.show = true; msgCtx.x = pos.x; msgCtx.y = pos.y; msgCtx.msgId = msg.id; msgCtx.canRecall = canRecall
+}
+
+// v11: 移动端长按触发菜单 — 600ms 不抬起弹出
+let _touchLongPressTimer: ReturnType<typeof setTimeout> | null = null
+function msgTouchStart(e: TouchEvent, msg: ChatMsg) {
+  if (_touchLongPressTimer) clearTimeout(_touchLongPressTimer)
+  _touchLongPressTimer = setTimeout(() => {
+    e.preventDefault?.()
+    showMsgCtxMenu(e, msg)
+  }, 600)
+}
+function msgTouchEnd() {
+  if (_touchLongPressTimer) { clearTimeout(_touchLongPressTimer); _touchLongPressTimer = null }
+}
+function msgTouchMove() {
+  if (_touchLongPressTimer) { clearTimeout(_touchLongPressTimer); _touchLongPressTimer = null }
+}
 // ===== 消息右键菜单全功能实装（v6.6） =====
 function msgCtxAction(action:string){
   msgCtx.show=false
@@ -2748,6 +2908,66 @@ function canManageMember(m: { spark_id: string; role: string }): boolean {
   return false
 }
 
+// ====== v11: 群成员搜索 + 多选批量操作 ======
+const memberSearchQuery = ref('')
+const memberMultiSelect = ref(false)
+const selectedMemberIds = ref<string[]>([])
+
+const filteredGroupMembers = computed(() => {
+  if (!activeGroup.value) return []
+  const kw = memberSearchQuery.value.trim().toLowerCase()
+  let list = [...activeGroup.value.members]
+  list.sort((a, b) => {
+    const rankOf = (r: string) => r === 'owner' ? 0 : r === 'admin' ? 1 : 2
+    if (rankOf(a.role) !== rankOf(b.role)) return rankOf(a.role) - rankOf(b.role)
+    return (a.group_nickname || a.nickname).localeCompare(b.group_nickname || b.nickname, 'zh-CN')
+  })
+  if (!kw) return list
+  return list.filter(m =>
+    (m.group_nickname || '').toLowerCase().includes(kw)
+    || (m.nickname || '').toLowerCase().includes(kw)
+    || (m.spark_id || '').toLowerCase().includes(kw)
+  )
+})
+
+function toggleMemberMultiSelect() {
+  memberMultiSelect.value = !memberMultiSelect.value
+  selectedMemberIds.value = []
+}
+
+function toggleMemberSelect(m: { spark_id: string; role: string }) {
+  if (!canManageMember(m)) { showToast('无权管理该成员'); return }
+  const idx = selectedMemberIds.value.indexOf(m.spark_id)
+  if (idx >= 0) selectedMemberIds.value.splice(idx, 1)
+  else selectedMemberIds.value.push(m.spark_id)
+}
+
+function handleBulkSetAdmin(makeAdmin: boolean) {
+  if (!activeGroup.value || selectedMemberIds.value.length === 0) return
+  const ids = [...selectedMemberIds.value]
+  let ok = 0, fail = 0
+  for (const id of ids) {
+    const r = setGroupAdmin(activeGroup.value.id, id, makeAdmin)
+    if (r.ok) ok++; else fail++
+  }
+  selectedMemberIds.value = []
+  showToast(`批量${makeAdmin ? '设为管理员' : '取消管理'}：成功 ${ok}${fail ? ` · 失败 ${fail}` : ''}`)
+}
+
+function handleBulkKick() {
+  if (!activeGroup.value || selectedMemberIds.value.length === 0) return
+  if (!confirm(`确定要移出 ${selectedMemberIds.value.length} 位成员吗？`)) return
+  const ids = [...selectedMemberIds.value]
+  let ok = 0, fail = 0
+  for (const id of ids) {
+    const r = kickGroupMember(activeGroup.value.id, id)
+    if (r.ok) ok++; else fail++
+  }
+  selectedMemberIds.value = []
+  memberMultiSelect.value = false
+  showToast(`批量移出：成功 ${ok}${fail ? ` · 失败 ${fail}` : ''}`)
+}
+
 // v6.9: 获取我在群里的昵称
 function getMyGroupNickname(): string {
   if (!activeGroup.value || !myProfile.value) return ''
@@ -3360,7 +3580,10 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-msg{display:flex;gap:8px;max-width:72%;align-items:flex-start}.cp-msg.mine{margin-left:auto;flex-direction:row-reverse}.cp-msg.sys{margin:0 auto;max-width:100%}
 .cp-msg-av{width:32px;height:32px;border-radius:8px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;border:1px solid rgba(255,255,255,.03);cursor:pointer;transition:transform .15s}.cp-msg-av.my{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.06)}
 .cp-msg-av-self{flex-shrink:0}
-.cp-msg-body{display:flex;flex-direction:column;gap:2px;min-width:0}.cp-msg-meta{display:flex;align-items:center;gap:4px;padding:0 4px}.cp-msg-name{font-size:9px;color:rgba(255,255,255,.15)}
+.cp-msg-body{display:flex;flex-direction:column;gap:2px;min-width:0}.cp-msg-meta{display:flex;align-items:center;gap:4px;padding:0 4px}
+/* v11: 自己消息的 role tag（群主/管理员）贴在气泡右上方 */
+.cp-msg-meta.mine{justify-content:flex-end;padding:0 4px 0 0}
+.cp-msg-name{font-size:9px;color:rgba(255,255,255,.15)}
 .cp-bubble-row{display:flex;align-items:flex-end;gap:4px}.cp-bubble-row.reverse{flex-direction:row-reverse}
 .cp-bubble{padding:8px 12px;border-radius:14px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.75);word-break:break-word;white-space:pre-wrap}
 .cp-msg:not(.mine):not(.sys) .cp-bubble{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-top-left-radius:4px}
@@ -3961,7 +4184,105 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-vtp-confirm:hover{background:rgba(139,92,246,.18)}
 .cp-vtp-confirm:disabled{opacity:.4;cursor:not-allowed}
 
-/* ====== 碰一碰菜单 ====== */
+/* ====== v11 碰一碰菜单 - 六大类 36 种姿势 + 自定义 ====== */
+.cp-poke-panel {
+  position: fixed;
+  z-index: 1000;
+  min-width: 320px;
+  max-width: 360px;
+  background: rgba(15,12,26,.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(139,92,246,.18);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.03) inset;
+  overflow: hidden;
+  animation: pokePanelIn .22s cubic-bezier(.22,1,.36,1);
+}
+@keyframes pokePanelIn {
+  from { opacity: 0; transform: scale(.92) translateY(-8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.cp-poke-panel .poke-header {
+  display:flex;align-items:center;gap:6px;
+  padding:10px 14px;font-size:12px;font-weight:600;
+  color:rgba(196,181,253,.95);
+  border-bottom:1px solid rgba(139,92,246,.12);
+  background:linear-gradient(90deg,rgba(139,92,246,.08),rgba(59,130,246,.04));
+}
+.cp-poke-panel .poke-target { color:rgba(255,255,255,.45);font-size:11px;font-weight:500;margin-left:2px }
+.cp-poke-panel .poke-close { margin-left:auto;border:none;background:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;width:22px;height:22px;border-radius:6px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s }
+.cp-poke-panel .poke-close:hover { background:rgba(239,68,68,.15);color:rgba(239,68,68,.95) }
+
+.cp-poke-panel .poke-tabs {
+  display:flex;padding:6px 8px;gap:3px;
+  border-bottom:1px solid rgba(255,255,255,.04);
+  background:rgba(255,255,255,.01);
+  overflow-x:auto;
+}
+.cp-poke-panel .poke-tabs::-webkit-scrollbar { height:2px }
+.cp-poke-panel .poke-tab {
+  display:inline-flex;align-items:center;gap:3px;
+  padding:5px 9px;border:none;background:none;border-radius:7px;
+  font-size:11px;color:rgba(255,255,255,.4);font-weight:500;cursor:pointer;white-space:nowrap;
+  transition:all .15s;
+}
+.cp-poke-panel .poke-tab:hover { background:rgba(255,255,255,.04);color:rgba(255,255,255,.65) }
+.cp-poke-panel .poke-tab.active {
+  background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(59,130,246,.12));
+  color:rgba(196,181,253,.98);
+  box-shadow:0 0 0 1px rgba(139,92,246,.25) inset;
+}
+.cp-poke-panel .poke-tab-icon { font-size:12px;line-height:1 }
+
+.cp-poke-panel .poke-grid {
+  display:grid;grid-template-columns:repeat(3,1fr);gap:5px;
+  padding:10px;
+}
+.cp-poke-panel .poke-action {
+  padding:8px 6px;font-size:11px;
+  border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.015);
+  border-radius:8px;color:rgba(255,255,255,.75);cursor:pointer;
+  transition:all .18s cubic-bezier(.22,1,.36,1);
+  text-align:center;line-height:1.3;
+}
+.cp-poke-panel .poke-action:hover {
+  background:linear-gradient(135deg,rgba(139,92,246,.18),rgba(59,130,246,.08));
+  border-color:rgba(139,92,246,.32);
+  color:white;
+  transform:translateY(-1px);
+  box-shadow:0 3px 10px rgba(139,92,246,.18);
+}
+.cp-poke-panel .poke-action:active { transform:scale(.96) }
+
+.cp-poke-panel .poke-custom {
+  display:flex;gap:6px;padding:8px 10px 10px;
+  border-top:1px solid rgba(255,255,255,.04);
+  background:rgba(255,255,255,.008);
+}
+.cp-poke-panel .poke-custom-input {
+  flex:1;padding:6px 10px;font-size:11px;
+  border:1px solid rgba(255,255,255,.06);border-radius:8px;
+  background:rgba(0,0,0,.2);color:rgba(255,255,255,.85);outline:none;
+  transition:border-color .15s;
+}
+.cp-poke-panel .poke-custom-input:focus { border-color:rgba(139,92,246,.4) }
+.cp-poke-panel .poke-custom-send {
+  padding:6px 14px;font-size:11px;font-weight:600;
+  border:none;border-radius:8px;
+  background:linear-gradient(135deg,rgba(139,92,246,.85),rgba(59,130,246,.8));
+  color:white;cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.cp-poke-panel .poke-custom-send:hover:not(:disabled) { filter:brightness(1.12);box-shadow:0 2px 8px rgba(139,92,246,.3) }
+.cp-poke-panel .poke-custom-send:disabled { opacity:.35;cursor:not-allowed }
+
+@media(max-width:480px){
+  .cp-poke-panel { min-width:280px;max-width:calc(100vw - 24px) }
+  .cp-poke-panel .poke-grid { grid-template-columns:repeat(2,1fr) }
+}
+
+/* 保留旧 poke-ctx 类以兼容（已不再使用） */
 .poke-ctx{min-width:140px}
 .poke-header{padding:8px 14px;font-size:11px;color:rgba(255,255,255,.4);border-bottom:1px solid rgba(255,255,255,.04);letter-spacing:.5px}
 

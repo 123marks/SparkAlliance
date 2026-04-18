@@ -188,79 +188,27 @@
       </div>
     </Transition>
 
-    <!-- 标签管理弹窗（v8：颜色预设 + 成员管理 + 优先级排序） -->
+    <!-- 标签管理弹窗 -->
     <Transition name="fade">
       <div v-if="showTagManager" class="fl-overlay" @click.self="showTagManager=false">
         <div class="fl-modal lg">
           <h3>🏷️ 标签管理</h3>
-
           <!-- 创建新标签 -->
           <div class="fl-tag-create">
-            <input v-model="newTagName" class="fl-modal-input sm" placeholder="新标签名称..." maxlength="16" @keydown.enter="handleCreateTag" />
-            <button class="fl-tag-add-btn" @click="handleCreateTag" :disabled="!newTagName.trim()">➕ 创建</button>
+            <input v-model="newTagName" class="fl-modal-input sm" placeholder="新标签名称..." @keydown.enter="handleCreateTag" />
+            <input v-model="newTagColor" type="color" class="fl-color-pick" />
+            <button class="fl-tag-add-btn" @click="handleCreateTag" :disabled="!newTagName.trim()">创建</button>
           </div>
-          <div class="fl-color-row">
-            <span class="fl-color-label">颜色：</span>
-            <button v-for="c in tagColorPresets" :key="c" class="fl-color-chip" :class="{active:newTagColor===c}" :style="{background:c}" @click="newTagColor=c"></button>
-            <input v-model="newTagColor" type="color" class="fl-color-pick" title="自定义颜色" />
+          <!-- 标签列表 -->
+          <div v-for="tag in tags" :key="tag.id" class="fl-tag-item">
+            <span class="fl-tag-dot" :style="{background:tag.color}"></span>
+            <span v-if="editingTagId!==tag.id" class="fl-tag-name">{{ tag.name }}</span>
+            <input v-else v-model="editingTagName" class="fl-tag-edit-input" @keydown.enter="confirmRenameTag(tag.id)" @blur="confirmRenameTag(tag.id)" />
+            <span class="fl-tag-count">{{ tag.members.length }}人</span>
+            <button class="fl-tag-edit" @click="startEditTag(tag)">✏️</button>
+            <button class="fl-tag-del" @click="handleDeleteTag(tag.id)">✕</button>
           </div>
-
-          <!-- 标签内搜索 -->
-          <div v-if="tags.length" class="fl-tag-search-row">
-            <input v-model="tagListSearch" class="fl-modal-input sm" placeholder="🔍 搜索标签..." />
-            <span class="fl-tag-total">共 {{ sortedTagsForManager.length }} 个</span>
-          </div>
-
-          <!-- 标签列表（按 priority 排序） -->
-          <div class="fl-tag-list-scroll">
-            <div v-for="(tag, idx) in sortedTagsForManager" :key="tag.id" class="fl-tag-block">
-              <div class="fl-tag-item">
-                <button class="fl-tag-dot clickable" :style="{background:tag.color}" @click="toggleColorPicker(tag.id)" :title="'点击更换颜色'"></button>
-                <span v-if="editingTagId!==tag.id" class="fl-tag-name">{{ tag.name }}</span>
-                <input v-else v-model="editingTagName" class="fl-tag-edit-input" maxlength="16"
-                  @keydown.enter="confirmRenameTag(tag.id)" @blur="confirmRenameTag(tag.id)" />
-                <span class="fl-tag-count">{{ tag.members.length }}人</span>
-                <button class="fl-tag-move" :disabled="idx===0" @click="handleMoveTag(tag.id, -1)" title="上移优先级">▲</button>
-                <button class="fl-tag-move" :disabled="idx===sortedTagsForManager.length-1" @click="handleMoveTag(tag.id, 1)" title="下移优先级">▼</button>
-                <button class="fl-tag-edit" @click="startEditTag(tag)" title="重命名">✏️</button>
-                <button class="fl-tag-expand" @click="toggleTagExpand(tag.id)" :title="expandedTagId===tag.id?'收起成员':'展开成员'">{{ expandedTagId===tag.id?'▲':'▼' }}</button>
-                <button class="fl-tag-del" @click="handleDeleteTag(tag.id)" title="删除标签">✕</button>
-              </div>
-              <!-- 颜色更换面板 -->
-              <Transition name="fade">
-                <div v-if="colorPickerTagId===tag.id" class="fl-color-row inline">
-                  <button v-for="c in tagColorPresets" :key="c" class="fl-color-chip" :class="{active:tag.color===c}" :style="{background:c}" @click="applyTagColor(tag.id, c)"></button>
-                  <input type="color" :value="tag.color" class="fl-color-pick" @change="e => applyTagColor(tag.id, (e.target as HTMLInputElement).value)" />
-                  <button class="fl-color-close" @click="colorPickerTagId=null">完成</button>
-                </div>
-              </Transition>
-              <!-- 展开成员管理区 -->
-              <Transition name="fade">
-                <div v-if="expandedTagId===tag.id" class="fl-tag-members">
-                  <!-- 搜索+批量 -->
-                  <div class="fl-members-search-row">
-                    <input v-model="memberSearch" class="fl-modal-input sm" placeholder="🔍 搜索好友..." />
-                    <button class="fl-tm-batch" @click="batchSelectAll(tag.id)" title="全部加入">全选 ✓</button>
-                    <button class="fl-tm-batch" @click="batchUnselectAll(tag.id)" title="全部移出">清空 ✕</button>
-                  </div>
-                  <!-- 所有好友（复选框控制隶属） -->
-                  <div class="fl-members-grid">
-                    <label v-for="f in filteredFriendsForTag" :key="f.id" class="fl-member-chk">
-                      <input type="checkbox"
-                        :checked="tag.members.includes(f.spark_id)"
-                        @change="toggleFriendTag(tag.id, f.spark_id)" />
-                      <span class="fl-member-avatar">{{ f.avatar || getFriendDisplayName(f)[0] }}</span>
-                      <span class="fl-member-name">{{ getFriendDisplayName(f) }}</span>
-                      <span v-if="f.remark" class="fl-member-remark">（{{ f.remark }}）</span>
-                    </label>
-                    <p v-if="!filteredFriendsForTag.length" class="fl-empty-sm">没有匹配的好友</p>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-          </div>
-          <p v-if="!sortedTagsForManager.length" class="fl-empty-sm">{{ tagListSearch ? '没有匹配的标签' : '还没有标签，上方新建一个试试' }}</p>
-
+          <p v-if="!tags.length" class="fl-empty-sm">还没有标签</p>
           <div class="fl-modal-btns"><button @click="showTagManager=false">关闭</button></div>
         </div>
       </div>
@@ -331,14 +279,7 @@ const emit = defineEmits<{
 
 const { searchBySparkId, sendFriendRequest, toggleStarFriend, updateFriendRemark,
   blockFriend, updateFriendPermissions, getFriendPermissions,
-  createTag, renameTag, deleteTag, addMemberToTag, removeMemberFromTag,
-  setTagPriority, setTagColor, removeFriend } = useCompanion()
-
-/** 8 个精选标签颜色预设（紫/红/橙/黄/绿/青/蓝/粉） */
-const tagColorPresets = [
-  '#a855f7', '#ef4444', '#f59e0b', '#eab308',
-  '#22c55e', '#14b8a6', '#3b82f6', '#ec4899',
-]
+  createTag, renameTag, deleteTag, addMemberToTag, removeMemberFromTag, removeFriend } = useCompanion()
 
 // Search
 const searchQuery = ref('')
@@ -369,10 +310,6 @@ const newTagName = ref('')
 const newTagColor = ref('#a855f7')
 const editingTagId = ref<string | null>(null)
 const editingTagName = ref('')
-const expandedTagId = ref<string | null>(null)  // 展开成员管理的标签
-const colorPickerTagId = ref<string | null>(null) // 正在修改颜色的标签
-const tagListSearch = ref('')                    // 标签列表内搜索
-const memberSearch = ref('')                     // 展开标签成员搜索
 
 // Friend-tag assignment
 const showFriendTagModal = ref(false)
@@ -563,41 +500,10 @@ function confirmPerm() {
   showPermModal.value = false
 }
 
-// 按 priority（降序）+ 创建时间排序后，再做关键字筛选
-const sortedTagsForManager = computed(() => {
-  const kw = tagListSearch.value.trim().toLowerCase()
-  const sorted = [...props.tags].sort((a, b) => {
-    // priority 大的在前；相同时按创建时间 desc
-    const p = (b.priority ?? 0) - (a.priority ?? 0)
-    if (p !== 0) return p
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
-  if (!kw) return sorted
-  return sorted.filter(t => t.name.toLowerCase().includes(kw))
-})
-
-// 展开成员区时，用 memberSearch 过滤所有好友
-const filteredFriendsForTag = computed<Friend[]>(() => {
-  const kw = memberSearch.value.trim().toLowerCase()
-  const list = props.friendList
-  if (!kw) return list
-  return list.filter(f =>
-    f.nickname.toLowerCase().includes(kw) ||
-    (f.remark || '').toLowerCase().includes(kw) ||
-    f.spark_id.toLowerCase().includes(kw)
-  )
-})
-
 // Tag CRUD
 function handleCreateTag() {
-  const name = newTagName.value.trim()
-  if (!name) return
-  // 重名校验
-  if (props.tags.some(t => t.name === name)) {
-    alert('已存在同名标签')
-    return
-  }
-  createTag(name, newTagColor.value)
+  if (!newTagName.value.trim()) return
+  createTag(newTagName.value.trim(), newTagColor.value)
   newTagName.value = ''
 }
 
@@ -607,25 +513,11 @@ function startEditTag(tag: FriendTag) {
 }
 
 function confirmRenameTag(tagId: string) {
-  const name = editingTagName.value.trim()
-  if (name) {
-    // 重名（非自身）则忽略
-    if (props.tags.some(t => t.id !== tagId && t.name === name)) {
-      alert('已存在同名标签')
-    } else {
-      renameTag(tagId, name)
-    }
-  }
+  if (editingTagName.value.trim()) renameTag(tagId, editingTagName.value.trim())
   editingTagId.value = null
 }
 
 function handleDeleteTag(tagId: string) {
-  const tag = props.tags.find(t => t.id === tagId)
-  if (!tag) return
-  if (tag.members.length > 0) {
-    if (!confirm(`标签「${tag.name}」下有 ${tag.members.length} 位好友，删除后标签将从他们身上移除。确定删除吗？`)) return
-  }
-  if (expandedTagId.value === tagId) expandedTagId.value = null
   deleteTag(tagId)
 }
 
@@ -634,54 +526,6 @@ function toggleFriendTag(tagId: string, friendId: string) {
   if (!tag) return
   if (tag.members.includes(friendId)) removeMemberFromTag(tagId, friendId)
   else addMemberToTag(tagId, friendId)
-}
-
-function toggleTagExpand(tagId: string) {
-  expandedTagId.value = expandedTagId.value === tagId ? null : tagId
-  memberSearch.value = ''
-}
-
-/** 上移 / 下移（delta = -1 上、+1 下）调整标签自身的优先级 priority */
-function handleMoveTag(tagId: string, delta: number) {
-  const sorted = sortedTagsForManager.value
-  const i = sorted.findIndex(t => t.id === tagId)
-  if (i < 0) return
-  const target = i + delta
-  if (target < 0 || target >= sorted.length) return
-  const me = sorted[i]
-  const other = sorted[target]
-  // 先归一化当前顺序的 priority（n - idx 保证大在前），再交换
-  const n = sorted.length
-  const needNormalize = sorted.some((t, idx) => (t.priority ?? 0) !== (n - idx))
-  if (needNormalize) sorted.forEach((t, idx) => { setTagPriority(t.id, n - idx) })
-  const pMe = (me.priority ?? (n - i))
-  const pOther = (other.priority ?? (n - target))
-  setTagPriority(me.id, pOther)
-  setTagPriority(other.id, pMe)
-}
-
-function batchSelectAll(tagId: string) {
-  const tag = props.tags.find(t => t.id === tagId)
-  if (!tag) return
-  for (const f of filteredFriendsForTag.value) {
-    if (!tag.members.includes(f.spark_id)) addMemberToTag(tagId, f.spark_id)
-  }
-}
-
-function batchUnselectAll(tagId: string) {
-  const tag = props.tags.find(t => t.id === tagId)
-  if (!tag) return
-  for (const f of filteredFriendsForTag.value) {
-    if (tag.members.includes(f.spark_id)) removeMemberFromTag(tagId, f.spark_id)
-  }
-}
-
-function toggleColorPicker(tagId: string) {
-  colorPickerTagId.value = colorPickerTagId.value === tagId ? null : tagId
-}
-
-function applyTagColor(tagId: string, color: string) {
-  setTagColor(tagId, color)
 }
 
 // Add friend search
@@ -817,52 +661,17 @@ onUnmounted(() => { window.removeEventListener('click', closeMenus) })
 .fl-toggle input:checked+.fl-slider{background:rgba(139,92,246,.3)}.fl-toggle input:checked+.fl-slider::before{transform:translateX(16px);background:rgba(139,92,246,.8)}
 
 /* Tag management */
-.fl-tag-create{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-.fl-color-row{display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
-.fl-color-row.inline{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.015)}
-.fl-color-label{font-size:10px;color:rgba(255,255,255,.3)}
-.fl-color-chip{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.08);cursor:pointer;padding:0;flex-shrink:0;transition:transform .12s,border-color .12s}
-.fl-color-chip:hover{transform:scale(1.12)}
-.fl-color-chip.active{border-color:rgba(255,255,255,.85);transform:scale(1.15);box-shadow:0 0 8px rgba(255,255,255,.25)}
-.fl-color-pick{width:24px;height:24px;border:none;border-radius:6px;cursor:pointer;background:none;padding:0;flex-shrink:0}
-.fl-color-close{margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);font-size:10px;cursor:pointer}
+.fl-tag-create{display:flex;gap:6px;align-items:center;margin-bottom:12px}
+.fl-color-pick{width:32px;height:32px;border:none;border-radius:8px;cursor:pointer;background:none;padding:0;flex-shrink:0}
 .fl-tag-add-btn{padding:6px 14px;border-radius:8px;border:none;background:rgba(139,92,246,.15);color:rgba(139,92,246,.7);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
-.fl-tag-add-btn:disabled{opacity:.3;cursor:not-allowed}
-
-.fl-tag-search-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.fl-tag-total{font-size:10px;color:rgba(255,255,255,.2);white-space:nowrap}
-.fl-tag-list-scroll{max-height:52vh;overflow-y:auto}
-.fl-tag-list-scroll::-webkit-scrollbar{width:3px}.fl-tag-list-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06)}
-
-.fl-tag-block{border-bottom:1px solid rgba(255,255,255,.03)}
-.fl-tag-item{display:flex;align-items:center;gap:4px;padding:8px 4px}
-.fl-tag-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:none;padding:0}
-.fl-tag-dot.sm{width:8px;height:8px}
-.fl-tag-dot.clickable{cursor:pointer;transition:transform .12s,box-shadow .12s}
-.fl-tag-dot.clickable:hover{transform:scale(1.18);box-shadow:0 0 6px currentColor}
-.fl-tag-name{flex:1;font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fl-tag-count{font-size:10px;color:rgba(255,255,255,.2);padding:0 6px;white-space:nowrap}
-.fl-tag-edit-input{flex:1;padding:2px 6px;border-radius:4px;border:1px solid rgba(139,92,246,.2);background:rgba(255,255,255,.03);color:white;font-size:12px;outline:none;min-width:0}
-.fl-tag-move,.fl-tag-edit,.fl-tag-del,.fl-tag-expand{background:none;border:none;color:rgba(255,255,255,.22);cursor:pointer;font-size:11px;padding:2px 5px;border-radius:4px;transition:all .12s;flex-shrink:0}
-.fl-tag-move{font-size:9px;line-height:1}
-.fl-tag-move:disabled{opacity:.2;cursor:not-allowed}
-.fl-tag-move:not(:disabled):hover{color:rgba(139,92,246,.7);background:rgba(139,92,246,.08)}
-.fl-tag-edit:hover,.fl-tag-expand:hover{color:rgba(139,92,246,.6)}
-.fl-tag-del:hover{color:rgba(239,68,68,.7);background:rgba(239,68,68,.08)}
-
-/* 展开的成员管理区 */
-.fl-tag-members{padding:6px 10px 12px;background:rgba(139,92,246,.03);border-radius:0 0 10px 10px}
-.fl-members-search-row{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-.fl-tm-batch{padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:rgba(255,255,255,.5);font-size:10px;cursor:pointer;white-space:nowrap}
-.fl-tm-batch:hover{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.2);color:rgba(139,92,246,.85)}
-.fl-members-grid{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
-.fl-members-grid::-webkit-scrollbar{width:3px}.fl-members-grid::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06)}
-.fl-member-chk{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;transition:background .12s}
-.fl-member-chk:hover{background:rgba(255,255,255,.03)}
-.fl-member-chk input{flex-shrink:0;accent-color:#a855f7}
-.fl-member-avatar{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(59,130,246,.15));display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0}
-.fl-member-name{font-size:11px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-.fl-member-remark{font-size:10px;color:rgba(255,255,255,.3);flex-shrink:0}
+.fl-tag-add-btn:disabled{opacity:.3}
+.fl-tag-item{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.03)}
+.fl-tag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}.fl-tag-dot.sm{width:8px;height:8px}
+.fl-tag-name{flex:1;font-size:12px;color:rgba(255,255,255,.5)}
+.fl-tag-count{font-size:10px;color:rgba(255,255,255,.15)}
+.fl-tag-edit-input{flex:1;padding:2px 6px;border-radius:4px;border:1px solid rgba(139,92,246,.2);background:rgba(255,255,255,.03);color:white;font-size:12px;outline:none}
+.fl-tag-edit,.fl-tag-del{background:none;border:none;color:rgba(255,255,255,.2);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px;transition:all .12s}
+.fl-tag-edit:hover{color:rgba(139,92,246,.6)}.fl-tag-del:hover{color:rgba(239,68,68,.6)}
 
 /* Friend-tag assignment */
 .fl-ftag-search{margin-bottom:8px}
