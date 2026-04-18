@@ -12,7 +12,19 @@ function getEdgeFunctionUrl(): string {
   return `${base}/functions/v1/assistant-chat`
 }
 
+/** 本地 Gamma4 / Gemma 3 Ollama 服务地址（services/local-ai）
+ *  - 开发环境：同机 http://localhost:3721
+ *  - 生产环境：设置 VITE_LOCAL_AI_URL 到反向代理的 HTTPS 域名
+ *  - 完全未配置时只走云端（Edge Function）
+ */
+const LOCAL_AI_URL = import.meta.env.VITE_LOCAL_AI_URL || 'http://localhost:3721'
+/** 健康检查缓存：5 分钟内不重复 ping，避免反复探测 */
+const LOCAL_HEALTH_TTL_MS = 5 * 60 * 1000
+const BACKEND_PREF_KEY = 'spark_ai_backend_pref_v1'
+
 export type ModelMode = 'default' | 'thinking' | 'fast'
+/** 后端选择：cloud=只用云端 Edge Function；local=只用本机 Ollama；auto=先云端失败降级本地 */
+export type BackendMode = 'cloud' | 'local' | 'auto'
 
 export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallbacks: string[]; label: string; desc: string; icon: string; maxTokens: number }> = {
   default: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '均衡', desc: '星火 Gamma4 · 全能均衡', icon: '⚡', maxTokens: 4096 },
@@ -175,6 +187,39 @@ export function useSparkAI() {
   const currentConversationId = ref<string | null>(null)
   const favorites = ref<FavoriteMessage[]>([])
   const reactions = ref<Record<string, MessageReaction>>({})
+
+  // v9: 后端选择（用户偏好，会持久化）+ 本地服务健康状态
+  const currentBackend = ref<BackendMode>(loadPersist<BackendMode>(BACKEND_PREF_KEY, 'auto'))
+  const localAvailable = ref<boolean | null>(null)  // null = 未检测
+  const localModelName = ref<string>('')
+  let lastLocalHealthAt = 0
+
+  function setBackend(b: BackendMode) {
+    currentBackend.value = b
+    savePersist(BACKEND_PREF_KEY, b)
+  }
+
+  /** 本地 AI 服务健康检查（带 5min 缓存，避免反复 ping） */
+  async function checkLocalHealth(force = false): Promise<boolean> {
+    const now = Date.now()
+    if (!force && now - lastLocalHealthAt < LOCAL_HEALTH_TTL_MS && localAvailable.value !== null) {
+      return !!localAvailable.value
+    }
+    try {
+      const res = await fetch(`${LOCAL_AI_URL}/health`, { signal: AbortSignal.timeout(3000) })
+      if (!res.ok) { localAvailable.value = false; lastLocalHealthAt = now; return false }
+      const data = await res.json().catch(() => ({}))
+      const ok = data?.status === 'healthy' && data?.ollama === true && data?.model === true
+      localAvailable.value = ok
+      localModelName.value = typeof data?.modelName === 'string' ? data.modelName : ''
+      lastLocalHealthAt = now
+      return ok
+    } catch {
+      localAvailable.value = false
+      lastLocalHealthAt = now
+      return false
+    }
+  }
 
   function loadConversations() {
     const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
@@ -557,93 +602,124 @@ export function useSparkAI() {
       onError?.(error.value)
     }, 120000)
 
-    try {
-      let res: Response
+    // v9: 云端调用（Supabase Edge Function → NVIDIA API）
+    async function callCloud(): Promise<Response> {
+      let { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        try {
+          const refreshed = await supabase.auth.refreshSession()
+          session = refreshed.data?.session ?? null
+        } catch { /* ignore */ }
+      }
+      if (!session?.access_token) throw new Error('NO_AUTH')
 
-      // 优先通过 Edge Function，失败则降级直连 NVIDIA API
-      try {
-        // v7.3: 先获取 session；如果没有 token，尝试一次 refreshSession 再确认
-        let { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) {
-          try {
-            const refreshed = await supabase.auth.refreshSession()
-            session = refreshed.data?.session ?? null
-          } catch { /* ignore */ }
-        }
-        if (!session?.access_token) throw new Error('NO_AUTH')
+      const fetchCloud = async (token: string) => fetch(getEdgeFunctionUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          assistant: 'spark',
+          mode: currentModel.value,
+          messages: contextMessages,
+          stream: true,
+        }),
+        signal: abortController.value!.signal,
+      })
 
-        const edgeUrl = getEdgeFunctionUrl()
-        res = await fetch(edgeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            assistant: 'spark',
-            mode: currentModel.value,
-            messages: contextMessages,
-            stream: true,
-          }),
-          signal: abortController.value!.signal,
-        })
+      let res = await fetchCloud(session.access_token)
+      if (res.ok) return res
 
-        if (!res.ok) {
-          // v7.3: 401 时先尝试 refreshSession 重试一次，避免 token 过期引发的误提示
-          if (res.status === 401) {
-            try {
-              const refreshed = await supabase.auth.refreshSession()
-              const newSession = refreshed.data?.session
-              if (newSession?.access_token) {
-                res = await fetch(getEdgeFunctionUrl(), {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${newSession.access_token}`,
-                  },
-                  body: JSON.stringify({
-                    assistant: 'spark',
-                    mode: currentModel.value,
-                    messages: contextMessages,
-                    stream: true,
-                  }),
-                  signal: abortController.value!.signal,
-                })
-                if (res.ok) {
-                  console.log('[SparkAI] refreshSession 后重试成功')
-                } else {
-                  if (res.status === 401) throw new Error('登录状态已过期，请重新登录')
-                  if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-                  throw new Error(`Edge Function 失败 (${res.status})`)
-                }
-              } else {
-                throw new Error('登录状态已过期，请重新登录')
-              }
-            } catch (refreshErr) {
-              if (refreshErr instanceof Error && refreshErr.message.includes('登录状态已过期')) throw refreshErr
-              throw new Error('登录状态已过期，请重新登录')
-            }
-          } else if (res.status === 429) {
-            throw new Error('请求过于频繁，请等待几秒后重试')
-          } else {
+      if (res.status === 401) {
+        // 401 时尝试 refreshSession 重试一次
+        try {
+          const refreshed = await supabase.auth.refreshSession()
+          const newToken = refreshed.data?.session?.access_token
+          if (newToken) {
+            res = await fetchCloud(newToken)
+            if (res.ok) return res
+            if (res.status === 401) throw new Error('登录状态已过期，请重新登录')
+            if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
             throw new Error(`Edge Function 失败 (${res.status})`)
           }
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('登录状态已过期')) throw e
         }
-        console.log('[SparkAI] Edge Function 成功')
+        throw new Error('登录状态已过期，请重新登录')
+      }
+      if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
+      throw new Error(`Edge Function 失败 (${res.status})`)
+    }
+
+    // v9: 本地调用（services/local-ai + Ollama Gamma4 / Gemma3）
+    async function callLocal(): Promise<Response> {
+      const modeCfg = MODEL_OPTIONS[currentModel.value]
+      const temperature = currentModel.value === 'thinking' ? 0.6 : currentModel.value === 'fast' ? 0.8 : 0.75
+      const res = await fetch(`${LOCAL_AI_URL}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: 'spark', // 使用服务端 spark prompt module（与云端口吻一致）
+          messages: contextMessages,
+          temperature,
+          max_tokens: modeCfg.maxTokens,
+          stream: true,
+        }),
+        signal: abortController.value!.signal,
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        if (res.status === 429) throw new Error('本地 AI 请求过于频繁，请稍后重试')
+        throw new Error(`本地 AI 失败 (${res.status})${errText ? ': ' + errText.slice(0, 100) : ''}`)
+      }
+      return res
+    }
+
+    try {
+      let res: Response
+      let usedBackend: 'cloud' | 'local' = 'cloud'
+      const backend = currentBackend.value
+
+      try {
+        if (backend === 'local') {
+          if (!(await checkLocalHealth())) {
+            throw new Error('本地 AI 未启动，请在 services/local-ai 目录运行 npm run dev')
+          }
+          res = await callLocal()
+          usedBackend = 'local'
+        } else if (backend === 'cloud') {
+          res = await callCloud()
+          usedBackend = 'cloud'
+        } else {
+          // auto：云端优先，失败且本地可用时降级
+          try {
+            res = await callCloud()
+            usedBackend = 'cloud'
+          } catch (cloudErr: unknown) {
+            if (cloudErr instanceof Error && cloudErr.name === 'AbortError') throw cloudErr
+            const msg = cloudErr instanceof Error ? cloudErr.message : ''
+            // 不降级的错误：登录/认证/速率限制类，直接上抛让用户处理
+            const noDowngrade = msg === 'NO_AUTH'
+              || msg.includes('登录')
+              || msg.includes('认证')
+              || msg.includes('频繁')
+            if (noDowngrade) throw cloudErr
+            // 尝试本地降级
+            if (await checkLocalHealth(true)) {
+              console.warn('[SparkAI] 云端失败，降级到本地 Gamma4:', msg)
+              res = await callLocal()
+              usedBackend = 'local'
+            } else {
+              throw cloudErr
+            }
+          }
+        }
       } catch (edgeErr: unknown) {
         if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
-        if (edgeErr instanceof Error && (
-          edgeErr.message === '请先登录后再使用 AI 助手'
-          || edgeErr.message === '登录状态已过期，请重新登录'
-          || edgeErr.message === '请求过于频繁，请等待几秒后重试'
-        )) throw edgeErr
         if (edgeErr instanceof Error && edgeErr.message === 'NO_AUTH') {
           throw new Error('请先登录后再使用 AI 助手')
         }
-
-        console.warn('[SparkAI] Edge Function 不可用:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
-        throw new Error('AI 服务暂时不可用，请稍后重试')
+        throw edgeErr
       }
+      console.log(`[SparkAI] 使用后端: ${usedBackend}${usedBackend === 'local' ? ` · ${localModelName.value || 'ollama'}` : ''}`)
 
       clearTimeout(timeout)
 
@@ -794,12 +870,17 @@ export function useSparkAI() {
   subscribePersist<Record<string, MessageReaction>>(REACTIONS_KEY, (v) => {
     if (v && typeof v === 'object') reactions.value = v
   })
+  // v9: 启动时探测本地 AI 服务（不 await，异步更新 localAvailable）
+  void checkLocalHealth()
 
   return {
     isStreaming,
     streamPhase,
     error,
     currentModel,
+    currentBackend,
+    localAvailable,
+    localModelName,
     conversations,
     currentConversationId,
     pendingActions,
@@ -821,6 +902,8 @@ export function useSparkAI() {
     setMessageReaction,
     getMessageReaction,
     jumpToFavorite,
+    setBackend,
+    checkLocalHealth,
     sendMessage,
     stopGenerating,
   }

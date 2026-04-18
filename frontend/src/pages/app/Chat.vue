@@ -110,6 +110,36 @@
         <button class="menu-btn" aria-label="切换侧边栏" @click="sidebarOpen = !sidebarOpen">☰</button>
         <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
         <div class="top-right">
+          <!-- v9: 后端切换（云端 / 自动 / 本地 Gamma4） -->
+          <div class="backend-switch" :class="{ 'has-local': localAvailable }">
+            <button
+              class="bk-btn"
+              :class="{ active: currentBackend === 'auto' }"
+              title="自动：云端优先，失败时降级本地 Gamma4"
+              @click="handleBackendChange('auto')"
+            >
+              <span class="bk-icon">🌐</span>自动
+            </button>
+            <button
+              class="bk-btn"
+              :class="{ active: currentBackend === 'cloud' }"
+              title="仅云端：Supabase Edge Function → NVIDIA NIM API"
+              @click="handleBackendChange('cloud')"
+            >
+              <span class="bk-icon">☁️</span>云端
+            </button>
+            <button
+              class="bk-btn"
+              :class="{ active: currentBackend === 'local', disabled: localAvailable === false }"
+              :title="localAvailable ? `仅本地 Gamma4 · ${localModelName || 'Ollama'}（离线可用）` : '本地 AI 服务未启动：在 services/local-ai 运行 npm run dev 并启动 Ollama'"
+              @click="handleBackendChange('local')"
+            >
+              <span class="bk-icon">🏠</span>本地
+              <span v-if="localAvailable" class="bk-dot-ok"></span>
+              <span v-else-if="localAvailable === false" class="bk-dot-off"></span>
+            </button>
+          </div>
+
           <!-- 上下文窗口用量指示器 -->
           <div class="ctx-gauge" :title="`本轮已占用 ${contextUsage.used} / ${contextUsage.limit} 条对话记忆`" v-if="contextUsage.used > 0">
             <span class="ctx-label">记忆</span>
@@ -381,11 +411,13 @@ import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } 
 const router = useRouter()
 const {
   isStreaming, streamPhase, error: aiError, currentModel,
+  currentBackend, localAvailable, localModelName,
   conversations, currentConversationId, favorites,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
   toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
+  setBackend, checkLocalHealth,
   sendMessage, stopGenerating,
 } = useSparkAI()
 const { createEvent } = useSchedule()
@@ -1241,6 +1273,21 @@ function openFavorite(fav: (typeof favorites.value)[number]) {
     toast('原会话已删除')
   }
 }
+
+// v9: 后端切换（本地不可用时强制重检一次）
+async function handleBackendChange(b: 'cloud' | 'local' | 'auto') {
+  if (b === 'local' && localAvailable.value !== true) {
+    toast('正在检测本地 AI 服务...')
+    const ok = await checkLocalHealth(true)
+    if (!ok) {
+      toast('❌ 本地 AI 未启动：请在 services/local-ai 运行 npm run dev 并启动 Ollama')
+      return
+    }
+  }
+  setBackend(b)
+  const labels: Record<string, string> = { auto: '自动（云端优先 + 本地降级）', cloud: '☁️ 仅云端', local: `🏠 本地 Gamma4${localModelName.value ? ` · ${localModelName.value}` : ''}` }
+  toast(`已切换后端：${labels[b]}`)
+}
 </script>
 
 <style scoped>
@@ -1639,4 +1686,22 @@ function openFavorite(fav: (typeof favorites.value)[number]) {
 .think-body { max-height:320px; overflow-y:auto; }
 .think-body::-webkit-scrollbar { width:3px; }
 .think-body::-webkit-scrollbar-thumb { background:rgba(139,92,246,.2); border-radius:4px; }
+
+/* ============ v9: 后端切换按钮（云端 / 自动 / 本地 Gamma4） ============ */
+.backend-switch { display:flex; gap:2px; padding:2px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.04); border-radius:8px; }
+.bk-btn { display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border-radius:6px; border:none; background:none; color:rgba(255,255,255,.3); font-size:10.5px; cursor:pointer; font-weight:600; transition:all .15s; position:relative; white-space:nowrap; }
+.bk-btn:hover { color:rgba(255,255,255,.6); background:rgba(255,255,255,.025); }
+.bk-btn.active { background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1)); color:rgba(196,181,253,.95); box-shadow:0 1px 4px rgba(139,92,246,.15); }
+.bk-btn.disabled { opacity:.35; cursor:not-allowed; }
+.bk-btn.disabled:hover { background:none; color:rgba(255,255,255,.3); }
+.bk-icon { font-size:12px; line-height:1; }
+.bk-dot-ok { width:5px; height:5px; border-radius:50%; background:rgba(34,197,94,.85); box-shadow:0 0 4px rgba(34,197,94,.5); flex-shrink:0; }
+.bk-dot-off { width:5px; height:5px; border-radius:50%; background:rgba(239,68,68,.7); flex-shrink:0; }
+@media(max-width:900px) {
+  .bk-btn { padding:3px 6px; font-size:10px; }
+  .bk-btn:not(.active) span:not(.bk-icon):not(.bk-dot-ok):not(.bk-dot-off) { display:none; }
+}
+@media(max-width:768px) {
+  .backend-switch { display:none; } /* 手机收起（留 top-fav/ctx-gauge 二者）*/
+}
 </style>
