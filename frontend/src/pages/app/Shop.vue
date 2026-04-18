@@ -251,10 +251,6 @@
           <div class="sp-order-actions" v-if="o.status === 'accepted'">
             <button class="sp-order-btn confirm" @click="handleSetMeeting(o.id)">🤝 约定见面</button>
           </div>
-          <div class="sp-order-actions" v-if="o.status === 'meeting'">
-            <button class="sp-order-btn confirm" @click="handleConfirmDelivery(o.id)">📦 确认交付</button>
-            <button class="sp-order-btn cancel" @click="handleCancelOrder(o.id)">取消</button>
-          </div>
         </div>
       </div>
     </div>
@@ -358,7 +354,7 @@
             @submit="handlePublish"
           />
           <div v-if="!editingProduct" class="sp-publish-tip">
-            ⚡ 发布后即刻上架
+            ⚡ 发布后将自动进入审核，审核通过后上架
           </div>
         </div>
       </div>
@@ -525,7 +521,7 @@ const {
   fetchCategories, searchProducts, getProductDetail, getSellerCredit,
   publishProduct, updateProduct, toggleFavorite, fetchMyFavorites,
   getOrCreateConversation, sendMessage,
-  acceptTransaction, setMeeting, confirmReceive, confirmDelivery, cancelTransaction,
+  acceptTransaction, setMeeting, confirmReceive, cancelTransaction,
   fetchMyBuyOrders, fetchMySellOrders, fetchMyProducts,
   submitReview, reportItem,
   fetchSearchHistory, clearSearchHistory,
@@ -755,10 +751,11 @@ async function handlePublish(data: Record<string, unknown>) {
     const id = await publishProduct(data as Parameters<typeof publishProduct>[0])
     publishingProduct.value = false
     if (id) {
-      showToast(data.status === 'draft' ? '💾 草稿已保存' : '🎉 商品已发布上架！')
+      showToast(data.status === 'draft' ? '💾 草稿已保存' : '🎉 商品已提交审核，审核通过后自动上架！')
       showPublish.value = false
+      // 乐观更新：立即添加到本地列表
       fetchMyProducts()
-      refreshProducts()
+      setTimeout(() => refreshProducts(), 2500)
     } else { showToast('发布失败') }
   }
 }
@@ -802,10 +799,10 @@ async function handleOffer(product: ShopProduct) {
   if (!input) return
   const offerPrice = parseFloat(input)
   if (isNaN(offerPrice) || offerPrice <= 0) { showToast('请输入有效价格'); return }
-  // 先进入聊天，再发送结构化 offer 消息（与聊天页协议一致）
+  // 先进入聊天，再自动发送出价消息
   const convId = await getOrCreateConversation(product.id, product.seller_id)
   if (convId) {
-    await sendMessage(convId, String(offerPrice), 'offer', product.id)
+    await sendMessage(convId, `💰 我想出价 ¥${offerPrice} 购买「${product.title}」`, 'text')
     detailProduct.value = null
     activeTab.value = 'messages'
     showToast(`💰 已向卖家出价 ¥${offerPrice}`)
@@ -837,7 +834,7 @@ async function loadMineData() {
   if (user) {
     creditInfo.value = await getSellerCredit(user.id)
     const { data: profile } = await supabase.from('spark_profiles')
-      .select('nickname, avatar_url, bio, spark_id, university, interests, created_at')
+      .select('nickname, avatar_url, bio, spark_id, university, tags, created_at')
       .eq('user_id', user.id).maybeSingle()
     if (profile) {
       if (profile.nickname) userName.value = profile.nickname
@@ -845,7 +842,7 @@ async function loadMineData() {
       if (profile.bio) userBio.value = profile.bio
       if (profile.spark_id) userSparkId.value = profile.spark_id
       if (profile.university) userSchool.value = profile.university
-      if (profile.interests) userTags.value = profile.interests as string[]
+      if (profile.tags) userTags.value = profile.tags as string[]
       if (profile.created_at) {
         const d = new Date(profile.created_at)
         userJoined.value = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -898,7 +895,8 @@ async function handleSaveProfile() {
     bio: editBio.value || undefined,
     university: editSchool.value || undefined,
     avatar_url: avatarUrl || undefined,
-    interests: editTags.value.length ? editTags.value : undefined,
+    tags: editTags.value.length ? editTags.value : undefined,
+    updated_at: new Date().toISOString(),
   }
   const { error } = await supabase.from('spark_profiles')
     .update(updates).eq('user_id', user.id)
@@ -942,14 +940,6 @@ async function handleSetMeeting(id: string) {
   if (!loc) return
   if (await setMeeting(id, new Date(time).toISOString(), loc)) {
     showToast('🤝 已约定见面')
-    fetchMySellOrders()
-  }
-}
-
-async function handleConfirmDelivery(id: string) {
-  if (!confirm('确认已完成交付？')) return
-  if (await confirmDelivery(id)) {
-    showToast('📦 已确认交付')
     fetchMySellOrders()
   }
 }
