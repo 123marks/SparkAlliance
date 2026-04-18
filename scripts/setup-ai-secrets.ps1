@@ -72,19 +72,39 @@ if (Test-Path $EnvFile) {
 }
 
 # -----------------------------------------------------------
-# 2) 检查 Supabase CLI
+# 2) 检查 Supabase CLI（优先 PATH，其次项目 tools\supabase.exe）
 # -----------------------------------------------------------
 Write-Step "检查 Supabase CLI"
+$script:SUPABASE_CMD = $null
 try {
     $null = & supabase --version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw }
-    Write-Ok "Supabase CLI 已安装"
-} catch {
+    if ($LASTEXITCODE -eq 0) {
+        $script:SUPABASE_CMD = "supabase"
+        Write-Ok "使用系统 PATH 中的 Supabase CLI"
+    }
+} catch { }
+
+if (-not $script:SUPABASE_CMD) {
+    $localCli = Join-Path $PSScriptRoot ".." | Join-Path -ChildPath "tools\supabase.exe"
+    $localCli = [System.IO.Path]::GetFullPath($localCli)
+    if (Test-Path $localCli) {
+        try {
+            $null = & $localCli --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $script:SUPABASE_CMD = $localCli
+                Write-Ok "使用项目本地 CLI: tools\supabase.exe"
+            }
+        } catch { }
+    }
+}
+
+if (-not $script:SUPABASE_CMD) {
     Write-Err "未检测到 Supabase CLI"
     Write-Host "    Windows 安装方式（任选其一）:" -ForegroundColor Gray
-    Write-Host "      scoop install supabase" -ForegroundColor Gray
-    Write-Host "      npm install -g supabase" -ForegroundColor Gray
-    Write-Host "      winget install Supabase.CLI" -ForegroundColor Gray
+    Write-Host "      方式 A（推荐）: 项目已附带 tools\supabase.exe，可直接使用" -ForegroundColor Gray
+    Write-Host "      方式 B: scoop install supabase" -ForegroundColor Gray
+    Write-Host "      方式 C: winget install Supabase.CLI" -ForegroundColor Gray
+    Write-Host "      方式 D: 下载 https://github.com/supabase/cli/releases/latest" -ForegroundColor Gray
     exit 1
 }
 
@@ -123,23 +143,44 @@ if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
 }
 
 # -----------------------------------------------------------
-# 4) 检查项目链接
+# 4) 检查项目链接（优先从 frontend/.env.local 自动提取 project ref）
 # -----------------------------------------------------------
 Write-Step "检查 Supabase 项目链接"
+
+function Get-SupabaseProjectRef {
+    $envLocal = Join-Path $PSScriptRoot ".." | Join-Path -ChildPath "frontend\.env.local"
+    $envLocal = [System.IO.Path]::GetFullPath($envLocal)
+    if (Test-Path $envLocal) {
+        $line = Get-Content $envLocal | Where-Object { $_ -match '^VITE_SUPABASE_URL\s*=' } | Select-Object -First 1
+        if ($line) {
+            $url = ($line -split '=', 2)[1].Trim()
+            if ($url -match 'https://([a-z0-9]+)\.supabase\.co') {
+                return $matches[1]
+            }
+        }
+    }
+    return $null
+}
+
 $linkOk = $false
 try {
-    $status = & supabase status 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $linkOk = $true
-    }
+    $null = & $script:SUPABASE_CMD link --project-ref (Get-SupabaseProjectRef) 2>&1
+    if ($LASTEXITCODE -eq 0) { $linkOk = $true }
 } catch { }
 
 if (-not $linkOk) {
-    Write-Warn "项目未链接"
-    $projectRef = Read-Host "    请输入 Supabase 项目 Ref（Dashboard - Project Settings - Reference ID）"
-    & supabase link --project-ref $projectRef
+    $detectedRef = Get-SupabaseProjectRef
+    if ($detectedRef) {
+        Write-Ok "从 frontend\.env.local 检测到 project-ref: $detectedRef"
+        $projectRef = $detectedRef
+    } else {
+        Write-Warn "未自动检测到 project-ref"
+        $projectRef = Read-Host "    请输入 Supabase 项目 Ref（Dashboard - Project Settings - Reference ID）"
+    }
+    & $script:SUPABASE_CMD link --project-ref $projectRef
     if ($LASTEXITCODE -ne 0) {
         Write-Err "supabase link 失败"
+        Write-Warn "可能原因：尚未登录。请先运行：$script:SUPABASE_CMD login"
         exit 1
     }
 }
@@ -173,7 +214,7 @@ $optionalKeys = @(
 
 foreach ($key in $mustPush.Keys) {
     $value = $mustPush[$key]
-    & supabase secrets set "$key=$value" 2>&1 | Out-Null
+    & $script:SUPABASE_CMD secrets set "$key=$value" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Err "$key 推送失败"
         exit 1
@@ -184,7 +225,7 @@ foreach ($key in $mustPush.Keys) {
 foreach ($key in $optionalKeys) {
     if ($envMap.ContainsKey($key) -and $envMap[$key]) {
         $value = $envMap[$key]
-        & supabase secrets set "$key=$value" 2>&1 | Out-Null
+        & $script:SUPABASE_CMD secrets set "$key=$value" 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "$key = $value"
         } else {
@@ -198,10 +239,10 @@ foreach ($key in $optionalKeys) {
 # -----------------------------------------------------------
 if (-not $SkipDeploy) {
     Write-Step "重新部署 assistant-chat Edge Function"
-    & supabase functions deploy assistant-chat
+    & $script:SUPABASE_CMD functions deploy assistant-chat
     if ($LASTEXITCODE -ne 0) {
         Write-Err "assistant-chat 部署失败"
-        Write-Warn "Secrets 已成功推送，稍后手动运行：supabase functions deploy assistant-chat"
+        Write-Warn "Secrets 已成功推送，稍后手动运行：$script:SUPABASE_CMD functions deploy assistant-chat"
         exit 1
     }
     Write-Ok "assistant-chat 已部署"
@@ -210,13 +251,13 @@ if (-not $SkipDeploy) {
     foreach ($fn in $extraFunctions) {
         $fnPath = Join-Path "supabase\functions" $fn
         if (Test-Path $fnPath) {
-            & supabase functions deploy $fn 2>&1 | Out-Null
+            & $script:SUPABASE_CMD functions deploy $fn 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { Write-Ok "$fn 已同步部署" }
             else { Write-Warn "$fn 部署失败（不影响主功能）" }
         }
     }
 } else {
-    Write-Warn "已跳过部署（-SkipDeploy），手动运行：supabase functions deploy assistant-chat"
+    Write-Warn "已跳过部署（-SkipDeploy），手动运行：$script:SUPABASE_CMD functions deploy assistant-chat"
 }
 
 # -----------------------------------------------------------

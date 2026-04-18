@@ -34,3 +34,10 @@ dist/
 .idea/
 *.swp
 *.swo
+
+# ====== 本地工具 binary（下载的 supabase CLI 等，不应入库） ======
+tools/
+supabase/.temp/
+
+# ====== Supabase 本地运行时状态 ======
+supabase/.branches/
