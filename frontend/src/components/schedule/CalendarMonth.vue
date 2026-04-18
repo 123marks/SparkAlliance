@@ -31,16 +31,18 @@
             <span class="cm-holiday" v-if="getHoliday(date)">{{ getHoliday(date) }}</span>
           </div>
 
-          <!-- 事件列表（可滚动） -->
+          <!-- 事件列表（v9: priority 视觉区分） -->
           <div class="cm-events">
             <div
               v-for="evt in getEventsForDate(date)"
               :key="evt.id"
               class="cm-event-dot"
-              :style="{ background: getEventColor(evt) + '25', borderLeft: '3px solid ' + getEventColor(evt) }"
-              :title="evt.title"
+              :class="getPriorityClass(evt)"
+              :style="{ background: getEventColor(evt) + '25', borderLeft: `${getPriorityBarWidth(evt)}px solid ${getEventColor(evt)}` }"
+              :title="`${getPriorityBadge(evt) || ''}${evt.title}`"
               @click.stop="$emit('clickEvent', evt)"
             >
+              <span v-if="getPriorityBadge(evt)" class="cm-event-badge">{{ getPriorityBadge(evt) }}</span>
               <span class="cm-event-label" :style="{ color: getEventColor(evt) }">{{ evt.title }}</span>
             </div>
           </div>
@@ -96,6 +98,24 @@ const colorMap: Record<string, string> = {
   life: '#10b981', reminder: '#8b5cf6', holiday: '#fbbf24',
 }
 const getEventColor = (e: ScheduleEvent) => e.color || colorMap[e.event_type] || '#4f8ef7'
+
+/** v9: 优先级视觉化 —— 高/紧急加粗边框 + 显示徽章 */
+const getPriorityClass = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return 'cm-prio-urgent'
+  if (e.priority === 1) return 'cm-prio-high'
+  if (e.priority === -1) return 'cm-prio-low'
+  return ''
+}
+const getPriorityBarWidth = (e: ScheduleEvent): number => {
+  if (e.priority >= 2) return 5
+  if (e.priority === 1) return 4
+  return 3
+}
+const getPriorityBadge = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return '🔥 '
+  if (e.priority === 1) return '⬆️ '
+  return ''
+}
 
 /** 获取节日名称 */
 const getHoliday = (date: Date): string | null => {
@@ -183,6 +203,7 @@ const getHoliday = (date: Date): string | null => {
   padding: 2px 6px; border-radius: 5px;
   font-size: 11px; overflow: hidden; cursor: pointer;
   transition: all 0.15s ease; flex-shrink: 0;
+  display: flex; align-items: center; gap: 3px;
 }
 .cm-event-dot:hover {
   filter: brightness(1.3);
@@ -191,6 +212,24 @@ const getHoliday = (date: Date): string | null => {
 .cm-event-label {
   white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; display: block;
-  font-weight: 500;
+  font-weight: 500; flex: 1; min-width: 0;
+}
+/* v9: 优先级视觉区分 */
+.cm-event-badge { font-size: 9px; flex-shrink: 0; }
+.cm-event-dot.cm-prio-urgent {
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(239,68,68,0.35), 0 2px 6px rgba(239,68,68,0.2);
+  animation: cmUrgentPulse 1.8s ease-in-out infinite;
+}
+@keyframes cmUrgentPulse {
+  0%,100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.35), 0 2px 6px rgba(239,68,68,0.2); }
+  50% { box-shadow: 0 0 0 2px rgba(239,68,68,0.5), 0 2px 10px rgba(239,68,68,0.35); }
+}
+.cm-event-dot.cm-prio-high {
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(249,115,22,0.25);
+}
+.cm-event-dot.cm-prio-low {
+  opacity: 0.65;
 }
 </style>

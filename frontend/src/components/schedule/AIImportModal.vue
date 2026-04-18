@@ -259,7 +259,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { supabase } from '../../supabase'
+import { supabase, invokeEdgeFunction } from '../../supabase'
 import { EVENT_TYPES, type EventFormData } from '../../composables/useSchedule'
 import { toLocalDateStr } from '../../composables/useCalendar'
 import {
@@ -432,7 +432,7 @@ const removeTempFile = async (filePath: string | null) => {
 }
 
 const invokeRecognition = async (
-  token: string,
+  _token: string,
   payload: {
     imageUrl?: string
     fileText?: string
@@ -441,28 +441,15 @@ const invokeRecognition = async (
     userPrompt?: string
   },
 ) => {
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-schedule-import`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (response.status === 429) {
-    const data = await response.json()
-    quota.value = data.usage || quotaLimit.value
-    quotaLimit.value = data.limit || quotaLimit.value
-    throw new Error(`今日识别次数已用完（${data.usage}/${data.limit}）`)
+  try {
+    const { data } = await invokeEdgeFunction<any>('ai-schedule-import', payload)
+    return data
+  } catch (e: any) {
+    if (e?.code === 'HTTP_429' || e?.httpStatus === 429) {
+      throw new Error('今日识别次数已用完')
+    }
+    throw new Error(e?.message || '识别失败')
   }
-
-  if (!response.ok) {
-    const data = await response.json()
-    throw new Error(data.error || '识别失败')
-  }
-
-  return response.json()
 }
 
 const normalizeStructuredEvents = (events: StructuredImportEvent[]): RecognizedEvent[] =>
@@ -685,29 +672,16 @@ ${eventsContext}
       content: m.content,
     }))
 
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/assistant-chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        assistant: 'spark',
-        mode: 'default',
-        messages: [
-          { role: 'user', content: `[System Context]\n${systemContext}` },
-          ...conversationHistory,
-        ],
-      }),
+    const { data } = await invokeEdgeFunction<{ content?: string; choices?: any[] }>('assistant-chat', {
+      assistant: 'spark',
+      mode: 'default',
+      messages: [
+        { role: 'user', content: `[System Context]\n${systemContext}` },
+        ...conversationHistory,
+      ],
     })
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}))
-      throw new Error(typeof errData.error === 'string' ? errData.error : `AI 服务响应异常 (${res.status})`)
-    }
-
-    const data = await res.json()
-    const aiContent = typeof data.content === 'string' ? data.content : (data.choices?.[0]?.message?.content || '')
+    const aiContent = typeof data?.content === 'string' ? data.content : (data?.choices?.[0]?.message?.content || '')
 
     const jsonMatch = aiContent.match(/\{[\s\S]*\}/)
     if (jsonMatch) {

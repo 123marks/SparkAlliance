@@ -149,6 +149,7 @@ import { computed, ref } from 'vue'
 import { EVENT_TYPES, type ScheduleEvent } from '../../composables/useSchedule'
 import { formatTime, formatDate } from '../../composables/useCalendar'
 import { getHolidayCountForMonth } from '../../data/holidays'
+import { expandRecurringEvents } from '../../composables/useRecurrence'
 
 // v7.4: 溢出折叠
 const UPCOMING_INITIAL_COUNT = 3
@@ -194,13 +195,37 @@ const toggleType = (type: string) => {
   emit('update:modelValue', current)
 }
 
+// ====== v9: 本月 / 本周 范围的展开事件（含 recurring 实例）====== 
+// 修复之前的 bug：如果一个重复课程 start_time 是学期初某周一，本周分布就读不到，健康度也失真。
+const thisMonthRange = computed(() => {
+  const start = new Date(props.currentYear, props.currentMonth - 1, 1)
+  const end = new Date(props.currentYear, props.currentMonth, 1)
+  return { start, end }
+})
+
+const monthEventsExpanded = computed(() => {
+  const { start, end } = thisMonthRange.value
+  return expandRecurringEvents(props.events, start, end)
+})
+
+const thisWeekRange = computed(() => {
+  const monday = new Date(now)
+  const diff = now.getDay() === 0 ? -6 : 1 - now.getDay()
+  monday.setDate(now.getDate() + diff)
+  monday.setHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 7)
+  return { start: monday, end: sunday }
+})
+
+const weekEventsExpanded = computed(() => {
+  const { start, end } = thisWeekRange.value
+  return expandRecurringEvents(props.events, start, end)
+})
+
 const getCount = (type: string) => {
-  const dbCount = props.events.filter(e => {
-    const d = new Date(e.start_time)
-    return e.event_type === type &&
-      d.getFullYear() === props.currentYear &&
-      d.getMonth() === props.currentMonth - 1
-  }).length
+  // 使用展开后的本月事件，递归事件也能正确计数
+  const dbCount = monthEventsExpanded.value.filter(e => e.event_type === type).length
 
   if (type === 'holiday') {
     return dbCount + getHolidayCountForMonth(props.currentMonth)
@@ -208,20 +233,18 @@ const getCount = (type: string) => {
   return dbCount
 }
 
-// ====== 本周时间分布 ======
+// ====== 本周时间分布（v9: 使用展开后的事件，正确反映 recurring 课程）======
 const weekDistribution = computed(() => {
   const labels = ['一', '二', '三', '四', '五', '六', '日']
   const todayIdx = now.getDay() === 0 ? 6 : now.getDay() - 1
 
-  const mondayDate = new Date(now)
-  const diff = now.getDay() === 0 ? -6 : 1 - now.getDay()
-  mondayDate.setDate(now.getDate() + diff)
-  mondayDate.setHours(0, 0, 0, 0)
+  const { start: mondayDate } = thisWeekRange.value
+  const weekEvts = weekEventsExpanded.value
 
   const counts = labels.map((_, i) => {
     const dayDate = new Date(mondayDate)
     dayDate.setDate(mondayDate.getDate() + i)
-    return props.events.filter(e => {
+    return weekEvts.filter(e => {
       const eDate = new Date(e.start_time)
       return eDate.getFullYear() === dayDate.getFullYear() &&
         eDate.getMonth() === dayDate.getMonth() &&
@@ -238,11 +261,8 @@ const weekDistribution = computed(() => {
   }))
 })
 
-// ====== 日程健康评分 ======
-const monthEvents = computed(() => props.events.filter(e => {
-  const d = new Date(e.start_time)
-  return d.getFullYear() === props.currentYear && d.getMonth() === props.currentMonth - 1
-}))
+// ====== 日程健康评分（v9: 基于展开后的本月事件）======
+const monthEvents = computed(() => monthEventsExpanded.value)
 
 const balanceScore = computed(() => {
   if (monthEvents.value.length < 2) return 50
@@ -334,22 +354,11 @@ const displayedUpcoming = computed(() =>
     : props.upcomingEvents.slice(0, UPCOMING_INITIAL_COUNT)
 )
 
-// ====== AI 智能建议（v7.4 扩展：多候选 + 换一换 + 作用域 + 表情包） ======
+// ====== AI 智能建议（v7.4 扩展：多候选 + 换一换 + 作用域 + 表情包；v9 使用展开事件） ======
 interface SmartSuggestion { icon: string; text: string; scope: string }
 
-// 本周事件
-const thisWeekEvents = computed(() => {
-  const monday = new Date(now)
-  const diff = now.getDay() === 0 ? -6 : 1 - now.getDay()
-  monday.setDate(now.getDate() + diff)
-  monday.setHours(0, 0, 0, 0)
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 7)
-  return props.events.filter(e => {
-    const t = new Date(e.start_time).getTime()
-    return t >= monday.getTime() && t < sunday.getTime()
-  })
-})
+// 本周展开事件
+const thisWeekEvents = computed(() => weekEventsExpanded.value)
 
 const suggestionsPool = computed<SmartSuggestion[]>(() => {
   const pool: SmartSuggestion[] = []
@@ -549,7 +558,55 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
   color: rgba(255,255,255,0.6);
 }
 
-/* ===== Upcoming ===== */
+/* ===== Upcoming (v9: 含溢出折叠 + 展开按钮) ===== */
+.upcoming-section { position: relative; }
+.upcoming-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.upcoming-header .section-title {
+  margin: 0; padding: 0; border: none;
+}
+.upcoming-count-badge {
+  font-size: 10px; font-weight: 700;
+  color: #fbbf24; background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.15);
+  padding: 2px 8px; border-radius: 10px;
+  letter-spacing: 0.3px;
+}
+
+.upcoming-list {
+  max-height: 200px; overflow: hidden;
+  transition: max-height 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+.upcoming-list.is-expanded { max-height: 1200px; }
+.upcoming-list:not(.is-expanded)::after {
+  content: ''; position: absolute; inset: auto 0 0 0; height: 28px;
+  background: linear-gradient(to bottom, transparent, rgba(12,10,24,.8));
+  pointer-events: none;
+}
+
+.upcoming-expand-btn {
+  width: 100%; margin-top: 8px; padding: 8px 12px;
+  background: rgba(139,92,246,0.04);
+  border: 1px dashed rgba(139,92,246,0.18);
+  border-radius: 10px;
+  color: rgba(167,139,250,0.75);
+  font-size: 11.5px; font-weight: 600;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.2s;
+}
+.upcoming-expand-btn:hover {
+  background: rgba(139,92,246,0.1);
+  border-color: rgba(139,92,246,0.35);
+  color: #c4b5fd;
+}
+.upcoming-chev { transition: transform 0.25s; }
+.upcoming-chev.up { transform: rotate(180deg); }
+
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   font-size: 12px; color: rgba(255, 255, 255, 0.25); padding: 20px 0;
@@ -598,20 +655,79 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
   margin-left: 2px;
 }
 
-/* ===== AI 建议 ===== */
+/* ===== AI 建议（v9 完整升级） ===== */
 .ai-suggest-section {
   padding: 14px;
   background: linear-gradient(135deg, rgba(139,92,246,0.06), rgba(79,142,247,0.04));
   border: 1px solid rgba(139,92,246,0.1);
   border-radius: 14px;
+  position: relative;
+  overflow: hidden;
 }
+.ai-suggest-section::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(139,92,246,.4), transparent);
+  animation: aiTopGlow 3s ease-in-out infinite;
+}
+@keyframes aiTopGlow { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+
+.ai-suggest-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.ai-suggest-header .section-title { margin: 0; padding: 0; border: none; }
+.ai-suggest-refresh {
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.2);
+  color: #a78bfa;
+  width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s;
+}
+.ai-suggest-refresh:hover {
+  background: rgba(139,92,246,0.18);
+  transform: rotate(90deg);
+}
+.ai-suggest-refresh.spinning svg {
+  animation: spinRefresh 0.6s linear;
+}
+@keyframes spinRefresh { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
 .ai-suggest-card {
   display: flex; gap: 10px; align-items: flex-start;
+  animation: suggestFadeIn 0.4s ease-out;
 }
-.ai-suggest-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+@keyframes suggestFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ai-suggest-icon {
+  font-size: 22px; flex-shrink: 0; margin-top: 2px;
+  animation: iconBounce 1.2s ease-out;
+}
+@keyframes iconBounce {
+  0% { transform: scale(0.6); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+.ai-suggest-content {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 4px;
+}
 .ai-suggest-text {
   margin: 0; font-size: 12px; line-height: 1.6;
-  color: rgba(255,255,255,0.6);
+  color: rgba(255,255,255,0.72);
+}
+.ai-suggest-scope {
+  font-size: 9.5px;
+  color: rgba(167,139,250,0.7);
+  background: rgba(139,92,246,0.08);
+  padding: 1px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.5px;
+  align-self: flex-start;
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {
