@@ -703,7 +703,25 @@ export function useSparkAI() {
     autoTitle(conversation)
     conversation.updatedAt = now
     saveConversations()
+    // ★ 立刻把 UI 切到 thinking 状态：
+    //   displayMsgs 依赖 isStreaming 才会追加 assistant 占位气泡，
+    //   否则用户消息推出去后，要等到 RAG 检索 / 缓存查询 / sendMessage 真正开始（数百 ms 后）
+    //   才会出现「正在思考」，造成「发完好像结束了」的视觉断层。
+    isStreaming.value = true
+    streamPhase.value = 'thinking'
+    error.value = null
+    errorCode.value = null
     return id
+  }
+
+  /**
+   * 把 streaming 状态强制重置回 idle。
+   * 用于上层在「缓存命中 / 敏感词命中 / 提早 return」等不会进入正常 finally 的路径下，
+   * 清理 pushUserMessageImmediately 抢先设的 isStreaming=true，避免状态泄漏导致 UI 永久转圈。
+   */
+  function resetStreamingState() {
+    isStreaming.value = false
+    streamPhase.value = 'idle'
   }
 
   async function sendMessage(
@@ -729,6 +747,8 @@ export function useSparkAI() {
       autoTitle(conversation)
       conversation.updatedAt = now
       saveConversations()
+      // pushUserMessageImmediately 已置 isStreaming=true，敏感词命中分支不会进入正常 finally，需手动清理
+      resetStreamingState()
       onChunk(safeReply)
       onDone(safeReply, [], '')
       return
@@ -1114,6 +1134,7 @@ export function useSparkAI() {
     inheritMemoryToNewConversation,
     sendMessage,
     pushUserMessageImmediately,
+    resetStreamingState,
     stopGenerating,
   }
 }

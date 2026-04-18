@@ -403,7 +403,7 @@ const {
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
   toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
-  sendMessage, pushUserMessageImmediately, stopGenerating,
+  sendMessage, pushUserMessageImmediately, resetStreamingState, stopGenerating,
   summarizeCurrentConversation,
   inheritMemoryToNewConversation,
 } = useSparkAI()
@@ -782,6 +782,8 @@ async function handleSend() {
       })
       conv.updatedAt = new Date().toISOString()
       streamingContent.value = ''
+      // pushUserMessageImmediately 已置 isStreaming=true，缓存命中分支不会进入 sendMessage 的 finally，需手动清理
+      resetStreamingState()
       toast(`✨ 命中缓存（已节省 ${cacheHitCount.value} 次 API 调用）`)
       return
     }
