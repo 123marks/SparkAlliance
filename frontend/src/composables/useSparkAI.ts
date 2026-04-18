@@ -41,49 +41,35 @@ async function getValidSession() {
   }
 }
 
-/** 本地 Gamma4 / Gemma 3 Ollama 服务地址（services/local-ai）
- *  - 开发环境：同机 http://localhost:3721
- *  - 生产环境：设置 VITE_LOCAL_AI_URL 到反向代理的 HTTPS 域名
- *  - 完全未配置时只走云端（Edge Function）
- */
-const LOCAL_AI_URL = import.meta.env.VITE_LOCAL_AI_URL || 'http://localhost:3721'
-/** 健康检查缓存：5 分钟内不重复 ping，避免反复探测 */
-const LOCAL_HEALTH_TTL_MS = 5 * 60 * 1000
-const BACKEND_PREF_KEY = 'spark_ai_backend_pref_v1'
-
 export type ModelMode = 'default' | 'thinking' | 'fast'
-/** 后端选择：cloud=只用云端 Edge Function；local=只用本机 Ollama；auto=先云端失败降级本地 */
-export type BackendMode = 'cloud' | 'local' | 'auto'
 
 /**
- * 3 种模式映射到不同的真实底层模型（Edge Function 侧实际路由），
- * 前端这里仅展示用途。品牌对外统一叫"星火"，内部使用 NVIDIA NIM。
- * - default（标准）→ Gemma 3 27B：本项目默认，速度质量平衡
- * - thinking（深度）→ DeepSeek R1：真推理链，适合复杂题
- * - fast（极速）→ Llama 3.1 8B：快速回答
+ * 星火助手 3 模式 UI 配置。
+ *
+ * 底层真实模型（由 Edge Function 侧 SPARK_MODEL_* env 决定，前端完全不暴露）：
+ * - default（均衡）  → moonshotai/kimi-k2.5
+ * - thinking（深度） → z-ai/glm-5.1
+ * - fast（极速）     → minimaxai/minimax-m2.5
+ *
+ * 前端只持有展示用的 label / desc / icon / maxTokens，
+ * 永远不会看到 NVIDIA API Key 或具体模型 slug。
  */
-export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallbacks: string[]; label: string; desc: string; icon: string; maxTokens: number }> = {
+export const MODEL_OPTIONS: Record<ModelMode, { label: string; desc: string; icon: string; maxTokens: number }> = {
   default: {
-    id: 'google/gemma-3-27b-it',
-    fallbacks: ['meta/llama-3.1-8b-instruct'],
-    label: '标准',
-    desc: '星火 · Gemma 3 27B（项目默认）',
+    label: '均衡',
+    desc: '默认模式，质量与速度兼顾',
     icon: '⚡',
     maxTokens: 4096,
   },
   thinking: {
-    id: 'deepseek-ai/deepseek-r1',
-    fallbacks: ['google/gemma-3-27b-it', 'meta/llama-3.1-8b-instruct'],
     label: '深度思考',
-    desc: '星火 · DeepSeek R1 推理链',
+    desc: '展示完整推理链，适合复杂题',
     icon: '🧠',
     maxTokens: 8192,
   },
   fast: {
-    id: 'meta/llama-3.1-8b-instruct',
-    fallbacks: ['google/gemma-3-27b-it'],
     label: '极速',
-    desc: '星火 · Llama 3.1 8B 快答',
+    desc: '秒级响应，适合闲聊和简单问题',
     icon: '🚀',
     maxTokens: 2048,
   },
@@ -173,6 +159,15 @@ const REACTIONS_KEY = 'spark_ai_reactions_v1'
 const MAX_CONVERSATIONS = 80
 /** 单会话最大消息数（超过时最早的对话做摘要折叠，避免 token 和 storage 爆炸） */
 const MAX_MESSAGES_PER_CONVERSATION = 200
+/**
+ * v11 记忆压缩：发送给 AI 的上下文条数上限（排除 system 后的 user/assistant 条数）。
+ * 超出时早期消息会被 AI 自动压成一条 system 摘要，保留最近 SUMMARIZE_KEEP_RECENT 条 + 摘要。
+ */
+const CONTEXT_WINDOW = 80
+/** 自动触发后台摘要的阈值：会话消息数 ≥ 此值时 sendMessage 结束后异步压缩 */
+const AUTO_SUMMARIZE_THRESHOLD = 40
+/** 摘要后保留多少条最近消息不被折叠（保留上下文连贯性） */
+const SUMMARIZE_KEEP_RECENT = 10
 
 const BINARY_EXTS = new Set([
   'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt', 'zip', 'rar', '7z', 'gz', 'tar',
@@ -233,10 +228,78 @@ function ensureMessageMeta(conversation: Conversation): boolean {
   return changed
 }
 
+/**
+ * 把 Edge Function 返回的结构化错误（error + code + attempts）
+ * 转成对用户友好的中文提示。
+ * code 列表详见 supabase/functions/assistant-chat/index.ts
+ */
+function humanizeErrorCode(code: string, serverMsg: string): string {
+  switch (code) {
+    case 'NO_AUTH':
+      return '请先登录后再使用星火助手'
+    case 'AUTH_FAILED':
+      return '登录状态已失效，请刷新页面（Ctrl+Shift+R）后重试；若仍失败请重新登录'
+    case 'BAD_REQUEST':
+      return `请求参数有误：${serverMsg || '未知原因'}`
+    case 'SERVER_MISCONFIGURED':
+      return '星火助手后端尚未完成配置（缺 NVIDIA 密钥）。请联系管理员运行 scripts/setup-ai-secrets.ps1 或在 Supabase Dashboard → Edge Function Secrets 设置 NVIDIA_API_KEY'
+    case 'UPSTREAM_AUTH_FAILED':
+      return '上游 AI 密钥无效或已过期。请联系管理员更新 NVIDIA_API_KEY'
+    case 'UPSTREAM_MODEL_NOT_FOUND':
+      return `所选模型在 NVIDIA NIM 上不可用（所有 fallback 也都失败）：${serverMsg}`
+    case 'UPSTREAM_RATE_LIMIT':
+      return '请求过于频繁（NVIDIA 限流），请等 30 秒后再试，或切换到「极速」模式消耗额度更少'
+    case 'UPSTREAM_SERVER_ERROR':
+      return `AI 服务商临时故障：${serverMsg}`
+    case 'INTERNAL_ERROR':
+      return `服务端异常：${serverMsg}`
+    default:
+      return serverMsg || `AI 服务暂时不可用（${code || '未知错误'}）`
+  }
+}
+
+/**
+ * v11 摘要专用：调 Edge Function（fast 模式）请求 AI 把一段对话浓缩成 <=200 字的记忆。
+ * 不流式，同步返回纯文本。失败时 throw，上层决定降级策略。
+ */
+async function requestMemorySummary(older: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<string> {
+  const session = await getValidSession()
+  if (!session?.access_token) throw new Error('未登录')
+
+  const condensedPrompt = `请用不超过 200 字，把以下对话浓缩成一段「记忆摘要」。要求：
+1) 按时间顺序记录用户的核心诉求、关键决策、重要事实
+2) 记录 AI 给出的结论和待办事项
+3) 用简洁陈述句，不要客套话
+4) 不要第一人称，用"用户"/"助手"指代双方
+5) 仅输出摘要正文，不要标题、不要前后缀`
+
+  const res = await fetch(getEdgeFunctionUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({
+      assistant: 'spark',
+      mode: 'fast',
+      stream: false,
+      messages: [
+        ...older,
+        { role: 'user', content: condensedPrompt },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`摘要失败 ${res.status} ${text.slice(0, 80)}`)
+  }
+  const data = await res.json().catch(() => ({} as Record<string, unknown>))
+  const content = typeof (data as { content?: unknown }).content === 'string' ? (data as { content: string }).content : ''
+  return content.trim()
+}
+
 export function useSparkAI() {
   const isStreaming = ref(false)
   const streamPhase = ref<StreamPhase>('idle')
   const error = ref<string | null>(null)
+  const errorCode = ref<string | null>(null)
   const abortController = ref<AbortController | null>(null)
   const pendingActions = ref<SparkAction[]>([])
   const currentModel = ref<ModelMode>('default')
@@ -244,39 +307,8 @@ export function useSparkAI() {
   const currentConversationId = ref<string | null>(null)
   const favorites = ref<FavoriteMessage[]>([])
   const reactions = ref<Record<string, MessageReaction>>({})
-
-  // v9: 后端选择（用户偏好，会持久化）+ 本地服务健康状态
-  const currentBackend = ref<BackendMode>(loadPersist<BackendMode>(BACKEND_PREF_KEY, 'auto'))
-  const localAvailable = ref<boolean | null>(null)  // null = 未检测
-  const localModelName = ref<string>('')
-  let lastLocalHealthAt = 0
-
-  function setBackend(b: BackendMode) {
-    currentBackend.value = b
-    savePersist(BACKEND_PREF_KEY, b)
-  }
-
-  /** 本地 AI 服务健康检查（带 5min 缓存，避免反复 ping） */
-  async function checkLocalHealth(force = false): Promise<boolean> {
-    const now = Date.now()
-    if (!force && now - lastLocalHealthAt < LOCAL_HEALTH_TTL_MS && localAvailable.value !== null) {
-      return !!localAvailable.value
-    }
-    try {
-      const res = await fetch(`${LOCAL_AI_URL}/health`, { signal: AbortSignal.timeout(3000) })
-      if (!res.ok) { localAvailable.value = false; lastLocalHealthAt = now; return false }
-      const data = await res.json().catch(() => ({}))
-      const ok = data?.status === 'healthy' && data?.ollama === true && data?.model === true
-      localAvailable.value = ok
-      localModelName.value = typeof data?.modelName === 'string' ? data.modelName : ''
-      lastLocalHealthAt = now
-      return ok
-    } catch {
-      localAvailable.value = false
-      lastLocalHealthAt = now
-      return false
-    }
-  }
+  /** v11: 记忆压缩中状态（UI 订阅展示"压缩中…"） */
+  const summarizing = ref(false)
 
   function loadConversations() {
     const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
@@ -381,7 +413,6 @@ export function useSparkAI() {
     const c = conversations.value.find((item) => item.id === id)
     if (!c) return false
     c.isPinned = !c.isPinned
-    // 重新按 isPinned + updatedAt 排序
     conversations.value = sortConversations(conversations.value)
     saveConversations()
     return !!c.isPinned
@@ -392,7 +423,6 @@ export function useSparkAI() {
     const c = conversations.value.find((item) => item.id === id)
     if (!c) return false
     c.isArchived = !c.isArchived
-    // 归档时自动取消置顶
     if (c.isArchived && c.isPinned) c.isPinned = false
     conversations.value = sortConversations(conversations.value)
     saveConversations()
@@ -407,7 +437,6 @@ export function useSparkAI() {
     const clone: Conversation = {
       id: genId('c_'),
       title: `${src.title} · 副本`,
-      // 深拷贝消息，并重新生成每条消息的 id（避免与原会话收藏/反应错乱）
       messages: src.messages.map((m) => ({ ...m, id: genId('m_') })),
       createdAt: now,
       updatedAt: now,
@@ -470,12 +499,10 @@ export function useSparkAI() {
     return true
   }
 
-  /** 是否已收藏 */
   function isMessageFavorited(messageId: string): boolean {
     return favorites.value.some((f) => f.id === messageId)
   }
 
-  /** 设置反应（like / dislike / null 取消） */
   function setMessageReaction(messageId: string, reaction: MessageReaction | null) {
     if (reaction === null) {
       delete reactions.value[messageId]
@@ -485,12 +512,10 @@ export function useSparkAI() {
     saveReactions()
   }
 
-  /** 获取反应 */
   function getMessageReaction(messageId: string): MessageReaction | null {
     return reactions.value[messageId] || null
   }
 
-  /** 跳转到收藏所在会话 + 对应消息 */
   function jumpToFavorite(favorite: FavoriteMessage): boolean {
     const exists = conversations.value.some((c) => c.id === favorite.conversationId)
     if (!exists) return false
@@ -500,9 +525,6 @@ export function useSparkAI() {
 
   /**
    * 导出会话（v8 闭环）
-   * @param id 会话 ID
-   * @param format 'markdown' | 'json'
-   * @returns { filename, content, mime } 供前端触发下载
    */
   function exportConversation(id: string, format: 'markdown' | 'json' = 'markdown'): { filename: string; content: string; mime: string } | null {
     const c = conversations.value.find((item) => item.id === id)
@@ -516,7 +538,6 @@ export function useSparkAI() {
         mime: 'application/json',
       }
     }
-    // markdown
     const lines: string[] = []
     lines.push(`# ${c.title}`)
     lines.push('')
@@ -564,6 +585,106 @@ export function useSparkAI() {
     conversation.title = firstUserMessage.content.slice(0, 30) + (firstUserMessage.content.length > 30 ? '...' : '')
   }
 
+  /**
+   * v11: 对指定会话做一次记忆压缩。
+   * - 取 plain（非 system）消息中早期的一批（除去最近 SUMMARIZE_KEEP_RECENT 条）
+   * - 让 AI 用 fast 模式浓缩成 ≤200 字的 system 摘要
+   * - 替换掉原会话的早期消息，新 system 条目前置（老摘要合并）
+   * @returns 是否真的做了压缩
+   */
+  async function summarizeConversation(conv: Conversation): Promise<boolean> {
+    const plain = conv.messages.filter((m) => m.role !== 'system')
+    if (plain.length <= SUMMARIZE_KEEP_RECENT + 5) return false
+    const toCompress = plain.slice(0, -SUMMARIZE_KEEP_RECENT).map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+    if (toCompress.length === 0) return false
+
+    summarizing.value = true
+    try {
+      const summary = await requestMemorySummary(toCompress)
+      if (!summary) return false
+
+      const recent = plain.slice(-SUMMARIZE_KEEP_RECENT)
+      const oldSystems = conv.messages.filter((m) => m.role === 'system')
+      const mergedSystemContent = [
+        ...oldSystems.map((m) => m.content.trim()).filter(Boolean),
+        `[记忆摘要 · ${new Date().toISOString().slice(0, 19).replace('T', ' ')}]\n${summary}`,
+      ].join('\n\n---\n\n')
+
+      conv.messages = [
+        {
+          id: genId('m_'),
+          createdAt: new Date().toISOString(),
+          role: 'system',
+          content: mergedSystemContent,
+        },
+        ...recent,
+      ]
+      conv.updatedAt = new Date().toISOString()
+      saveConversations()
+      return true
+    } catch (e) {
+      console.warn('[SparkAI] 记忆压缩失败:', e)
+      return false
+    } finally {
+      summarizing.value = false
+    }
+  }
+
+  /**
+   * v11: 主动压缩当前会话（UI 点击"记忆压缩中"徽章时调用）
+   */
+  async function summarizeCurrentConversation(): Promise<boolean> {
+    const conv = getCurrentConversation()
+    return summarizeConversation(conv)
+  }
+
+  /**
+   * v11: 新开会话并继承记忆。
+   * - 把当前会话摘要成一条 system 消息
+   * - 创建新会话，把这条 system 作为新会话的首条消息（AI 回看历史）
+   * - 自动切换到新会话
+   */
+  async function inheritMemoryToNewConversation(): Promise<Conversation | null> {
+    const src = conversations.value.find((c) => c.id === currentConversationId.value)
+    if (!src) return null
+    const plain = src.messages.filter((m) => m.role !== 'system')
+    if (plain.length === 0) return null
+
+    summarizing.value = true
+    try {
+      const toCompress = plain.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }))
+      const summary = await requestMemorySummary(toCompress).catch(() => '')
+      const now = new Date().toISOString()
+      const newConv: Conversation = {
+        id: genId('c_'),
+        title: `${src.title} · 续聊`,
+        createdAt: now,
+        updatedAt: now,
+        messages: [],
+      }
+      if (summary) {
+        newConv.messages.push({
+          id: genId('m_'),
+          createdAt: now,
+          role: 'system',
+          content: `[来自上一次对话的记忆摘要]\n${summary}`,
+        })
+      }
+      conversations.value.unshift(newConv)
+      currentConversationId.value = newConv.id
+      saveConversations()
+      return newConv
+    } finally {
+      summarizing.value = false
+    }
+  }
+
   async function sendMessage(
     userMessage: string,
     onChunk: (text: string) => void,
@@ -597,20 +718,31 @@ export function useSparkAI() {
     conversation.messages.push({ id: genId('m_'), createdAt: nowIso, role: 'user', content: composedUserMessage, attachments })
     autoTitle(conversation)
     conversation.updatedAt = nowIso
-    // 单会话消息上限保护：超过时最早的消息按批折叠（保留最近 MAX_MESSAGES_PER_CONVERSATION）
     if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
       conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION)
     }
 
-    const contextMessages = conversation.messages
-      .slice(-60)
+    // v11: 切片最近 CONTEXT_WINDOW 条 + 把 system 消息（记忆摘要）作为 user 前缀注入，
+    //      因为 Edge Function 只接受 role=user/assistant（会过滤掉 system）
+    const recentSlice = conversation.messages.slice(-CONTEXT_WINDOW)
+    const systemMemoryContents = recentSlice
+      .filter((message) => message.role === 'system' && message.content.trim())
+      .map((message) => message.content.trim())
+    const contextMessages = recentSlice
       .filter((message) => message.role !== 'system')
       .map((message) => ({
         role: message.role as 'user' | 'assistant',
         content: message.content,
       }))
 
-    // v7.3: 如果前端传入了 extraContext（RAG 检索结果），把它作为一条系统前缀 user 消息注入
+    if (systemMemoryContents.length) {
+      contextMessages.unshift({
+        role: 'user',
+        content: `[记忆摘要，仅供参考]\n\n${systemMemoryContents.join('\n\n---\n\n')}\n\n---\n\n请基于以上记忆和下方对话，自然地回复用户。不要主动复述摘要内容。`,
+      })
+    }
+
+    // v7.3: RAG 检索结果
     if (extraContext && extraContext.trim()) {
       contextMessages.unshift({
         role: 'user',
@@ -621,6 +753,7 @@ export function useSparkAI() {
     isStreaming.value = true
     streamPhase.value = 'thinking'
     error.value = null
+    errorCode.value = null
     pendingActions.value = []
     abortController.value = new AbortController()
 
@@ -655,18 +788,23 @@ export function useSparkAI() {
     const timeout = setTimeout(() => {
       console.warn('[SparkAI] 请求超时，模式:', currentModel.value)
       abortController.value?.abort()
-      error.value = '响应超时，请稍后重试或切换模型'
+      error.value = '响应超时，请稍后重试或切换模式'
+      errorCode.value = 'TIMEOUT'
       onError?.(error.value)
     }, 120000)
 
-    // v10: 云端调用（Supabase Edge Function → NVIDIA API）
-    // 关键修复：之前只在首次 session 为空或拿到 401 时才刷新 token，
-    // 对于已经过期但前端尚未同步的 session，会把过期 token 先发给服务端，
-    // 触发"登录状态已过期"提示（其实用户 UI 上明明已登录）。
-    // 这里改为：发送前主动检查 expires_at，剩余 < 90s 主动 refresh。
+    /**
+     * 调用云端 Supabase Edge Function（assistant-chat） → NVIDIA NIM API。
+     * 全链路 HTTPS，前端不接触 NVIDIA API Key。
+     * 错误处理：Edge Function 返回结构化 { error, code, attempts }，前端按 code 做差异化提示。
+     */
     async function callCloud(): Promise<Response> {
       let session = await getValidSession()
-      if (!session?.access_token) throw new Error('NO_AUTH')
+      if (!session?.access_token) {
+        const err = new Error('请先登录后再使用星火助手') as Error & { code?: string }
+        err.code = 'NO_AUTH'
+        throw err
+      }
 
       const fetchCloud = async (token: string) => fetch(getEdgeFunctionUrl(), {
         method: 'POST',
@@ -683,6 +821,7 @@ export function useSparkAI() {
       let res = await fetchCloud(session.access_token)
       if (res.ok) return res
 
+      // 401 自动刷新一次 session 再重试一次
       if (res.status === 401) {
         try {
           const refreshed = await supabase.auth.refreshSession()
@@ -693,88 +832,30 @@ export function useSparkAI() {
         if (session?.access_token) {
           res = await fetchCloud(session.access_token)
           if (res.ok) return res
-          if (res.status === 401) throw new Error('AI 服务认证异常，请刷新页面后重试')
-          if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-          throw new Error(`Edge Function 失败 (${res.status})`)
         }
-        throw new Error('AI 服务认证异常，请刷新页面后重试')
       }
-      if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-      const errText = await res.text().catch(() => '')
-      throw new Error(`Edge Function 失败 (${res.status})${errText ? ': ' + errText.slice(0, 120) : ''}`)
-    }
 
-    // v9: 本地调用（services/local-ai + Ollama Gamma4 / Gemma3）
-    async function callLocal(): Promise<Response> {
-      const modeCfg = MODEL_OPTIONS[currentModel.value]
-      const temperature = currentModel.value === 'thinking' ? 0.6 : currentModel.value === 'fast' ? 0.8 : 0.75
-      const res = await fetch(`${LOCAL_AI_URL}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          module: 'spark', // 使用服务端 spark prompt module（与云端口吻一致）
-          messages: contextMessages,
-          temperature,
-          max_tokens: modeCfg.maxTokens,
-          stream: true,
-        }),
-        signal: abortController.value!.signal,
-      })
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '')
-        if (res.status === 429) throw new Error('本地 AI 请求过于频繁，请稍后重试')
-        throw new Error(`本地 AI 失败 (${res.status})${errText ? ': ' + errText.slice(0, 100) : ''}`)
+      // 解析结构化错误（Edge Function 返回 JSON）
+      let code = `HTTP_${res.status}`
+      let reason = ''
+      try {
+        const payload = await res.json()
+        if (payload && typeof payload === 'object') {
+          code = typeof payload.code === 'string' ? payload.code : code
+          reason = typeof payload.error === 'string' ? payload.error : ''
+        }
+      } catch {
+        const text = await res.text().catch(() => '')
+        reason = text.slice(0, 200)
       }
-      return res
+      const err = new Error(humanizeErrorCode(code, reason)) as Error & { code?: string }
+      err.code = code
+      throw err
     }
 
     try {
-      let res: Response
-      let usedBackend: 'cloud' | 'local' = 'cloud'
-      const backend = currentBackend.value
-
-      try {
-        if (backend === 'local') {
-          if (!(await checkLocalHealth())) {
-            throw new Error('本地 AI 未启动，请在 services/local-ai 目录运行 npm run dev')
-          }
-          res = await callLocal()
-          usedBackend = 'local'
-        } else if (backend === 'cloud') {
-          res = await callCloud()
-          usedBackend = 'cloud'
-        } else {
-          // auto：云端优先，失败且本地可用时降级
-          try {
-            res = await callCloud()
-            usedBackend = 'cloud'
-          } catch (cloudErr: unknown) {
-            if (cloudErr instanceof Error && cloudErr.name === 'AbortError') throw cloudErr
-            const msg = cloudErr instanceof Error ? cloudErr.message : ''
-            // 不降级的错误：登录/认证/速率限制类，直接上抛让用户处理
-            const noDowngrade = msg === 'NO_AUTH'
-              || msg.includes('登录')
-              || msg.includes('认证')
-              || msg.includes('频繁')
-            if (noDowngrade) throw cloudErr
-            // 尝试本地降级
-            if (await checkLocalHealth(true)) {
-              console.warn('[SparkAI] 云端失败，降级到本地 Gamma4:', msg)
-              res = await callLocal()
-              usedBackend = 'local'
-            } else {
-              throw cloudErr
-            }
-          }
-        }
-      } catch (edgeErr: unknown) {
-        if (edgeErr instanceof Error && edgeErr.name === 'AbortError') throw edgeErr
-        if (edgeErr instanceof Error && edgeErr.message === 'NO_AUTH') {
-          throw new Error('请先登录后再使用 AI 助手')
-        }
-        throw edgeErr
-      }
-      console.log(`[SparkAI] 使用后端: ${usedBackend}${usedBackend === 'local' ? ` · ${localModelName.value || 'ollama'}` : ''}`)
+      const res = await callCloud()
+      console.log('[SparkAI] 云端调用 · model=' + (res.headers.get('X-Spark-Model') || '?') + ' · mode=' + (res.headers.get('X-Spark-Mode') || currentModel.value) + ' · attempts=' + (res.headers.get('X-Spark-Attempts') || '1'))
 
       clearTimeout(timeout)
 
@@ -873,21 +954,30 @@ export function useSparkAI() {
       pendingActions.value = actions
       streamPhase.value = 'done'
       onDone(cleanContent, actions, finalReasoning)
+
+      // v11: 回复完成后，若消息数超阈值则后台摘要（不阻塞 UI）
+      const plainCount = conversation.messages.filter((m) => m.role !== 'system').length
+      if (plainCount >= AUTO_SUMMARIZE_THRESHOLD && !summarizing.value) {
+        void summarizeConversation(conversation).catch(() => { /* 静默失败 */ })
+      }
     } catch (err: unknown) {
       clearTimeout(timeout)
       flushSmooth()
 
       let message: string
+      let code: string | null = null
       if (err instanceof Error) {
+        code = (err as Error & { code?: string }).code ?? null
         if (err.name === 'AbortError') message = error.value || '已停止生成'
         else if (err instanceof TypeError && err.message.includes('fetch')) message = '网络连接失败，请检查网络后重试'
         else message = err.message
       } else {
         message = '未知错误，请重试'
       }
-      console.error('[SparkAI] 错误:', message, err)
+      console.error('[SparkAI] 错误:', message, 'code=', code, err)
 
       if (!error.value) error.value = message
+      if (code && !errorCode.value) errorCode.value = code
       onError?.(error.value)
 
       if (rawText && err instanceof Error && err.name !== 'AbortError') {
@@ -900,7 +990,6 @@ export function useSparkAI() {
         saveConversations()
       }
     } finally {
-      // 确保所有定时器都被清理，防止内存泄漯
       if (smoothTimer) {
         clearInterval(smoothTimer)
         smoothTimer = null
@@ -918,29 +1007,25 @@ export function useSparkAI() {
   loadConversations()
   loadFavorites()
   loadReactions()
-  // 跨设备同步：其他设备写入收藏/反应时自动应用
   subscribePersist<FavoriteMessage[]>(FAVORITES_KEY, (v) => {
     if (Array.isArray(v)) favorites.value = v
   })
   subscribePersist<Record<string, MessageReaction>>(REACTIONS_KEY, (v) => {
     if (v && typeof v === 'object') reactions.value = v
   })
-  // v9: 启动时探测本地 AI 服务（不 await，异步更新 localAvailable）
-  void checkLocalHealth()
 
   return {
     isStreaming,
     streamPhase,
     error,
+    errorCode,
     currentModel,
-    currentBackend,
-    localAvailable,
-    localModelName,
     conversations,
     currentConversationId,
     pendingActions,
     favorites,
     reactions,
+    summarizing,
     createConversation,
     getCurrentConversation,
     switchConversation,
@@ -957,8 +1042,8 @@ export function useSparkAI() {
     setMessageReaction,
     getMessageReaction,
     jumpToFavorite,
-    setBackend,
-    checkLocalHealth,
+    summarizeCurrentConversation,
+    inheritMemoryToNewConversation,
     sendMessage,
     stopGenerating,
   }

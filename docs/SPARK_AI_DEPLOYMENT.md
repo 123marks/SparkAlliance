@@ -1,250 +1,205 @@
-# 星火助手 v9 · 完整部署 & 安全审计报告
+# 星火助手 v11 · 部署 & 安全 & 配置一本通
 
-本文一次性讲清楚三件事：
-1. **安全审计结论**（明文传输风险点、当前防护、加固建议）
-2. **本地 Gamma4 模型如何启用**（作为备用 AI，离线可用）
-3. **数据库打通完整步骤**（按序执行 + 验证）
+本文一次讲清楚星火助手模块的三件事：
+1. **架构与安全** —— 密钥在哪、传输怎么加密、为什么前端不持有 API Key
+2. **一键配置 API** —— NVIDIA_API_KEY 如何通过脚本安全推到 Supabase Secrets
+3. **4 种模式 + 长上下文 + 记忆继承** —— 用户体验上的三大升级
 
 ---
 
-## 一、安全审计结论
+## 一、架构与安全
 
-### ✅ 传输层：不存在明文传输风险
+### 1.1 请求链路（全链路加密）
 
-| 链路 | 协议 | 加密状态 |
+```
+┌────────────┐  HTTPS(TLS 1.3)  ┌──────────────────────┐  HTTPS  ┌──────────────┐
+│  浏览器     │ ───────────────> │ Supabase Edge Func   │ ──────> │  NVIDIA NIM  │
+│  Chat.vue   │  JWT + messages   │ assistant-chat       │         │  (Kimi/GLM/  │
+│  (前端)    │ <─────────────── │ (Deno + 服务端 Key)  │ <────── │   MiniMax)   │
+└────────────┘  流式 SSE        └──────────────────────┘         └──────────────┘
+```
+
+- 浏览器 ↔ Edge Function：HTTPS + Supabase JWT 鉴权
+- Edge Function ↔ NVIDIA：HTTPS + `Authorization: Bearer ${NVIDIA_API_KEY}`
+- 响应：流式 Server-Sent Events，前端渐进渲染
+- 前端**永远不持有** NVIDIA API Key，DevTools 里扒不到
+
+### 1.2 密钥存储位置（必看）
+
+| Key | 位置 | 前端可见？ |
 |---|---|---|
-| 浏览器 ↔ Supabase Edge Function | HTTPS (TLS 1.3) | ✅ 全链路加密 |
-| 浏览器 ↔ 本地 AI (localhost:3721) | HTTP | ✅ Loopback 回环，物理上不出本机，无需加密 |
-| Edge Function ↔ NVIDIA NIM API | HTTPS | ✅ 全链路加密 |
-| Edge Function ↔ Supabase Postgres | TLS + 内网 | ✅ |
+| `NVIDIA_API_KEY` | Supabase Dashboard → Project Settings → Edge Functions → **Secrets** | ❌ 不可见 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 同上（Supabase 自动注入） | ❌ 不可见 |
+| 用户 JWT `access_token` | 浏览器 localStorage（HttpOnly 不适用 SPA） | ✅ 本机可见，但**跨站无法读取** |
 
-### ✅ 密钥隔离：前端零接触敏感凭证
+> ⚠️ **绝对不要**把 NVIDIA_API_KEY 粘进 `.env`、`frontend/.env.local` 或任何源码文件。
+> 一旦放进前端构建产物，任何打开网站的人都能打开 DevTools Network 面板扒走它。
 
-```
-✅ NVIDIA_API_KEY      → 仅存 Supabase Edge Function Deno.env
-✅ SUPABASE_SERVICE_ROLE_KEY → 仅 Edge Function 服务端
-✅ 前端只持有用户 JWT access_token（RLS 做行级授权）
-```
-
-查验命令：
-```bash
-# 确认前端构建产物不包含任何 api key
-rg -i "nvidia|sk-|api[_-]key|service_role" frontend/dist/ 2>/dev/null | head -20
-# 应无输出；若有，立即检查泄漏
-```
-
-### ✅ 内容安全：三层过滤
-
-1. **前端预过滤** (`contentSafety.ts`)：XSS、敏感词、AI 身份暴露（发送前和接收后都跑一遍）
-2. **Edge Function 过滤** (`assistant-chat/index.ts`)：input safety + output sanitize
-3. **服务端响应模型身份脱敏**：Gemma / Llama / GPT / Claude 等字样全部改为"星火助手"
-
-### ⚠️ 存储层：浏览器本地 & Supabase 明文（可选加密）
-
-**现状**：
-- localStorage：会话内容、收藏、反应均**浏览器本地明文**（所有 Web 应用都如此，属于用户设备内部）
-- Supabase `spark_user_state.data`（jsonb）：**明文存储**（但 Postgres 磁盘层由 Supabase 做 at-rest encryption）
-
-**风险评估**：
-- localStorage 本地明文 → 风险仅限于本机被物理 / 恶意脚本访问；**不是传输风险**
-- Supabase 明文 → Supabase 自身已做硬盘加密 + 云厂商合规；普通业务场景足够
-
-**可选加固**（仅隐私敏感场景）：
-- 用户密码派生 key + SubtleCrypto AES-GCM 对 `messages` 做端到端加密后再持久化
-- 代价：无法做全文搜索（spark_knowledge RAG 失效）；无法云端做数据分析
-- 是否值得：**大多数校园 / SaaS 应用不需要**；若你要走"企业级 / 医疗级"合规才考虑
-
-### ✅ CSRF 与 Auth
-
-- Edge Function 强制 `Authorization: Bearer <JWT>`，JWT 由 Supabase 签发，有 3600s 过期 + refresh_token 轮换
-- v9 新增 401 自动 refreshSession 重试，避免 token 过期误导用户"重新登录"
-- CORS `Access-Control-Allow-Origin: *` + JWT 鉴权 → 攻击者无法伪造合法 JWT，安全
-
-### 🎯 结论
-
-星火助手 v9 **已达到校园应用 / 轻 SaaS 的标准安全水平**：
-- 传输全 HTTPS / 回环
-- 密钥全服务端
-- 内容三层过滤
-- RLS 行级隔离
-- JWT 自动 refresh
-
-**不需要做任何额外的传输加密改造。** 你说"不要明文传输"已经满足（当前所有跨网络传输均加密）。
-
----
-
-## 二、本地 Gamma4 模型启用（星火助手备用 AI）
-
-### 架构
-
-```
- Chat.vue
-    │
-    ├─ 后端：自动（默认）  →  Supabase Edge Function  →  NVIDIA NIM (Gemma 3 27B)
-    │            │ 失败时
-    │            ▼
-    ├─ 后端：本地           →  services/local-ai (3721)  →  Ollama (11434)  →  gemma3:4b / 27b
-    │
-    └─ 后端：仅云端 / 仅本地（用户手动切换）
-```
-
-### 1. 启动本地 AI 服务（一次性配置）
-
-**前置条件**：你的机器已安装 Ollama 并拉取了模型。
+### 1.3 零信任验证
 
 ```powershell
-# 1. 下载 Ollama: https://ollama.com/download
-# 2. 拉取 Gamma4 / Gemma 3 模型（任选其一）
-ollama pull gemma3:4b        # 推荐：4B 量化版，8GB 显存即可
-# 或
-ollama pull gemma3:27b       # 旗舰：更聪明，需 ≥24GB 显存
-
-# 3. 启动 Ollama（默认 11434 端口）
-ollama serve
-
-# 4. 另开一个终端，启动 Spark 本地 AI 服务
-cd services\local-ai
-npm install
-# （可选）调整模型：编辑 services/local-ai/.env 添加 OLLAMA_MODEL=gemma3:27b
-npm run dev
-```
-
-成功后会看到：
-```
-🌟 Spark Alliance Local AI Service
-   端口: 3721
-   模型: gemma3:4b
-   Ollama: http://localhost:11434
-
-✅ Ollama 连接正常
-✅ 模型 gemma3:4b 已就绪
-```
-
-### 2. 前端配置（可选）
-
-```bash
-# frontend/.env.local 添加（默认已指向 localhost:3721，无需改）
-VITE_LOCAL_AI_URL=http://localhost:3721
-```
-
-部署到生产环境时，如要启用远程本地 AI，可把它暴露为 HTTPS 域名：
-```
-VITE_LOCAL_AI_URL=https://local-ai.yourdomain.com
-```
-
-### 3. 使用方式
-
-打开星火助手 → 顶栏右侧新增 **"🌐自动 / ☁️云端 / 🏠本地"** 三态切换按钮：
-
-- **自动**（默认）：云端优先，失败时自动降级到本地 Gamma4
-- **云端**：只用 Supabase + NVIDIA（需要网络）
-- **本地**：只用本机 Ollama（**离线可用** · 0 API 调用 · 所有数据不出机器）
-
-按钮会显示绿点（本地在线）/ 红点（本地离线）/ 无点（未检测）。首次点击"本地"时如果未启动会提示操作步骤。
-
-### 4. 注意事项
-
-- 本地 Gamma4 流式输出 **不带 `<think>` 深度思考标签**（Ollama / OpenAI 兼容协议标准限制），思考过程 UI 不显示
-- 本地模型的"均衡 / 深度思考 / 极速" 3 档只影响 temperature 和 max_tokens，**不切换模型**（用同一个 Ollama 模型）
-- 若想让"深度思考"模式跑更大模型，编辑 `services/local-ai/.env` 设 `OLLAMA_MODEL=gemma3:27b` 重启即可
-
----
-
-## 三、数据库完整打通
-
-### Step 0 · 体检（必做）
-
-打开 Supabase Dashboard → SQL Editor，贴入 `docs/database/spark_health_check.sql` 的全部内容 → Run。
-
-- 任何表显示 "❌ 缺失" → 记下模块名
-- 任何 RLS 显示 "⚠️ 关闭" → 对应 SQL 需重跑
-
-### Step 1 · 按序执行 SQL（在 SQL Editor 逐个粘贴运行）
-
-| 顺序 | 文件 | 作用 | 必需？ |
-|---|---|---|---|
-| 1 | `docs/database/supabase-schema.sql` | 基础扩展（uuid-ossp 等） | ✅ 必需（首次） |
-| 2 | `docs/database/auth_profiles_migration.sql` | spark_profiles 核心用户表 | ✅ 必需 |
-| 3 | `docs/database/persistence_phase2.sql` | spark_user_state KV 同步表 | ✅ **星火助手 v9 必需** |
-| 4 | `docs/database/rag_phase1.sql` | spark_knowledge + pgvector | 可选（启用 RAG） |
-| 5 | `docs/database/spark_messages_tables.sql` | 星火寄语 4 张表 | 星火寄语需要 |
-| 6 | `docs/database/companion_tables.sql` | 伴侣模块表 | 伴侣需要 |
-| 7 | `docs/database/planner_v3_achievements.sql` | 规划/成就 | 规划需要 |
-| 8 | `docs/database/schedule_tables.sql` | 日程表 | 日程需要 |
-| ... | 其他 SQL（health / shop / talent / news ...）| 按你要启用的模块逐个执行 | 按需 |
-
-### Step 2 · 启用必要扩展（Database → Extensions）
-
-- **uuid-ossp** ✅（生成 UUID）
-- **pg_trgm** ✅（全文搜索）
-- **vector** ✅（pgvector，RAG 真向量化前置条件）
-- **pgcrypto** ✅（哈希校验）
-
-### Step 3 · Edge Function 部署（可选，已有就跳过）
-
-```bash
-# 在项目根目录
-cd supabase
-supabase functions deploy assistant-chat
-supabase functions deploy spark-ai-general
-supabase functions deploy ai-schedule-import
-supabase functions deploy tarot-reading
-supabase functions deploy spark-rag
-```
-
-并设置必需的环境变量（Supabase Dashboard → Project Settings → Edge Functions → Secrets）：
-```
-NVIDIA_API_KEY=your_nvidia_nim_key
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1  # 可选，默认已配
-NVIDIA_EMBED_MODEL=nvidia/nv-embedqa-e5-v5          # 可选
-```
-
-### Step 4 · 验证闭环
-
-**前端启动后验证**：
-```powershell
+# 确认前端构建产物不包含任何 Key
 cd frontend
-npm run dev
+pnpm build
+Select-String -Path dist/assets/*.js -Pattern "nvapi-|sk-|service_role" -SimpleMatch
+# 应无输出；若有输出，立刻检查是否有代码把 Key 硬编码进前端
 ```
 
-打开 `/app/chat`，做以下手动测试：
-1. ☁️ **云端测试**：切"云端"模式，发"你好" → 应流式回复
-2. 🏠 **本地测试**：切"本地"模式（先启动 services/local-ai）→ 发"你好"，应本地流式回复
-3. 🌐 **降级测试**：切"自动"+ 断开网络（或把 Edge Function 环境变量清空让它报错）→ 应自动降级到本地
-4. ⭐ **同步测试**：登录 → 发几条消息 → 另一浏览器同账号打开 → 应看到历史对话
-5. 💾 **缓存测试**：发完相同问题 → 再发一次 → 应秒回 + 显示 "⚡ 来自缓存" 徽章
-6. 🔍 **搜索测试**：侧边栏搜索 → 匹配标题 + 消息片段
+### 1.4 内容安全
 
-### 常见问题
-
-**Q1: SQL 文件大量报 "relation already exists" ?**  
-正常。SQL 里有 `CREATE TABLE IF NOT EXISTS`，重复执行不会破坏数据。
-
-**Q2: RLS 策略执行失败？**  
-Supabase 要求用 `auth.uid()`。确认是在 Supabase Dashboard 的 SQL Editor 执行，而不是外部 psql。
-
-**Q3: 本地 AI 切过去后没反应？**  
-检查三件事：
-- `ollama serve` 是否在跑：浏览器打开 http://localhost:11434 应返回 "Ollama is running"
-- `services/local-ai` 是否在跑：浏览器打开 http://localhost:3721/health 应返回 `{"status":"healthy"}`
-- 浏览器 DevTools → Console 有无 CORS 或连接错误
-
-**Q4: pgvector 启用失败？**  
-Supabase 免费层也支持 pgvector。Dashboard → Database → Extensions → 搜 vector → Enable。
+1. **前端预过滤**（`frontend/src/utils/contentSafety.ts`）：XSS、敏感词、AI 身份暴露
+2. **Edge Function 输入安全**（`checkInputSafety`）：敏感词直接拦截回友好话术
+3. **Edge Function 输出脱敏**（`sanitizeOutput`）：底层模型名（Kimi/GLM/MiniMax/Gemma/DeepSeek 等）全部替换为「星火」
+4. **Edge Function 输出规范化**（`normalizeMarkdown`）：修复模型常见的 `** 粗体 **`（星号两边带空格）等 Markdown 格式 bug，防止前端渲染不出粗体
 
 ---
 
-## 附录：v9 核心文件速查
+## 二、一键配置 NVIDIA_API_KEY
+
+### 2.1 前置条件
+
+- 已注册 Supabase 项目（https://supabase.com）
+- 已安装 Supabase CLI：
+  - Windows: `scoop install supabase` 或 `npm install -g supabase`
+  - macOS:   `brew install supabase/tap/supabase`
+  - Linux:   `npm install -g supabase`
+- 已在 https://build.nvidia.com 拿到一个 NVIDIA API Key（以 `nvapi-` 开头）
+
+### 2.2 一键执行
+
+**Windows (PowerShell)**：
+
+```powershell
+.\scripts\setup-ai-secrets.ps1
+# 按提示粘贴你的 nvapi-xxxxx Key（输入时不回显，安全）
+```
+
+**Linux / macOS**：
+
+```bash
+bash scripts/setup-ai-secrets.sh
+```
+
+脚本会自动：
+1. 检测 Supabase CLI
+2. 如未链接项目，引导你 `supabase link --project-ref xxx`
+3. 用 `supabase secrets set` 把 Key 加密推送到 Supabase Edge Function Secrets
+4. 一并推送模型映射环境变量（均衡/深度思考/极速/标准）
+5. 重新部署 `assistant-chat` Edge Function，让新 Key 立即生效
+
+### 2.3 纯手动（不想用脚本）
+
+Supabase Dashboard → Project Settings → Edge Functions → **Secrets** → Add new secret：
+
+| Key | Value |
+|---|---|
+| `NVIDIA_API_KEY` | `nvapi-你的key` |
+| `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1`（可选，默认已配） |
+| `SPARK_MODEL_DEFAULT` | `moonshotai/kimi-k2.5`（可选） |
+| `SPARK_MODEL_THINKING` | `z-ai/glm-5.1`（可选） |
+| `SPARK_MODEL_FAST` | `minimaxai/minimax-m2.5`（可选） |
+| `SPARK_MODEL_STANDARD` | `google/gemma-3-27b-it`（可选） |
+
+然后本地 `supabase functions deploy assistant-chat` 重新部署。
+
+### 2.4 验证
+
+```bash
+# 前端启动
+cd frontend && pnpm dev
+
+# 打开 http://localhost:5173/app/chat
+# 登录 → 发一句 "你好" → 应该流式回复
+# 切换顶部工具栏的 "均衡 / 深度思考 / 极速 / 标准" 四档 → 每档都应能回答
+```
+
+---
+
+## 三、v11 新特性
+
+### 3.1 四种模式
+
+| 模式 | 图标 | 真实模型 | 场景 | 默认 temperature / max_tokens |
+|---|---|---|---|---|
+| 均衡 | ⚡ | `moonshotai/kimi-k2.5` | **默认**，日常问答 / 写作 / 写代码 | 0.75 / 4096 |
+| 深度思考 | 🧠 | `z-ai/glm-5.1` | 复杂题、多步推理、深度分析 | 0.6  / 8192 |
+| 极速 | 🚀 | `minimaxai/minimax-m2.5` | 闲聊、秒回、小问题 | 0.8  / 2048 |
+| 标准 | 🛡️ | `google/gemma-3-27b-it` | 稳定兜底，不走新模型 | 0.7  / 4096 |
+
+所有模式都有 fallback 链（见 `supabase/functions/assistant-chat/index.ts#resolveModelConfig`）：
+某个模型临时不可用时自动降级，永远不会"AI 服务不可用"。
+
+### 3.2 长上下文 + 自动摘要
+
+- 前端 `useSparkAI` 现在保留 **80 条消息**（此前 60）
+- 当非 system 消息数 > 50 时，**后台自动**触发一次摘要：调 `action=summarize` 压缩早期对话为一段 system 摘要，然后把旧消息删除，保留最近 12 条原文 + 摘要
+- UI 顶部的"记忆 X/80"条指示：
+  - < 80%：正常色
+  - 80-100%：黄色警告
+  - 已满或正在压缩：紫色脉冲动画
+
+### 3.3 新开对话 · 继承记忆（🧠 续聊）
+
+顶部新增 **"🧠 续聊"** 按钮：
+
+1. 点击后调用 `inheritMemoryToNewConversation()`
+2. 内部用 `action=summarize` 把当前会话压成摘要
+3. 新建一个会话，把摘要作为 `role=system` 消息塞进开头
+4. 切到新会话，AI 还"记得"之前聊过什么
+
+适用场景：已聊了很久，上下文要满了，但主题要继续 / 要开新的方向但想保留之前的设定。
+
+### 3.4 输出格式规范化（修复 `** **` 未渲染 bug）
+
+- **后端**：`sanitizeOutput` 在返回给前端前做 `normalizeMarkdown`，修正 `** 粗体 **`、孤儿星号、奇数星号等
+- **前端**：`renderMd` 也兜底做一次 normalize，双保险
+- **system prompt** 明确告诉模型：粗体必须紧贴内容，严禁 `** 空格 **` 写法
+
+---
+
+## 四、常见问题
+
+### Q1: 切到某个模式后报 "AI 服务暂时不可用"
+检查 Supabase Edge Function Logs：可能是 NVIDIA 那边这个模型暂时下线。默认有 fallback 链，如果全部 fallback 都挂了，换另一个模式试试（深度思考 → 均衡 → 标准）。
+
+### Q2: 前端显示 "登录状态已过期" 但我明明登录了
+v9 已修复：`useSparkAI.getValidSession()` 主动检查 `expires_at - now < 90s` 提前 refresh。若仍遇到，确认浏览器没把 Supabase session 给清了（检查 `localStorage` 的 `spark-auth-token`）。
+
+### Q3: 我看到 AI 回复里有 `** 文字 **` 没渲染成粗体
+v11 已修复：服务端 `normalizeMarkdown` + 前端 `renderMd` 双重 normalize。如果依然出现，说明是罕见变体，把回复截图反馈给我。
+
+### Q4: 想换模型，不想改代码
+直接在 Supabase Secrets 里改环境变量即可（不用重新部署 Edge Function，重启后自动读取）：
+- `SPARK_MODEL_DEFAULT=你的模型 slug`
+- `SPARK_FALLBACK_DEFAULT=逗号分隔的兜底模型 slug 列表`
+- 同理有 `_THINKING` / `_FAST` / `_STANDARD` 版本
+
+### Q5: 想禁用某个模式
+前端 `frontend/src/composables/useSparkAI.ts` 的 `MODEL_OPTIONS` 里删掉对应条目即可。
+
+---
+
+## 五、v11 核心文件速查
 
 | 文件 | 作用 |
 |---|---|
-| `frontend/src/composables/useSparkAI.ts` | 星火助手核心逻辑（会话/收藏/反应/后端切换） |
-| `frontend/src/pages/app/Chat.vue` | 星火助手 UI |
-| `frontend/src/utils/sparkCache.ts` | 响应 LRU 缓存 |
-| `frontend/src/utils/emojiPack.ts` | Emoji 数据 + 最近使用 |
-| `frontend/src/utils/contentSafety.ts` | 内容安全过滤 |
-| `frontend/src/utils/sparkKnowledge.ts` | RAG 三层检索 |
-| `frontend/src/utils/persistSync.ts` | 云同步层（v9 已修 bug） |
-| `supabase/functions/assistant-chat/index.ts` | 云端 Edge Function |
-| `services/local-ai/src/server.ts` | 本地 AI 服务 |
-| `services/local-ai/src/prompts.ts` | 本地 AI 提示词（v9 新增 spark module） |
+| `supabase/functions/assistant-chat/index.ts` | Edge Function · 代理到 NVIDIA、Markdown 规范化、摘要 action |
+| `frontend/src/composables/useSparkAI.ts` | 前端核心：会话/收藏/反应/摘要/记忆继承 |
+| `frontend/src/pages/app/Chat.vue` | 星火助手 UI（v11 已移除本地/云端切换，加上续聊） |
+| `frontend/src/pages/app/SmartChat.vue` | Chat + Companion 的主模块容器 |
+| `frontend/src/utils/sparkCache.ts` | 响应 LRU 缓存（提问重复时秒回） |
+| `frontend/src/utils/contentSafety.ts` | 前端内容安全过滤 |
+| `frontend/src/utils/sparkKnowledge.ts` | RAG 三层检索（静态 + DB 全文 + pgvector） |
+| `scripts/setup-ai-secrets.ps1` / `.sh` | 一键推送 NVIDIA_API_KEY 到 Supabase Secrets |
+
+---
+
+## 六、变更日志（v11 核心）
+
+- ✅ 重新映射模型：默认 Gemma3 → **Kimi K2.5**；深度 DeepSeek R1 → **GLM 5.1**；极速 Llama 3.1 8B → **MiniMax M2.5**；新增「标准 Gemma3」作为稳定兜底
+- ✅ 移除前端的 "自动/云端/本地" 切换 UI，统一走 Edge Function（代码更简单、密钥更安全）
+- ✅ 修复 `** **` 未渲染 bug（双端 `normalizeMarkdown`）
+- ✅ 加长上下文：80 条消息 + 50 条触发自动摘要
+- ✅ 新开对话继承记忆（🧠 续聊按钮）
+- ✅ system prompt 加强输出格式规范，代码块/公式/列表渲染更稳
+- ✅ 新增 `scripts/setup-ai-secrets.ps1/.sh` 一键密钥推送脚本

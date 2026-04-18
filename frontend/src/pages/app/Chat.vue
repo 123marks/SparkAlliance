@@ -110,42 +110,29 @@
         <button class="menu-btn" aria-label="切换侧边栏" @click="sidebarOpen = !sidebarOpen">☰</button>
         <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
         <div class="top-right">
-          <!-- v9: 后端切换（云端 / 自动 / 本地 Gamma4） -->
-          <div class="backend-switch" :class="{ 'has-local': localAvailable }">
-            <button
-              class="bk-btn"
-              :class="{ active: currentBackend === 'auto' }"
-              title="自动：云端优先，失败时降级本地 Gamma4"
-              @click="handleBackendChange('auto')"
-            >
-              <span class="bk-icon">🌐</span>自动
-            </button>
-            <button
-              class="bk-btn"
-              :class="{ active: currentBackend === 'cloud' }"
-              title="仅云端：Supabase Edge Function → NVIDIA NIM API"
-              @click="handleBackendChange('cloud')"
-            >
-              <span class="bk-icon">☁️</span>云端
-            </button>
-            <button
-              class="bk-btn"
-              :class="{ active: currentBackend === 'local', disabled: localAvailable === false }"
-              :title="localAvailable ? `仅本地 Gamma4 · ${localModelName || 'Ollama'}（离线可用）` : '本地 AI 服务未启动：在 services/local-ai 运行 npm run dev 并启动 Ollama'"
-              @click="handleBackendChange('local')"
-            >
-              <span class="bk-icon">🏠</span>本地
-              <span v-if="localAvailable" class="bk-dot-ok"></span>
-              <span v-else-if="localAvailable === false" class="bk-dot-off"></span>
-            </button>
-          </div>
-
-          <!-- 上下文窗口用量指示器 -->
-          <div class="ctx-gauge" :title="`本轮已占用 ${contextUsage.used} / ${contextUsage.limit} 条对话记忆`" v-if="contextUsage.used > 0">
-            <span class="ctx-label">记忆</span>
+          <!-- v11: 上下文窗口用量指示器（达到 80% 触发建议摘要；达到 100% 自动后台摘要） -->
+          <div
+            class="ctx-gauge"
+            :class="{ warn: contextUsage.ratio > 0.8, full: contextUsage.ratio >= 1, summarizing }"
+            :title="summarizing ? '星火正在压缩早期对话为记忆摘要…' : `记忆 ${contextUsage.used} / ${contextUsage.limit} 条${contextUsage.ratio > 0.8 ? '，点击可提前把早期对话压缩为摘要' : ''}`"
+            v-if="contextUsage.used > 0"
+            @click="handleSummarizeNow"
+          >
+            <span class="ctx-label">{{ summarizing ? '记忆压缩中' : '记忆' }}</span>
             <span class="ctx-bar"><span class="ctx-fill" :class="{ warn: contextUsage.ratio > 0.8 }" :style="{ width: (contextUsage.ratio * 100).toFixed(0) + '%' }"></span></span>
             <span class="ctx-num">{{ contextUsage.used }}/{{ contextUsage.limit }}</span>
           </div>
+          <!-- v11: 新开对话并继承记忆（让 AI 还记得之前聊过什么） -->
+          <button
+            v-if="contextUsage.used >= 8"
+            class="top-inherit"
+            :disabled="summarizing"
+            title="把当前会话压缩成记忆摘要，新开一个对话但继承上下文"
+            @click="handleInheritMemory"
+          >
+            <span v-if="summarizing">压缩中…</span>
+            <span v-else>🧠 续聊</span>
+          </button>
           <!-- 离线指示 -->
           <span v-if="!isOnline" class="offline-dot" title="离线">● 离线</span>
           <!-- 收藏夹入口 -->
@@ -196,7 +183,7 @@
                   <span>{{ isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' ? '正在思考...' : '思考过程' }}</span>
                   <svg class="think-chevron" :class="{ collapsed: collapsedThinking[idx] }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-                <div v-show="!collapsedThinking[idx]" class="think-body">{{ msg.reasoning || thinkingText }}</div>
+                <div v-show="!collapsedThinking[idx]" class="think-body md-body" v-html="renderMd(msg.reasoning || thinkingText)"></div>
               </div>
               <div v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' && !msg.content && !msg.reasoning && !thinkingText" class="think-block think-block-loading">
                 <div class="think-toggle"><span class="think-status spinning">💭</span><span>{{ thinkingHint }}</span></div>
@@ -411,14 +398,14 @@ import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } 
 const router = useRouter()
 const {
   isStreaming, streamPhase, error: aiError, currentModel,
-  currentBackend, localAvailable, localModelName,
-  conversations, currentConversationId, favorites,
+  conversations, currentConversationId, favorites, summarizing,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
   toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
-  setBackend, checkLocalHealth,
   sendMessage, stopGenerating,
+  summarizeCurrentConversation,
+  inheritMemoryToNewConversation,
 } = useSparkAI()
 const { createEvent } = useSchedule()
 const { createGoal } = usePlanner()
@@ -595,6 +582,19 @@ mdRenderer.link = function({ href, text }: { href: string; text: string }) {
 }
 marked.setOptions({ renderer: mdRenderer, breaks: true })
 
+/** v11: 规范化 Markdown —— 在送入 marked 前修复模型常见的格式错误 */
+function normalizeMd(text: string): string {
+  if (!text) return text
+  let out = text
+  out = out.replace(/\*\*\s+([^*\n][^*]*?)\s+\*\*/g, '**$1**')
+  out = out.replace(/(?<!\*)\*\s+([^*\n][^*]*?)\s+\*(?!\*)/g, '*$1*')
+  out = out.replace(/(^|\n)\s*\*\*\s*(?=\n|$)/g, '$1')
+  out = out.replace(/([\u4e00-\u9fa5\uFF00-\uFFEF0-9A-Za-z])\*\*([^*\n]+?)\*\*(?=[\u4e00-\u9fa5\uFF00-\uFFEF0-9A-Za-z])/g, '$1 **$2** ')
+  const starCount = (out.match(/(?<!\\)\*/g) || []).length
+  if (starCount % 2 === 1) out = out.replace(/\*([^*]*)$/, '$1')
+  return out
+}
+
 function renderMd(content: string): string {
   if (!content) return ''
   let c = content.replace(/```spark-action\s*\n[\s\S]*?```/g, '').trim()
@@ -603,6 +603,8 @@ function renderMd(content: string): string {
     const codeBlocks: string[] = []
     c = c.replace(/```[\s\S]*?```/g, match => { codeBlocks.push(match); return `__CODE_BLOCK_${codeBlocks.length - 1}__` })
     c = c.replace(/`[^`]+`/g, match => { codeBlocks.push(match); return `__CODE_BLOCK_${codeBlocks.length - 1}__` })
+    // v11: 先 normalize 粗体/斜体格式错误，再做 LaTeX，再还原代码块
+    c = normalizeMd(c)
     c = renderLatex(c)
     c = c.replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
     const html = marked.parse(c) as string
@@ -708,12 +710,12 @@ const groupedConvs = computed(() => {
 // 归档组里有内容但默认折叠时的计数（供顶部按钮显示）
 const archivedCount = computed(() => conversations.value.filter((c) => c.isArchived).length)
 
-// 上下文窗口使用率（基于 messages 数，粗略但足够 UI 提示）
+// 上下文窗口使用率（v11: 与 useSparkAI 中 slice(-80) 对齐；超过 50 触发后台摘要）
 const contextUsage = computed(() => {
   const conv = conversations.value.find((c) => c.id === currentConversationId.value)
-  if (!conv) return { used: 0, limit: 60, ratio: 0 }
+  if (!conv) return { used: 0, limit: 80, ratio: 0 }
   const used = conv.messages.filter((m) => m.role !== 'system').length
-  const limit = 60 // sendMessage 中 slice(-60)
+  const limit = 80
   return { used, limit, ratio: Math.min(1, used / limit) }
 })
 
@@ -1282,19 +1284,32 @@ function openFavorite(fav: (typeof favorites.value)[number]) {
   }
 }
 
-// v9: 后端切换（本地不可用时强制重检一次）
-async function handleBackendChange(b: 'cloud' | 'local' | 'auto') {
-  if (b === 'local' && localAvailable.value !== true) {
-    toast('正在检测本地 AI 服务...')
-    const ok = await checkLocalHealth(true)
-    if (!ok) {
-      toast('❌ 本地 AI 未启动：请在 services/local-ai 运行 npm run dev 并启动 Ollama')
-      return
-    }
+// v11: 主动触发一次记忆压缩（上下文快满时可点击）
+async function handleSummarizeNow() {
+  if (summarizing.value) { toast('正在压缩，请稍候…'); return }
+  if (contextUsage.value.used < 20) { toast(`当前仅 ${contextUsage.value.used} 条消息，暂不需要压缩`); return }
+  toast('⏳ 正在把早期对话压缩为记忆摘要…')
+  const ok = await summarizeCurrentConversation()
+  if (ok) toast('✓ 已压缩，只保留最近几条对话 + 历史摘要')
+  else toast('⚠️ 压缩失败或暂不需要，稍后再试')
+}
+
+// v11: 新开对话并继承记忆（把当前会话摘要成 system 前缀，新会话"还记得之前"）
+async function handleInheritMemory() {
+  if (summarizing.value) { toast('正在处理，请稍候…'); return }
+  if (isStreaming.value) { toast('请先等当前回复结束'); return }
+  toast('🧠 正在把当前会话压缩成记忆摘要…')
+  const newConv = await inheritMemoryToNewConversation()
+  if (newConv) {
+    streamingContent.value = ''
+    thinkingText.value = ''
+    actionCards.value = []
+    sidebarOpen.value = false
+    nextTick(() => { inputRef.value?.focus(); scrollBot() })
+    toast('✓ 已开新对话，记忆已继承')
+  } else {
+    toast('继承失败，请重试')
   }
-  setBackend(b)
-  const labels: Record<string, string> = { auto: '自动（云端优先 + 本地降级）', cloud: '☁️ 仅云端', local: `🏠 本地 Gamma4${localModelName.value ? ` · ${localModelName.value}` : ''}` }
-  toast(`已切换后端：${labels[b]}`)
 }
 </script>
 
@@ -1681,7 +1696,7 @@ async function handleBackendChange(b: 'cloud' | 'local' | 'auto') {
 .ab-model:hover { color:rgba(255,255,255,.35); background:rgba(255,255,255,.015); }
 .ab-model.active { background:rgba(139,92,246,.06); color:rgba(139,92,246,.65); border-color:rgba(139,92,246,.08); font-weight:600; }
 .ab-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
-.ab-dot.default { background:rgba(59,130,246,.5); } .ab-dot.thinking { background:rgba(168,85,247,.5); } .ab-dot.fast { background:rgba(34,197,94,.5); }
+.ab-dot.default { background:rgba(59,130,246,.5); } .ab-dot.thinking { background:rgba(168,85,247,.5); } .ab-dot.fast { background:rgba(34,197,94,.5); } .ab-dot.standard { background:rgba(251,191,36,.55); }
 .ab-divider { width:1px; height:16px; background:rgba(255,255,255,.04); margin:0 4px; flex-shrink:0; }
 .ab-tools { display:flex; gap:2px; flex-wrap:wrap; }
 .ab-tool { display:flex; align-items:center; gap:3px; padding:4px 8px; border-radius:7px; border:none; background:none; color:rgba(255,255,255,.18); font-size:11px; cursor:pointer; transition:all .15s; white-space:nowrap; }
@@ -1839,21 +1854,38 @@ async function handleBackendChange(b: 'cloud' | 'local' | 'auto') {
 .think-body::-webkit-scrollbar { width:3px; }
 .think-body::-webkit-scrollbar-thumb { background:rgba(139,92,246,.2); border-radius:4px; }
 
-/* ============ v9: 后端切换按钮（云端 / 自动 / 本地 Gamma4） ============ */
-.backend-switch { display:flex; gap:2px; padding:2px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.04); border-radius:8px; }
-.bk-btn { display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border-radius:6px; border:none; background:none; color:rgba(255,255,255,.3); font-size:10.5px; cursor:pointer; font-weight:600; transition:all .15s; position:relative; white-space:nowrap; }
-.bk-btn:hover { color:rgba(255,255,255,.6); background:rgba(255,255,255,.025); }
-.bk-btn.active { background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1)); color:rgba(196,181,253,.95); box-shadow:0 1px 4px rgba(139,92,246,.15); }
-.bk-btn.disabled { opacity:.35; cursor:not-allowed; }
-.bk-btn.disabled:hover { background:none; color:rgba(255,255,255,.3); }
-.bk-icon { font-size:12px; line-height:1; }
-.bk-dot-ok { width:5px; height:5px; border-radius:50%; background:rgba(34,197,94,.85); box-shadow:0 0 4px rgba(34,197,94,.5); flex-shrink:0; }
-.bk-dot-off { width:5px; height:5px; border-radius:50%; background:rgba(239,68,68,.7); flex-shrink:0; }
-@media(max-width:900px) {
-  .bk-btn { padding:3px 6px; font-size:10px; }
-  .bk-btn:not(.active) span:not(.bk-icon):not(.bk-dot-ok):not(.bk-dot-off) { display:none; }
+/* ============ v11: 新开对话继承记忆 按钮 ============ */
+.top-inherit {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:5px 11px; margin-left:2px;
+  border-radius:10px;
+  background:linear-gradient(135deg, rgba(139,92,246,.12), rgba(59,130,246,.08));
+  border:1px solid rgba(139,92,246,.18);
+  color:rgba(196,181,253,.9);
+  font-size:11px; font-weight:600;
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
 }
+.top-inherit:hover:not(:disabled) {
+  background:linear-gradient(135deg, rgba(139,92,246,.2), rgba(59,130,246,.14));
+  border-color:rgba(139,92,246,.35);
+  color:white;
+  transform:translateY(-1px);
+  box-shadow:0 3px 10px rgba(139,92,246,.25);
+}
+.top-inherit:disabled { opacity:.5; cursor:wait; }
+
+/* ============ v11: 上下文满格指示 / 摘要中状态 ============ */
+.ctx-gauge { cursor:pointer; transition:all .15s; }
+.ctx-gauge:hover { opacity:.85; }
+.ctx-gauge.warn .ctx-fill { background:linear-gradient(90deg, rgba(234,179,8,.6), rgba(251,146,60,.7)); }
+.ctx-gauge.full .ctx-fill { background:linear-gradient(90deg, rgba(239,68,68,.7), rgba(236,72,153,.8)); animation:ctxPulse 1.6s ease-in-out infinite; }
+.ctx-gauge.summarizing .ctx-label { color:rgba(139,92,246,.85); }
+.ctx-gauge.summarizing .ctx-fill { background:linear-gradient(90deg, rgba(139,92,246,.5), rgba(196,181,253,.7)); animation:ctxPulse 1.2s ease-in-out infinite; }
+@keyframes ctxPulse { 0%,100%{opacity:.85;} 50%{opacity:1;} }
+
 @media(max-width:768px) {
-  .backend-switch { display:none; } /* 手机收起（留 top-fav/ctx-gauge 二者）*/
+  .top-inherit { padding:4px 8px; font-size:10.5px; }
 }
 </style>
