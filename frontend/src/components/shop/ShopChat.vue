@@ -238,15 +238,12 @@ async function handleAcceptOffer(msg: ShopMessage) {
     created_at: new Date().toISOString(),
   })
   await sendMessage(activeConv.value.id, acceptMsg, 'offer_response')
-  // 自动创建交易 — 卖家接受出价，买家为会话中的 buyer_id
+  // 自动创建交易 — 卖家接受出价，买家由 createTransaction 内部从 auth 取
   if (activeConv.value.productInfo) {
     await createTransaction(
       activeConv.value.productInfo.id,
       activeConv.value.raw.seller_id,
       price,
-      undefined,
-      undefined,
-      activeConv.value.raw.buyer_id,
     )
     // 系统提示
     messages.value.push({
@@ -293,9 +290,6 @@ async function handleCreateDeal() {
     activeConv.value.productInfo.id,
     activeConv.value.raw.seller_id,
     price,
-    undefined,
-    undefined,
-    activeConv.value.raw.buyer_id,
   )
   if (txId) {
     const sysMsg = `📋 卖家发起了交易，价格 ¥${price}`

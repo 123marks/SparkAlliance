@@ -586,13 +586,90 @@ marked.setOptions({ renderer: mdRenderer, breaks: true })
 function normalizeMd(text: string): string {
   if (!text) return text
   let out = text
+  // 1) `** abc **` → `**abc**`（去掉星号紧邻的内空格，避免 marked 不识别）
   out = out.replace(/\*\*\s+([^*\n][^*]*?)\s+\*\*/g, '**$1**')
+  // 2) `* abc *` → `*abc*`（同上，斜体）
   out = out.replace(/(?<!\*)\*\s+([^*\n][^*]*?)\s+\*(?!\*)/g, '*$1*')
+  // 3) 整行只有 `**`（孤立的开/闭标记）→ 删除
   out = out.replace(/(^|\n)\s*\*\*\s*(?=\n|$)/g, '$1')
+  // 4) 行末游离 `**`：常见模型错误「- 标题文本 **\n答案文本」
+  //    检测「文本 + 空格 + ** + 行尾」，且本行 `**` 数为奇数 → 删除该游离 `**`
+  out = out.split('\n').map((line) => {
+    const starPairs = (line.match(/\*\*/g) || []).length
+    if (starPairs % 2 === 1) {
+      // 优先删除行末紧贴空格的 `**`（最常见错误模式）
+      const trailing = line.replace(/(\S) +\*\*\s*$/, '$1')
+      if (trailing !== line) return trailing
+      // 再删行首孤立的 `** `（前后无配对）
+      const leading = line.replace(/^\*\*\s+/, '')
+      if (leading !== line && (leading.match(/\*\*/g) || []).length % 2 === 0) return leading
+    }
+    return line
+  }).join('\n')
+  // 5) 中英文紧贴 ** 自动补空格（保持中文文本与西文加粗的视觉间距）
   out = out.replace(/([\u4e00-\u9fa5\uFF00-\uFFEF0-9A-Za-z])\*\*([^*\n]+?)\*\*(?=[\u4e00-\u9fa5\uFF00-\uFFEF0-9A-Za-z])/g, '$1 **$2** ')
-  const starCount = (out.match(/(?<!\\)\*/g) || []).length
-  if (starCount % 2 === 1) out = out.replace(/\*([^*]*)$/, '$1')
+  // 6) 全文 `**` 数量为奇数 → 移除最末一个游离 `**`，避免污染后续渲染
+  const boldPairs = (out.match(/\*\*/g) || []).length
+  if (boldPairs % 2 === 1) {
+    out = out.replace(/\*\*([^*]*?)$/, '$1')
+  }
+  // 7) 全文 `*`（仅单星）数量为奇数 → 同上
+  const singleStarCount = (out.replace(/\*\*/g, '').match(/(?<!\\)\*/g) || []).length
+  if (singleStarCount % 2 === 1) out = out.replace(/\*([^*]*)$/, '$1')
   return out
+}
+
+/**
+ * v12: Unicode 上下标自动 LaTeX 化 ——
+ * 把模型输出的 `a²+b²=c²`、`x³-1=0` 这种纯 Unicode 数学表达式
+ * 自动包成 `$$...$$` 让 KaTeX 接管，渲染出正经的数学公式。
+ *
+ * 安全策略：只对「整行包含 Unicode 上标/下标 + 等号或运算符」的行做包裹，
+ * 普通文本里偶尔出现的「第n²次方」之类不会被误伤。
+ */
+const SUPERSCRIPT_MAP: Record<string, string> = {
+  '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+  '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+  '⁺': '+', '⁻': '-', '⁼': '=', '⁽': '(', '⁾': ')',
+  'ⁿ': 'n', 'ⁱ': 'i',
+}
+const SUBSCRIPT_MAP: Record<string, string> = {
+  '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4',
+  '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+  '₊': '+', '₋': '-', '₌': '=', '₍': '(', '₎': ')',
+}
+const SUPER_RE = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]/
+const SUB_RE = /[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎]/
+function autoLatexify(text: string): string {
+  if (!text) return text
+  if (!SUPER_RE.test(text) && !SUB_RE.test(text)) return text
+  const lines = text.split('\n')
+  return lines.map((line) => {
+    if (/\$.+?\$/.test(line)) return line
+    if (/^\s*(?:>|#|-|\*|\d+\.|```)/.test(line)) {
+      // 列表/标题/引用/代码块行：仅做内联上下标转换，不强制包 $$（避免破坏列表布局）
+      return line.replace(/([a-zA-Z0-9\)\]\}])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+)/g, (_, base, sup) => {
+        const expr = (sup as string).split('').map((c) => SUPERSCRIPT_MAP[c] || c).join('')
+        return `$${base}^{${expr}}$`
+      }).replace(/([a-zA-Z\)\]\}])([₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎]+)/g, (_, base, sub) => {
+        const expr = (sub as string).split('').map((c) => SUBSCRIPT_MAP[c] || c).join('')
+        return `$${base}_{${expr}}$`
+      })
+    }
+    const hasMath = (SUPER_RE.test(line) || SUB_RE.test(line)) && /[=+\-×÷*/^]/.test(line)
+    if (!hasMath) return line
+    let expr = line.trim()
+    expr = expr.replace(/([a-zA-Z0-9\)\]\}])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+)/g, (_, base, sup) => {
+      const e = (sup as string).split('').map((c) => SUPERSCRIPT_MAP[c] || c).join('')
+      return `${base}^{${e}}`
+    })
+    expr = expr.replace(/([a-zA-Z\)\]\}])([₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎]+)/g, (_, base, sub) => {
+      const e = (sub as string).split('').map((c) => SUBSCRIPT_MAP[c] || c).join('')
+      return `${base}_{${e}}`
+    })
+    expr = expr.replace(/×/g, '\\times ').replace(/÷/g, '\\div ')
+    return `$$${expr}$$`
+  }).join('\n')
 }
 
 function renderMd(content: string): string {
@@ -603,8 +680,11 @@ function renderMd(content: string): string {
     const codeBlocks: string[] = []
     c = c.replace(/```[\s\S]*?```/g, match => { codeBlocks.push(match); return `__CODE_BLOCK_${codeBlocks.length - 1}__` })
     c = c.replace(/`[^`]+`/g, match => { codeBlocks.push(match); return `__CODE_BLOCK_${codeBlocks.length - 1}__` })
-    // v11: 先 normalize 粗体/斜体格式错误，再做 LaTeX，再还原代码块
+    // v11: 先 normalize 粗体/斜体格式错误，
+    // v12: 再把 Unicode 上下标的纯文本数学表达式自动包成 $$...$$ 让 KaTeX 接管，
+    //      然后再走 LaTeX 渲染，最后还原代码块
     c = normalizeMd(c)
+    c = autoLatexify(c)
     c = renderLatex(c)
     c = c.replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
     const html = marked.parse(c) as string
@@ -1391,8 +1471,37 @@ async function handleInheritMemory() {
 .md-body :deep(th) { background:rgba(255,255,255,.02); padding:5px 8px; border:1px solid rgba(255,255,255,.03); text-align:left; font-weight:600; }
 .md-body :deep(td) { padding:5px 8px; border:1px solid rgba(255,255,255,.02); }
 .md-body :deep(code:not(.hljs)) { padding:1px 5px; border-radius:4px; background:rgba(139,92,246,.05); color:rgba(139,92,246,.65); font-size:11px; font-family:'JetBrains Mono','Fira Code',monospace; }
-.md-body :deep(.katex-display) { margin:12px 0; padding:10px 16px; background:rgba(255,255,255,.012); border-radius:8px; border:1px solid rgba(255,255,255,.025); overflow-x:auto; }
-.md-body :deep(.katex) { font-size:1.05em; color:rgba(255,255,255,.85); }
+/* v12: 数学公式块 —— 居中显示、内敛背景、轻量边框 */
+.md-body :deep(.katex-display) {
+  margin:14px 0;
+  padding:12px 18px;
+  background:linear-gradient(135deg, rgba(139,92,246,.04) 0%, rgba(59,130,246,.02) 100%);
+  border-radius:10px;
+  border:1px solid rgba(139,92,246,.08);
+  overflow-x:auto;
+  text-align:center;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.md-body :deep(.katex-display > .katex) { display:inline-block; text-align:center; }
+.md-body :deep(.katex) { font-size:1.08em; color:rgba(255,255,255,.92); }
+.md-body :deep(.katex .mord),
+.md-body :deep(.katex .mbin),
+.md-body :deep(.katex .mrel) { color:rgba(255,255,255,.92); }
+/* v12: 公式包装器（formula-wrap）—— 一键复制 LaTeX 源码按钮 */
+.md-body :deep(.formula-block) { display:block; position:relative; margin:14px 0; }
+.md-body :deep(.formula-block .formula-copy) {
+  position:absolute; top:8px; right:8px;
+  background:rgba(139,92,246,.1); border:1px solid rgba(139,92,246,.18);
+  color:rgba(196,181,253,.7); border-radius:6px;
+  padding:2px 7px; font-size:11px; cursor:pointer;
+  opacity:0; transition:opacity .2s ease, background .15s ease;
+}
+.md-body :deep(.formula-block:hover .formula-copy) { opacity:1; }
+.md-body :deep(.formula-block .formula-copy:hover) { background:rgba(139,92,246,.22); color:#fff; }
+.md-body :deep(.formula-inline) { display:inline-block; position:relative; }
+.md-body :deep(.formula-inline .formula-copy) { display:none; }
 /* ============ v10: 代码块「星火深空」主题 ============
  * 设计目标：
  *   - 深邃的宇宙星云背景（多层径向渐变，不是纯色）
@@ -1400,38 +1509,35 @@ async function handleInheritMemory() {
  *   - 装饰层 pointer-events:none，不干扰代码选择 / 滚动 / 复制
  *   - 代码高亮配色参考 Dracula / Tokyo Night，鲜明且护眼
  */
+/* v12: 代码块背景调整 —— 动态但低调，背景更暗、装饰更内敛 */
 .md-body :deep(.codeblock) {
   position:relative;
   margin:12px 0;
-  border-radius:14px;
+  border-radius:12px;
   overflow:hidden;
-  border:1px solid rgba(139,92,246,.22);
+  border:1px solid rgba(139,92,246,.12);
   background:
-    radial-gradient(ellipse at 18% 12%, rgba(139,92,246,.16) 0%, transparent 52%),
-    radial-gradient(ellipse at 82% 88%, rgba(236,72,153,.10) 0%, transparent 58%),
-    radial-gradient(ellipse at 50% 50%, rgba(59,130,246,.06) 0%, transparent 70%),
-    linear-gradient(180deg, #05020f 0%, #0a0620 48%, #07030f 100%);
+    radial-gradient(ellipse at 18% 12%, rgba(139,92,246,.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 82% 88%, rgba(236,72,153,.04) 0%, transparent 60%),
+    linear-gradient(180deg, #060312 0%, #08051a 48%, #07030f 100%);
   box-shadow:
-    0 6px 28px rgba(0,0,0,.5),
-    inset 0 0 30px rgba(139,92,246,.05),
-    inset 0 1px 0 rgba(255,255,255,.03);
+    0 4px 18px rgba(0,0,0,.4),
+    inset 0 0 24px rgba(139,92,246,.025),
+    inset 0 1px 0 rgba(255,255,255,.025);
 }
-/* 静态星光点缀（底层漫天星图，不动） */
+/* v12: 静态星光降亮（仍可见，但不抢戏） */
 .md-body :deep(.codeblock)::before {
   content:'';
   position:absolute; inset:0;
   background-image:
-    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,.5), transparent 2px),
-    radial-gradient(1px 1px at 72% 45%, rgba(196,181,253,.45), transparent 2px),
-    radial-gradient(1px 1px at 35% 75%, rgba(255,255,255,.35), transparent 2px),
-    radial-gradient(1px 1px at 88% 25%, rgba(139,92,246,.4), transparent 2px),
-    radial-gradient(1px 1px at 55% 92%, rgba(255,255,255,.25), transparent 2px),
-    radial-gradient(1px 1px at 8% 58%, rgba(196,181,253,.3), transparent 2px),
-    radial-gradient(1px 1px at 94% 68%, rgba(255,255,255,.2), transparent 2px),
-    radial-gradient(1px 1px at 48% 35%, rgba(236,72,153,.25), transparent 2px);
+    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,.22), transparent 2px),
+    radial-gradient(1px 1px at 72% 45%, rgba(196,181,253,.20), transparent 2px),
+    radial-gradient(1px 1px at 35% 75%, rgba(255,255,255,.16), transparent 2px),
+    radial-gradient(1px 1px at 88% 25%, rgba(139,92,246,.18), transparent 2px),
+    radial-gradient(1px 1px at 8% 58%, rgba(196,181,253,.14), transparent 2px);
   background-size:100% 100%;
   pointer-events:none;
-  opacity:.9;
+  opacity:.7;
   z-index:0;
 }
 

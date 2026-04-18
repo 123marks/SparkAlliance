@@ -36,6 +36,7 @@ import PricingFAQ from './components/PricingFAQ.vue'
 import TrustBadges from './components/TrustBadges.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
+void sectionRef // template ref usage; silence ts6133 false positive
 
 // 定价数据
 const freePlan = {

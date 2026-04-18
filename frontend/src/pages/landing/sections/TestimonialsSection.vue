@@ -123,6 +123,7 @@ import { computed } from 'vue'
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.03 })
+void sectionRef // template ref usage; silence ts6133 false positive
 
 const testimonials = [
   {

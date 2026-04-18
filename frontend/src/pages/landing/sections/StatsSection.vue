@@ -36,6 +36,7 @@ import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 import SlotCounter from '../../../components/SlotCounter.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.15 })
+void sectionRef // template ref usage; silence ts6133 false positive
 
 // 平台亮点数据（目标数据/预期数据）
 const stats = [

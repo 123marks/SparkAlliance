@@ -601,9 +601,42 @@ export function useCompanion() {
     }
   }
 
-  /** 从 Supabase 加载用户信息并同步到本地 */
+  /** 从 Supabase 加载用户信息并同步到本地（优先 spark_profiles，降级 profiles） */
   async function loadProfileFromSupabase(userId: string): Promise<boolean> {
     try {
+      // 优先从 spark_profiles 表读取（核心社交档案表）
+      const { data: sp } = await supabase
+        .from('spark_profiles')
+        .select('nickname,avatar_url,bio,spark_id,university,interests,gender,school_year')
+        .eq('user_id', userId)
+        .single()
+
+      if (sp && myProfile.value) {
+        myProfile.value.user_id = userId
+        if (sp.nickname) myProfile.value.nickname = sp.nickname
+        if (sp.avatar_url) myProfile.value.avatar_url = sp.avatar_url
+        if (sp.bio) myProfile.value.bio = sp.bio
+        if (sp.spark_id) myProfile.value.spark_id = sp.spark_id
+        if (sp.university) myProfile.value.university = sp.university
+        if (sp.gender) myProfile.value.gender = sp.gender
+        if (sp.school_year) myProfile.value.school_year = sp.school_year
+        if (sp.interests?.length) myProfile.value.interests = sp.interests
+
+        // 同步更新该用户发布的所有动态的 author_name / author_avatar
+        const sid = myProfile.value.spark_id
+        let momentDirty = false
+        for (const m of moments.value) {
+          if (m.author_id === sid) {
+            if (m.author_name !== myProfile.value.nickname) { m.author_name = myProfile.value.nickname; momentDirty = true }
+            if (m.author_avatar !== myProfile.value.avatar) { m.author_avatar = myProfile.value.avatar; momentDirty = true }
+          }
+        }
+        if (momentDirty) saveData(STORAGE_KEYS.moments, moments.value)
+        saveData(STORAGE_KEYS.profile, myProfile.value)
+        return true
+      }
+
+      // 降级：从 profiles 表读取
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -611,8 +644,6 @@ export function useCompanion() {
         .single()
 
       if (error || !data) return false
-
-      // 同步到本地
       if (myProfile.value) {
         myProfile.value.user_id = userId
         myProfile.value.nickname = data.nickname || myProfile.value.nickname
@@ -621,7 +652,6 @@ export function useCompanion() {
         if (data.spark_id) myProfile.value.spark_id = data.spark_id
         saveData(STORAGE_KEYS.profile, myProfile.value)
       }
-
       return true
     } catch {
       return false

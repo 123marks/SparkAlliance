@@ -137,6 +137,7 @@ import { ref, watch, onBeforeUnmount } from 'vue'
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
+void sectionRef // template ref usage; silence ts6133 false positive
 const activeIdx = ref(0)
 const autoPlayDuration = 6000
 let autoTimer: ReturnType<typeof setInterval> | null = null

@@ -147,51 +147,63 @@
           </transition>
 
           <!-- 成员列表（按首字母分组） -->
-          <div class="ftm-member-list">
-            <div
-              v-for="group in memberGroupsByLetter"
-              :key="group.letter"
-              class="ftm-letter-group"
-            >
-              <div class="ftm-letter-header">{{ group.letter }}</div>
+          <div class="ftm-member-list-wrap">
+            <div class="ftm-member-list">
               <div
-                v-for="m in group.members"
-                :key="m.spark_id"
-                class="ftm-member-row"
+                v-for="group in memberGroupsByLetter"
+                :key="group.letter"
+                :id="'ftm-letter-'+group.letter"
+                class="ftm-letter-group"
               >
-                <span class="ftm-member-avatar">{{ m.avatar }}</span>
-                <div class="ftm-member-meta">
-                  <div class="ftm-member-name">
-                    {{ m.remark || m.nickname }}
-                    <span v-if="memberPriority(m.spark_id) > 0" class="ftm-priority-badge">
-                      ★{{ memberPriority(m.spark_id) }}
-                    </span>
+                <div class="ftm-letter-header">{{ group.letter }}</div>
+                <div
+                  v-for="m in group.members"
+                  :key="m.spark_id"
+                  class="ftm-member-row"
+                >
+                  <span class="ftm-member-avatar">{{ m.avatar }}</span>
+                  <div class="ftm-member-meta">
+                    <div class="ftm-member-name">
+                      {{ m.remark || m.nickname }}
+                      <span v-if="memberPriority(m.spark_id) > 0" class="ftm-priority-badge">
+                        ★{{ memberPriority(m.spark_id) }}
+                      </span>
+                    </div>
+                    <div class="ftm-member-sub">@{{ m.spark_id }}</div>
                   </div>
-                  <div class="ftm-member-sub">@{{ m.spark_id }}</div>
-                </div>
-                <div class="ftm-member-actions">
-                  <input
-                    type="number"
-                    :value="memberPriority(m.spark_id)"
-                    min="0"
-                    max="99"
-                    class="ftm-priority-input"
-                    title="优先级（越大越靠前）"
-                    @change="handleSetMemberPriority(currentTag.id, m.spark_id, Number(($event.target as HTMLInputElement).value))"
-                  />
-                  <button
-                    class="ftm-remove-btn"
-                    title="从标签移除"
-                    @click="handleRemoveMember(currentTag.id, m.spark_id)"
-                  >
-                    移除
-                  </button>
+                  <div class="ftm-member-actions">
+                    <input
+                      type="number"
+                      :value="memberPriority(m.spark_id)"
+                      min="0"
+                      max="99"
+                      class="ftm-priority-input"
+                      title="优先级（越大越靠前）"
+                      @change="handleSetMemberPriority(currentTag.id, m.spark_id, Number(($event.target as HTMLInputElement).value))"
+                    />
+                    <button
+                      class="ftm-remove-btn"
+                      title="从标签移除"
+                      @click="handleRemoveMember(currentTag.id, m.spark_id)"
+                    >
+                      移除
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div v-if="!currentMembers.length" class="ftm-empty">
-              这个标签还没有成员
+              <div v-if="!currentMembers.length" class="ftm-empty">
+                这个标签还没有成员
+              </div>
+            </div>
+            <!-- 首字母快速索引 -->
+            <div v-if="memberGroupsByLetter.length > 1" class="ftm-letter-index">
+              <span
+                v-for="g in memberGroupsByLetter"
+                :key="'idx-'+g.letter"
+                class="ftm-letter-idx-item"
+                @click="scrollToLetter(g.letter)"
+              >{{ g.letter }}</span>
             </div>
           </div>
         </section>
@@ -431,6 +443,11 @@ function handleSetTagPriority(tagId: string, priority: number) {
 
 function handleSetColor(tagId: string, color: string) {
   setTagColor(tagId, color)
+}
+
+function scrollToLetter(letter: string) {
+  const el = window.document.getElementById('ftm-letter-' + letter)
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 </script>
 
@@ -765,10 +782,43 @@ function handleSetColor(tagId: string, color: string) {
 
 .ftm-picker-avatar { font-size: 14px; }
 
+.ftm-member-list-wrap {
+  display: flex;
+  position: relative;
+}
+
 .ftm-member-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 首字母快速索引 */
+.ftm-letter-index {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  margin-left: 4px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+.ftm-letter-idx-item {
+  font-size: 9px;
+  color: rgba(139, 92, 246, 0.5);
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: all 0.12s;
+  line-height: 1.4;
+}
+.ftm-letter-idx-item:hover {
+  background: rgba(139, 92, 246, 0.1);
+  color: rgba(139, 92, 246, 0.9);
 }
 
 .ftm-letter-group { display: flex; flex-direction: column; gap: 4px; }

@@ -730,6 +730,14 @@
                 </div>
               </div>
               <p class="cp-feed-text">{{ m.content }}</p>
+              <div v-if="m.media_urls?.length" class="cp-feed-media">
+                <template v-for="(url,idx) in m.media_urls.slice(0,4)" :key="idx">
+                  <img :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
+                </template>
+              </div>
+              <div v-else-if="generateCoverStyle(m.content, false)" class="cp-feed-cover sm" :style="{background: coverStyleToCss(generateCoverStyle(m.content, false)!)}">
+                <span class="cp-feed-cover-emoji">{{ generateCoverStyle(m.content, false)!.emoji }}</span>
+              </div>
               <div class="cp-feed-acts">
                 <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
                 <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
@@ -800,7 +808,7 @@
                 @pointercancel="onPinnedPointerUp"
                 @pointerleave="onPinnedPointerUp"
               >
-                <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="handlePinnedClick(m.author_id)">
+                <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="openMomentDetail(m)">
                   <div class="cp-pinned-thumb-wrap">
                     <img v-if="m.media_urls?.[0] && !isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" draggable="false" />
                     <div v-else class="cp-pinned-thumb-placeholder">📌</div>
@@ -825,7 +833,12 @@
               </div>
             </div>
           </div>
-          <div v-for="m in feedMoments" :key="m.id" class="cp-feed-card">
+          <template v-for="(m, mIdx) in feedMoments" :key="m.id">
+            <!-- 微信风格时间分割线 -->
+            <div v-if="getTimeDivider(mIdx)" class="cp-time-divider">
+              <span>{{ getTimeDivider(mIdx) }}</span>
+            </div>
+            <div class="cp-feed-card" :class="{'is-pinned': m.is_pinned}" @click="openMomentDetail(m)" style="cursor:pointer">
             <div class="cp-feed-head">
               <SparkAvatar :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="sm" />
               <div class="cp-feed-info">
@@ -855,15 +868,18 @@
                 <img v-else :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
               </template>
             </div>
+            <div v-else-if="generateCoverStyle(m.content, false)" class="cp-feed-cover" :style="{background: coverStyleToCss(generateCoverStyle(m.content, false)!)}">
+              <span class="cp-feed-cover-emoji">{{ generateCoverStyle(m.content, false)!.emoji }}</span>
+            </div>
             <div class="cp-feed-footer-info">
               <span v-if="m.region" class="cp-feed-region">📍{{ m.region }}</span>
             </div>
-            <div class="cp-feed-acts">
+            <div class="cp-feed-acts" @click.stop>
               <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
               <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
-              <button @click="showToast('分享功能开发中')">🚀 分享</button>
+              <button @click="openSharePanel(m)">🚀 分享</button>
             </div>
-            <div v-if="expandedComments[m.id]" class="cp-comments">
+            <div v-if="expandedComments[m.id]" class="cp-comments" @click.stop>
               <div v-for="c in m.comments" :key="c.id" class="cp-cmt">
                 <div class="cp-cmt-main">
                   <b>{{ c.author_name }}：</b>
@@ -873,6 +889,7 @@
                 <div class="cp-cmt-actions">
                   <button class="cp-cmt-like" :class="{liked:c.likes?.includes(myProfile?.spark_id||'')}" @click="toggleCommentLike(m.id,c.id)">❤️ {{ c.likes?.length||'' }}</button>
                   <button class="cp-cmt-reply" @click="commentInputs[m.id]='@'+c.author_name+' '">回复</button>
+                  <button v-if="c.author_id===myProfile?.spark_id || m.author_id===myProfile?.spark_id" class="cp-cmt-del" @click="onDeleteComment(m.id,c.id)">🗑️</button>
                 </div>
               </div>
               <div class="cp-cmt-input-enhanced">
@@ -897,6 +914,7 @@
               <input :ref="el => setCommentFileRef(m.id, el)" type="file" accept="image/*" style="display:none" @change="onCommentImageSelect($event, m.id)">
             </div>
           </div>
+          </template>
           <p v-if="!allMoments.length" class="cp-empty">还没有动态，发一条吧 🌟</p>
         </div>
       </div>
@@ -907,6 +925,48 @@
         <div class="cp-stats" v-if="myProfile"><div class="cp-stat"><span>{{ friends.length }}</span>好友</div><div class="cp-stat"><span>{{ groups.length }}</span>群聊</div><div class="cp-stat"><span>{{ moments.length }}</span>动态</div></div>
       </div>
     </main>
+
+    <!-- 动态详情弹窗 -->
+    <Transition name="fade">
+      <div v-if="detailMoment" class="cp-overlay" @click.self="closeMomentDetail" style="z-index:200">
+        <div class="cp-detail-wrap">
+          <MomentDetail
+            :moment="detailMoment"
+            :my-id="myProfile?.spark_id||''"
+            @close="closeMomentDetail"
+            @like="toggleLike(detailMoment.id)"
+            @comment="(p:any)=>{commentMoment(detailMoment.id,p.content,p.imageUrl?{mediaUrl:p.imageUrl,mediaType:'image'}:undefined)}"
+            @delete-comment="(p:any)=>{deleteMomentComment(detailMoment.id,p.commentId);showToast('评论已删除')}"
+            @delete="handleDeleteMoment(detailMoment.id);closeMomentDetail()"
+            @toggle-pin="handleTogglePin(detailMoment.id)"
+            @share="openSharePanel(detailMoment)"
+          />
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 分享面板 -->
+    <Transition name="fade">
+      <div v-if="showSharePanel" class="cp-overlay" @click.self="showSharePanel=false" style="z-index:210">
+        <div class="cp-modal sm">
+          <h3>🚀 分享动态</h3>
+          <div class="cp-share-options">
+            <button class="cp-share-ai" @click="shareToAI">🤖 分享给AI助手</button>
+            <div class="cp-share-divider">选择好友</div>
+            <div class="cp-share-list">
+              <div v-for="f in friends" :key="f.spark_id" class="cp-share-friend" @click="shareToFriend(f.spark_id)">
+                <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url" :name="f.nickname" size="sm" />
+                <span>{{ f.nickname }}</span>
+              </div>
+              <p v-if="!friends.length" class="cp-empty">暂无好友</p>
+            </div>
+          </div>
+          <div class="cp-modal-btns">
+            <button @click="showSharePanel=false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 弹窗们 -->
 
@@ -1097,10 +1157,17 @@
               <span class="cp-pub-tag-hint">{{ publishTags.length }}/5</span>
             </div>
           </div>
-          <!-- 地区（支持自动定位） -->
+          <!-- 地区（支持自动定位 + 搜索） -->
           <div class="cp-pub-region-row">
             <span class="cp-pub-region-label">📍</span>
-            <input v-model="publishRegion" placeholder="添加地区" maxlength="30" class="cp-pub-region-input">
+            <div class="cp-pub-region-wrap">
+              <input v-model="publishRegion" placeholder="搜索或输入地点" maxlength="50" class="cp-pub-region-input" @input="onRegionInput" @focus="onRegionInput" @blur="hideLocationSuggestions">
+              <div v-if="showLocationSuggestions && locationSuggestions.length" class="cp-loc-suggest">
+                <div v-for="(loc, li) in locationSuggestions" :key="li" class="cp-loc-item" @mousedown.prevent="selectLocationSuggestion(loc)">
+                  📍 {{ loc.label }}
+                </div>
+              </div>
+            </div>
             <button class="cp-pub-region-detect" @click="detectLocation" :disabled="detectingLocation" title="自动定位">
               {{ detectingLocation ? '⏳' : '📡' }} {{ detectingLocation ? '定位中...' : '定位' }}
             </button>
@@ -1157,7 +1224,7 @@
           <input ref="publishFileInput" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx" @change="onPublishFileSelect" style="display:none">
           <div class="cp-modal-btns">
             <button @click="showPublishModal=false">取消</button>
-            <button class="primary" :disabled="!publishContent.trim()" @click="handlePublish">🚀 发布</button>
+            <button class="primary" :disabled="!publishContent.trim() || isPublishing" @click="handlePublish">{{ isPublishing ? '⏳ 上传中...' : '🚀 发布' }}</button>
           </div>
         </div>
       </div>
@@ -1317,6 +1384,7 @@ import { useCompanion, formatTimeAgo, formatMsgTime as formatMsgTimeUtil, should
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
 import FriendTagManager from '../../components/companion/FriendTagManager.vue'
+import MomentDetail from '../../components/companion/MomentDetail.vue'
 import CheckinModal from '../../components/companion/CheckinModal.vue'
 import AchievementPanel from '../../components/companion/AchievementPanel.vue'
 import { useCheckin } from '../../composables/useCheckin'
@@ -1324,6 +1392,9 @@ import { useAchievements, gameEvent } from '../../composables/useAchievements'
 import { useEasterEggs, type EasterEgg } from '../../composables/useEasterEggs'
 import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
+import { uploadMomentMediaBatch, uploadMomentMedia } from '../../composables/momentMediaUpload'
+import { generateCoverStyle, coverStyleToCss } from '../../utils/momentCover'
+import { detectReadableLocation, searchPlaces, type LocationInfo } from '../../composables/geolocation'
 
 const {
   myProfile, friends, groups, moments, isAiTyping, aiTypingText, getQRData,
@@ -1336,6 +1407,8 @@ const {
   friendTags, getTagsForFriend, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
   momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
   persistFriends, persistGroups, resolveSenderInfo,
+  deleteMomentComment, shareMomentToChat, shareMomentToAI, updateMomentFields,
+  loadProfileFromSupabase,
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
@@ -1597,6 +1670,27 @@ const groupMemberSearch = ref('')
 const showAllMembers = ref(false)
 // 发布编辑器弹窗
 const showPublishModal = ref(false)
+// 动态详情弹窗
+const detailMoment = ref<any>(null)
+function openMomentDetail(m: any) { detailMoment.value = m }
+function closeMomentDetail() { detailMoment.value = null }
+// 分享动态
+const shareMomentTarget = ref<any>(null)
+const showSharePanel = ref(false)
+function openSharePanel(m: any) { shareMomentTarget.value = m; showSharePanel.value = true }
+function shareToFriend(friendSparkId: string) {
+  if (!shareMomentTarget.value) return
+  const f = friends.value.find(x => x.spark_id === friendSparkId)
+  shareMomentToChat(shareMomentTarget.value.id, { type: 'private', id: friendSparkId, name: f?.nickname || '' }, '分享了一条动态')
+  showSharePanel.value = false
+  showToast('已分享到聊天')
+}
+function shareToAI() {
+  if (!shareMomentTarget.value) return
+  shareMomentToAI(shareMomentTarget.value.id, '请帮我分析一下这条动态')
+  showSharePanel.value = false
+  showToast('已分享给AI助手')
+}
 const publishContent = ref('')
 const publishVis = ref<'public'|'friends'|'private'|'partial'>('public')
 const publishIsLive = ref(false)
@@ -1607,6 +1701,9 @@ const publishVisibleTo = ref<string[]>([])
 
 const suggestedTags = ['日常', '学习', '心情', '分享', '校园', '美食', '运动', '旅行', '技术', '考试', '读书', '自拍']
 const detectingLocation = ref(false)
+const locationSuggestions = ref<LocationInfo[]>([])
+const showLocationSuggestions = ref(false)
+let locationSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 function addPublishTag() {
   const tag = publishTagInput.value.trim().replace(/^#/, '')
@@ -1625,29 +1722,37 @@ function toggleSuggestedTag(tag: string) {
   }
 }
 async function detectLocation() {
-  if (!navigator.geolocation) { showToast('浏览器不支持定位'); return }
   detectingLocation.value = true
   try {
-    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, enableHighAccuracy: false })
-    })
-    const { latitude, longitude } = pos.coords
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=zh`, { signal: AbortSignal.timeout(5000) })
-      const data = await res.json()
-      const addr = data.address || {}
-      const city = addr.city || addr.county || addr.state || ''
-      const district = addr.suburb || addr.neighbourhood || addr.district || ''
-      publishRegion.value = city && district ? `${city}·${district}` : city || `${latitude.toFixed(2)},${longitude.toFixed(2)}`
-    } catch {
-      publishRegion.value = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
-    }
+    const loc = await detectReadableLocation()
+    publishRegion.value = loc.label
+    showToast(`已定位：${loc.label}`)
   } catch (err: unknown) {
-    const msg = err instanceof GeolocationPositionError ? (err.code === 1 ? '请允许定位权限' : '定位失败') : '定位失败'
+    const msg = err instanceof Error ? err.message : '定位失败'
     showToast(msg)
   } finally {
     detectingLocation.value = false
   }
+}
+function onRegionInput() {
+  const q = publishRegion.value.trim()
+  if (locationSearchTimer) clearTimeout(locationSearchTimer)
+  if (q.length < 2) { locationSuggestions.value = []; showLocationSuggestions.value = false; return }
+  locationSearchTimer = setTimeout(async () => {
+    try {
+      const results = await searchPlaces(q)
+      locationSuggestions.value = results
+      showLocationSuggestions.value = results.length > 0
+    } catch { showLocationSuggestions.value = false }
+  }, 400)
+}
+function selectLocationSuggestion(loc: LocationInfo) {
+  publishRegion.value = loc.label
+  showLocationSuggestions.value = false
+  locationSuggestions.value = []
+}
+function hideLocationSuggestions() {
+  window.setTimeout(() => { showLocationSuggestions.value = false }, 200)
 }
 function toggleVisibleTo(sparkId: string) {
   const i = publishVisibleTo.value.indexOf(sparkId)
@@ -1685,10 +1790,11 @@ function toggleTagGroup(tagId: string) {
   }
   publishVisibleTo.value = Array.from(set)
 }
-const publishImages = ref<{url:string;name:string;blob?:boolean}[]>([])
-const publishVideos = ref<{url:string;name:string}[]>([])
-const publishFiles = ref<{url:string;name:string;size:number}[]>([])
+const publishImages = ref<{url:string;name:string;blob?:boolean;file?:File}[]>([])
+const publishVideos = ref<{url:string;name:string;file?:File}[]>([])
+const publishFiles = ref<{url:string;name:string;size:number;file?:File}[]>([])
 const publishFileInput = ref<HTMLInputElement|null>(null)
+const isPublishing = ref(false) // 发布中（上传媒体 + 创建动态）
 // 拖拽排序
 const dragIdx = ref<number|null>(null)
 // 可见性设置面板
@@ -2761,6 +2867,7 @@ function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return
 
 const commentEmojiVisible = ref<string|null>(null)
 const commentImagePreview = reactive<Record<string,string>>({})
+const commentImageFiles = reactive<Record<string,File>>({})
 const commentFileRefs: Record<string, HTMLInputElement|null> = {}
 function setCommentFileRef(momentId: string, el: any) { commentFileRefs[momentId] = el as HTMLInputElement }
 function toggleCommentEmoji(momentId: string) {
@@ -2775,17 +2882,30 @@ function onCommentImageSelect(e: Event, momentId: string) {
   const file = el.files[0]
   if (file.size > 5 * 1024 * 1024) { showToast('图片不能超过5MB'); return }
   commentImagePreview[momentId] = URL.createObjectURL(file)
+  commentImageFiles[momentId] = file
   el.value = ''
 }
 function clearCommentImage(momentId: string) {
   if (commentImagePreview[momentId]?.startsWith('blob:')) URL.revokeObjectURL(commentImagePreview[momentId])
   delete commentImagePreview[momentId]
+  delete commentImageFiles[momentId]
 }
-function handleCommentEnhanced(momentId: string) {
+async function handleCommentEnhanced(momentId: string) {
   const text = commentInputs[momentId]?.trim()
   const imgUrl = commentImagePreview[momentId]
+  const imgFile = commentImageFiles[momentId]
   if (!text && !imgUrl) return
-  commentMoment(momentId, text || '[图片]', imgUrl ? { mediaUrl: imgUrl, mediaType: 'image' } : undefined)
+  let finalMediaUrl = imgUrl
+  // 如果有图片文件，先上传到 Storage 获取永久 URL
+  if (imgFile) {
+    try {
+      const res = await uploadMomentMedia(imgFile, 'comments')
+      if (res.uploaded) finalMediaUrl = res.url
+    } catch (err) {
+      console.warn('[handleCommentEnhanced] 评论图片上传失败，降级使用本地预览:', err)
+    }
+  }
+  commentMoment(momentId, text || '[图片]', finalMediaUrl ? { mediaUrl: finalMediaUrl, mediaType: 'image' } : undefined)
   commentInputs[momentId] = ''
   clearCommentImage(momentId)
   commentEmojiVisible.value = null
@@ -2800,6 +2920,16 @@ function toggleCommentLike(momentId: string, commentId: string) {
   const idx = c.likes.indexOf(myProfile.value.spark_id)
   if (idx >= 0) c.likes.splice(idx, 1)
   else c.likes.push(myProfile.value.spark_id)
+}
+function onDeleteComment(momentId: string, commentId: string) {
+  confirmDialog.show = true
+  confirmDialog.title = '删除评论'
+  confirmDialog.text = '确定要删除这条评论吗？删除后所有人都将无法看到。'
+  confirmDialog.btnText = '删除'
+  confirmDialog.onConfirm = () => {
+    deleteMomentComment(momentId, commentId)
+    showToast('评论已删除')
+  }
 }
 async function renderQR(canvas:HTMLCanvasElement|null,data:string){if(!canvas)return;try{await QRCode.toCanvas(canvas,data,{width:160,margin:2,color:{dark:'#8b5cf6',light:'#0d0a1a'}})}catch{}}
 function copyQRData(){navigator.clipboard.writeText(getQRData());showToast('名片已复制')}
@@ -2920,8 +3050,11 @@ onMounted(async ()=>{
         if (profile.avatar_url) myProfile.value.avatar_url = profile.avatar_url
         if (profile.nickname) myProfile.value.nickname = profile.nickname
         if (profile.bio) myProfile.value.bio = profile.bio
+        if (profile.spark_id) myProfile.value.spark_id = profile.spark_id
       }
       updateProfile({})
+      // 异步加载完整档案（含 university/interests 等字段）并同步动态中的 author_name
+      loadProfileFromSupabase(data.user.id).catch(() => {})
     }
   } catch { /* 离线模式忽略 */ }
 
@@ -3302,7 +3435,34 @@ const allMoments = computed(() => {
   return filtered
 })
 const pinnedMoments = computed(() => allMoments.value.filter(m => m.is_pinned))
-const feedMoments = computed(() => allMoments.value.filter(m => !m.is_pinned))
+// feedMoments 包含所有动态（含置顶），置顶在最前面
+const feedMoments = computed(() => allMoments.value)
+
+/** 微信风格时间分割线：返回该 moment 应显示的时间段标签（若与上一条不同） */
+function getTimeDivider(momentIdx: number): string | null {
+  const list = feedMoments.value
+  if (momentIdx < 0 || momentIdx >= list.length) return null
+  const cur = list[momentIdx]
+  const prev = momentIdx > 0 ? list[momentIdx - 1] : null
+  const curLabel = getTimeRangeLabel(cur.created_at)
+  const prevLabel = prev ? getTimeRangeLabel(prev.created_at) : null
+  // 置顶区域和非置顶区域之间加分割
+  if (prev && prev.is_pinned && !cur.is_pinned) return curLabel
+  if (!prev || curLabel !== prevLabel) return curLabel
+  return null
+}
+function getTimeRangeLabel(dateStr: string): string {
+  const now = Date.now()
+  const t = new Date(dateStr).getTime()
+  const diff = now - t
+  const day = 86400000
+  if (diff < 1 * day) return '今天'
+  if (diff < 3 * day) return '三天内'
+  if (diff < 7 * day) return '一周内'
+  if (diff < 30 * day) return '一个月内'
+  if (diff < 180 * day) return '半年内'
+  return '更早'
+}
 
 // ====== 用户状态系统 ======
 interface UserStatus { id: string; emoji: string; label: string; expiresAt?: string }
@@ -3616,10 +3776,10 @@ function onPublishFileSelect(e: Event) {
         showToast(`图片最多${maxImagesAllowed.value}张${publishVideos.value.length > 0 ? '（视频占用3个位置）' : ''}`)
         break
       }
-      publishImages.value.push({ url: URL.createObjectURL(f), name: f.name, blob: true })
+      publishImages.value.push({ url: URL.createObjectURL(f), name: f.name, blob: true, file: f })
     } else if (f.type.startsWith('video/')) {
       if (publishVideos.value.length >= 1) { showToast('最多上传1个视频'); continue }
-      publishVideos.value.push({ url: URL.createObjectURL(f), name: f.name })
+      publishVideos.value.push({ url: URL.createObjectURL(f), name: f.name, file: f })
       // 视频占位后检查图片是否超出
       while (publishImages.value.length > 6) {
         const removed = publishImages.value.pop()
@@ -3627,7 +3787,7 @@ function onPublishFileSelect(e: Event) {
         showToast('有视频时图片最多6张，已移除多余图片')
       }
     } else {
-      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size })
+      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size, file: f })
     }
   }
   el.value = ''
@@ -3642,7 +3802,7 @@ function onPublishFileAttach() {
     if (!inp.files) return
     for (let i = 0; i < inp.files.length; i++) {
       const f = inp.files[i]
-      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size })
+      publishFiles.value.push({ url: URL.createObjectURL(f), name: f.name, size: f.size, file: f })
     }
   }
   inp.click()
@@ -3655,37 +3815,74 @@ function formatPublishFileSize(bytes: number): string {
 function onVisChange() {
   if (publishVis.value !== 'partial') publishVisibleTo.value = []
 }
-function handlePublish() {
+async function handlePublish() {
   if (!publishContent.value.trim()) return
-  postMoment(
-    publishContent.value.trim(),
-    publishImages.value.map(img => img.url),
-    publishVis.value === 'partial' ? 'friends' : publishVis.value,
-    true,
-    {
-      videoUrls: publishVideos.value.map(v => v.url),
-      fileUrls: publishFiles.value.map(f => f.url),
-      fileNames: publishFiles.value.map(f => f.name),
-      fileSizes: publishFiles.value.map(f => f.size),
-      isLive: publishIsLive.value,
-      tags: publishTags.value,
-      region: publishRegion.value.trim(),
-      visibleTo: publishVis.value === 'partial' ? publishVisibleTo.value : undefined,
+  if (isPublishing.value) return
+  isPublishing.value = true
+  try {
+    // ---- 收集需要上传的 File 对象 ----
+    const imageFiles = publishImages.value.filter(i => i.file).map(i => i.file!)
+    const videoFiles = publishVideos.value.filter(v => v.file).map(v => v.file!)
+    const allMediaFiles = [...imageFiles, ...videoFiles]
+
+    let finalImageUrls = publishImages.value.map(i => i.url) // 默认用 blob（降级）
+    let finalVideoUrls = publishVideos.value.map(v => v.url)
+
+    if (allMediaFiles.length > 0) {
+      try {
+        const results = await uploadMomentMediaBatch(allMediaFiles, 'moments')
+        // 分拣：图片结果在前，视频在后（保持原始顺序）
+        const imgResults = results.slice(0, imageFiles.length)
+        const vidResults = results.slice(imageFiles.length)
+        // 用上传后的 URL 替换（成功用 public URL，失败保留 blob）
+        finalImageUrls = publishImages.value.map((img, idx) => {
+          if (img.file && imgResults[idx]) return imgResults[idx].url
+          return img.url
+        })
+        finalVideoUrls = publishVideos.value.map((vid, idx) => {
+          if (vid.file && vidResults[idx]) return vidResults[idx].url
+          return vid.url
+        })
+      } catch (err) {
+        console.warn('[handlePublish] 媒体上传失败，降级使用本地预览:', err)
+      }
     }
-  )
-  showToast('已发布')
-  try{ gameEvent('companion_moment_posted') }catch{}
-  publishContent.value = ''
-  publishImages.value = []
-  publishVideos.value = []
-  publishFiles.value = []
-  publishIsLive.value = false
-  publishVis.value = 'public'
-  publishTags.value = []
-  publishTagInput.value = ''
-  publishRegion.value = ''
-  publishVisibleTo.value = []
-  showPublishModal.value = false
+
+    postMoment(
+      publishContent.value.trim(),
+      finalImageUrls,
+      publishVis.value === 'partial' ? 'friends' : publishVis.value,
+      true,
+      {
+        videoUrls: finalVideoUrls,
+        fileUrls: publishFiles.value.map(f => f.url),
+        fileNames: publishFiles.value.map(f => f.name),
+        fileSizes: publishFiles.value.map(f => f.size),
+        isLive: publishIsLive.value,
+        tags: publishTags.value,
+        region: publishRegion.value.trim(),
+        visibleTo: publishVis.value === 'partial' ? publishVisibleTo.value : undefined,
+      }
+    )
+    showToast('已发布')
+    try{ gameEvent('companion_moment_posted') }catch{}
+    publishContent.value = ''
+    publishImages.value = []
+    publishVideos.value = []
+    publishFiles.value = []
+    publishIsLive.value = false
+    publishVis.value = 'public'
+    publishTags.value = []
+    publishTagInput.value = ''
+    publishRegion.value = ''
+    publishVisibleTo.value = []
+    showPublishModal.value = false
+  } catch (err) {
+    console.error('[handlePublish] 发布失败:', err)
+    showToast('发布失败，请重试')
+  } finally {
+    isPublishing.value = false
+  }
 }
 
 void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showChatFriendCard;void viewProfile;void friendTags;void unblockFriend;void sendGroupMsg;void isMomentLive;void postContent;void postVis;void getGroupDisplayName;void _origOpenGroupChat;void pinnedMoments;void feedMoments;void handlePinnedClick;void authorSpaceVisible;void authorSpaceMoments;void openAuthorSpace;void interactionCount;void showInteractPanel;void interactionList;void currentStatus;void showStatusPicker;void statusPresets;void statusEmojis;void customStatusText;void customStatusEmoji;void statusDuration;void commentEmojiVisible;void commentImagePreview;void commentFileRefs;void handleCommentEnhanced;void toggleCommentLike;void publishTags;void publishTagInput;void publishRegion;void publishVisibleTo;void addPublishTag;void removePublishTag;void toggleVisibleTo;void onVisChange;void myPinnedCount;void bgExpanded;void openBgFullscreen;void suggestedTags;void toggleSuggestedTag;void detectLocation;void detectingLocation
@@ -3741,8 +3938,9 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-cmt-main{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px}
 .cp-cmt-img{width:60px;height:60px;border-radius:6px;object-fit:cover;cursor:pointer;margin-top:4px;display:block}
 .cp-cmt-actions{display:flex;gap:8px;margin-top:3px}
-.cp-cmt-like,.cp-cmt-reply{background:none;border:none;color:rgba(255,255,255,.15);font-size:9px;cursor:pointer;padding:1px 4px;border-radius:4px;transition:all .12s}
+.cp-cmt-like,.cp-cmt-reply,.cp-cmt-del{background:none;border:none;color:rgba(255,255,255,.15);font-size:9px;cursor:pointer;padding:1px 4px;border-radius:4px;transition:all .12s}
 .cp-cmt-like:hover,.cp-cmt-reply:hover{background:rgba(255,255,255,.02);color:rgba(255,255,255,.35)}
+.cp-cmt-del:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.6)}
 .cp-cmt-like.liked{color:rgba(239,68,68,.5)}
 .cp-cmt-input{display:flex;gap:4px;margin-top:4px}.cp-cmt-input input{flex:1;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.02);color:white;font-size:10px;outline:none}.cp-cmt-input button{padding:2px 8px;border-radius:5px;border:none;background:rgba(139,92,246,.08);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer}
 /* 增强评论输入 */
@@ -4004,6 +4202,15 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-pinned-body b{display:block;font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
 .cp-pinned-body p{font-size:10px;color:rgba(255,255,255,.25);line-height:1.4;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cp-feed-media{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;border-radius:8px;overflow:hidden}.cp-feed-img{width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;transition:opacity .15s}.cp-feed-img:hover{opacity:.85}
+.cp-feed-cover{height:80px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;position:relative;overflow:hidden}.cp-feed-cover.sm{height:56px;border-radius:8px}
+.cp-feed-cover-emoji{font-size:32px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.25));animation:coverFloat 3s ease-in-out infinite}
+@keyframes coverFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+/* 微信风格时间分割线 */
+.cp-time-divider{display:flex;align-items:center;gap:12px;margin:14px 0 8px;padding:0 4px}
+.cp-time-divider::before,.cp-time-divider::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent)}
+.cp-time-divider span{font-size:10px;color:rgba(255,255,255,.2);white-space:nowrap;letter-spacing:1px}
+/* 动态详情弹窗 */
+.cp-detail-wrap{width:480px;max-width:90vw;max-height:90vh;overflow-y:auto;border-radius:16px;background:rgba(18,16,30,.98);border:1px solid rgba(255,255,255,.06);box-shadow:0 16px 48px rgba(0,0,0,.6)}
 .cp-feed-video-wrap{position:relative;width:100%;aspect-ratio:1;cursor:pointer;overflow:hidden;background:#000}.cp-feed-video{width:100%;height:100%;object-fit:cover}.cp-feed-video-play{position:absolute;bottom:8px;right:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);border-radius:50%;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(4px)}
 .cp-feed-info{flex:1;min-width:0}.cp-feed-info b{display:block;font-size:12px;color:rgba(255,255,255,.6)}.cp-feed-info small{font-size:9px;color:rgba(255,255,255,.15)}
 /* 置顶标识 */
@@ -4057,6 +4264,13 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 /* 弹窗 */
 .cp-overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center}
 .cp-modal{background:rgba(14,11,28,.97);border:1px solid rgba(255,255,255,.05);border-radius:18px;padding:20px;width:380px;max-height:80vh;overflow-y:auto;box-shadow:0 16px 64px rgba(0,0,0,.4)}.cp-modal.sm{width:340px}
+/* 分享面板 */
+.cp-share-options{margin-top:12px}
+.cp-share-ai{width:100%;padding:10px;border:1px solid rgba(139,92,246,.15);border-radius:10px;background:rgba(139,92,246,.06);color:rgba(139,92,246,.8);font-size:13px;cursor:pointer;transition:all .15s;margin-bottom:12px}.cp-share-ai:hover{background:rgba(139,92,246,.12)}
+.cp-share-divider{font-size:10px;color:rgba(255,255,255,.2);text-align:center;margin:8px 0;position:relative}.cp-share-divider::before,.cp-share-divider::after{content:'';position:absolute;top:50%;width:35%;height:1px;background:rgba(255,255,255,.05)}.cp-share-divider::before{left:0}.cp-share-divider::after{right:0}
+.cp-share-list{max-height:200px;overflow-y:auto}
+.cp-share-friend{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;transition:all .12s}.cp-share-friend:hover{background:rgba(255,255,255,.03)}
+.cp-share-friend span{font-size:12px;color:rgba(255,255,255,.5)}
 .cp-modal h3{margin:0 0 14px;font-size:14px;color:white;text-align:center;font-weight:700}
 .cp-field{margin-bottom:8px}.cp-field label{display:block;font-size:10px;color:rgba(255,255,255,.2);margin-bottom:3px;font-weight:600}.cp-field input{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:11px;outline:none;box-sizing:border-box}.cp-field input:focus{border-color:rgba(139,92,246,.15)}
 .cp-field-label{font-size:10px;color:rgba(255,255,255,.15);margin:6px 0 3px}
@@ -4280,7 +4494,13 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-pub-region-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .cp-pub-region-detect{padding:4px 10px;border-radius:8px;border:1px solid rgba(139,92,246,.15);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s}.cp-pub-region-detect:hover:not(:disabled){background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.25)}.cp-pub-region-detect:disabled{opacity:.5;cursor:not-allowed}
 .cp-pub-region-label{font-size:13px;flex-shrink:0}
-.cp-pub-region-input{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.5);font-size:11px;outline:none}.cp-pub-region-input:focus{border-color:rgba(139,92,246,.15)}.cp-pub-region-input::placeholder{color:rgba(255,255,255,.12)}
+.cp-pub-region-wrap{flex:1;position:relative}
+.cp-pub-region-input{width:100%;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.5);font-size:11px;outline:none;box-sizing:border-box}.cp-pub-region-input:focus{border-color:rgba(139,92,246,.15)}.cp-pub-region-input::placeholder{color:rgba(255,255,255,.12)}
+/* 地点搜索建议下拉 */
+.cp-loc-suggest{position:absolute;top:100%;left:0;right:0;z-index:50;max-height:180px;overflow-y:auto;background:rgba(24,22,38,.98);border:1px solid rgba(255,255,255,.06);border-radius:8px;margin-top:4px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.cp-loc-item{padding:8px 12px;font-size:11px;color:rgba(255,255,255,.5);cursor:pointer;transition:all .12s;border-bottom:1px solid rgba(255,255,255,.02)}
+.cp-loc-item:hover{background:rgba(139,92,246,.08);color:rgba(139,92,246,.8)}
+.cp-loc-item:last-child{border-bottom:none}
 /* 部分可见 */
 .cp-pub-partial{margin-bottom:8px;padding:8px;border-radius:10px;border:1px solid rgba(139,92,246,.08);background:rgba(139,92,246,.02)}
 .cp-pub-partial-header{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
