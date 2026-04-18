@@ -342,9 +342,9 @@ Deno.serve(async (req) => {
       return errorResponse('BAD_REQUEST', 'messages 不能为空且必须是 { role, content }[] 数组', 400)
     }
 
-    // v11: 长上下文 —— 保留 80 条消息（此前 40），配合前端自动摘要可无限衔接
+    // v12: 长上下文 —— 保留 120 条消息（配合前端自动摘要可无限衔接）
     const sanitizedMessages = messages
-      .slice(-80)
+      .slice(-120)
       .map((message) => ({
         role: message.role,
         content: message.content.trim(),

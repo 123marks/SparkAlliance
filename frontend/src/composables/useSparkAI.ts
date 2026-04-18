@@ -1,16 +1,10 @@
 import { ref } from 'vue'
-import { supabase } from '../supabase'
+import { supabase, invokeEdgeFunction } from '../supabase'
 
 export type { SparkAction } from '../utils/assistantProtocol'
 import { parseSparkActions, type SparkAction } from '../utils/assistantProtocol'
 import { checkAIResponseSafety, hasSensitiveContent } from '../utils/contentSafety'
 import { loadPersist, savePersist, subscribePersist } from '../utils/persist'
-
-function getEdgeFunctionUrl(): string {
-  const base = import.meta.env.VITE_SUPABASE_URL
-  if (!base) throw new Error('缺少 SUPABASE_URL 配置')
-  return `${base}/functions/v1/assistant-chat`
-}
 
 /**
  * 获取有效的 Supabase session —— 若剩余生命周期 < 90s 会主动刷新。
@@ -41,18 +35,13 @@ async function getValidSession() {
   }
 }
 
-export type ModelMode = 'default' | 'thinking' | 'fast'
+export type ModelMode = 'default' | 'thinking' | 'fast' | 'standard'
 
 /**
- * 星火助手 3 模式 UI 配置。
+ * 星火助手 4 模式 UI 配置。
  *
- * 底层真实模型（由 Edge Function 侧 SPARK_MODEL_* env 决定，前端完全不暴露）：
- * - default（均衡）  → moonshotai/kimi-k2.5
- * - thinking（深度） → z-ai/glm-5.1
- * - fast（极速）     → minimaxai/minimax-m2.5
- *
- * 前端只持有展示用的 label / desc / icon / maxTokens，
- * 永远不会看到 NVIDIA API Key 或具体模型 slug。
+ * 底层真实模型由 Edge Function 侧环境变量决定，前端完全不暴露模型名称。
+ * 前端只持有展示用的 label / desc / icon / maxTokens。
  */
 export const MODEL_OPTIONS: Record<ModelMode, { label: string; desc: string; icon: string; maxTokens: number }> = {
   default: {
@@ -72,6 +61,12 @@ export const MODEL_OPTIONS: Record<ModelMode, { label: string; desc: string; ico
     desc: '秒级响应，适合闲聊和简单问题',
     icon: '🚀',
     maxTokens: 2048,
+  },
+  standard: {
+    label: '标准',
+    desc: '稳定可靠，适合日常对话',
+    icon: '✨',
+    maxTokens: 4096,
   },
 }
 
@@ -163,11 +158,11 @@ const MAX_MESSAGES_PER_CONVERSATION = 200
  * v11 记忆压缩：发送给 AI 的上下文条数上限（排除 system 后的 user/assistant 条数）。
  * 超出时早期消息会被 AI 自动压成一条 system 摘要，保留最近 SUMMARIZE_KEEP_RECENT 条 + 摘要。
  */
-const CONTEXT_WINDOW = 80
+const CONTEXT_WINDOW = 120
 /** 自动触发后台摘要的阈值：会话消息数 ≥ 此值时 sendMessage 结束后异步压缩 */
-const AUTO_SUMMARIZE_THRESHOLD = 40
+const AUTO_SUMMARIZE_THRESHOLD = 60
 /** 摘要后保留多少条最近消息不被折叠（保留上下文连贯性） */
-const SUMMARIZE_KEEP_RECENT = 10
+const SUMMARIZE_KEEP_RECENT = 20
 
 const BINARY_EXTS = new Set([
   'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt', 'zip', 'rar', '7z', 'gz', 'tar',
@@ -239,20 +234,31 @@ function humanizeErrorCode(code: string, serverMsg: string): string {
       return '请先登录后再使用星火助手'
     case 'AUTH_FAILED':
       return '登录状态已失效，请刷新页面（Ctrl+Shift+R）后重试；若仍失败请重新登录'
+    case 'GATEWAY_TOKEN_ALG_MISMATCH':
+      // supabase.ts 已把 server 原文替换成可操作中文提示，这里直接透传。
+      return serverMsg || '星火助手后端密钥与前端不匹配，请管理员检查 Supabase API Keys 配置'
     case 'BAD_REQUEST':
       return `请求参数有误：${serverMsg || '未知原因'}`
     case 'SERVER_MISCONFIGURED':
-      return '星火助手后端尚未完成配置（缺 NVIDIA 密钥）。请联系管理员运行 scripts/setup-ai-secrets.ps1 或在 Supabase Dashboard → Edge Function Secrets 设置 NVIDIA_API_KEY'
+      return '星火助手后端尚未完成配置（缺上游 AI 密钥）。请联系管理员运行 scripts/setup-ai-secrets.ps1 或在 Supabase Dashboard → Edge Function Secrets 配置上游密钥'
     case 'UPSTREAM_AUTH_FAILED':
-      return '上游 AI 密钥无效或已过期。请联系管理员更新 NVIDIA_API_KEY'
+      return '星火上游 AI 密钥无效或已过期，请联系管理员更新'
     case 'UPSTREAM_MODEL_NOT_FOUND':
-      return `所选模型在 NVIDIA NIM 上不可用（所有 fallback 也都失败）：${serverMsg}`
+      return `当前模式所需的上游模型不可用（所有备用通道也都失败）：${serverMsg}`
     case 'UPSTREAM_RATE_LIMIT':
-      return '请求过于频繁（NVIDIA 限流），请等 30 秒后再试，或切换到「极速」模式消耗额度更少'
+      return '请求过于频繁（上游限流），请等 30 秒后再试，或切换到「极速」/「标准」模式分散额度'
     case 'UPSTREAM_SERVER_ERROR':
-      return `AI 服务商临时故障：${serverMsg}`
+      return `上游 AI 服务临时故障：${serverMsg}`
     case 'INTERNAL_ERROR':
       return `服务端异常：${serverMsg}`
+    case 'NETWORK_ERROR':
+      // serverMsg 由 supabase.ts 拼好（含 target URL + 真实 fetch err + 耗时 + 离线提示），
+      // 给用户暴露这些细节，方便定位是 GFW / 浏览器扩展 / DNS / 离线，而不是只丢一句"网络连接失败"。
+      return serverMsg
+        ? `网络连接失败：${serverMsg}\n\n排查建议：\n1) F12 → Network 看请求是否变红，记下 Status 与 Failed Reason\n2) 关闭浏览器扩展（尤其广告/隐私拦截、代理类）后重试\n3) 国内网络访问 *.supabase.co 偶有干扰，可尝试切换网络 / 开关 VPN`
+        : '网络连接失败，请检查网络后重试'
+    case 'ABORTED':
+      return '已停止生成'
     default:
       return serverMsg || `AI 服务暂时不可用（${code || '未知错误'}）`
   }
@@ -273,25 +279,16 @@ async function requestMemorySummary(older: Array<{ role: 'user' | 'assistant'; c
 4) 不要第一人称，用"用户"/"助手"指代双方
 5) 仅输出摘要正文，不要标题、不要前后缀`
 
-  const res = await fetch(getEdgeFunctionUrl(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({
-      assistant: 'spark',
-      mode: 'fast',
-      stream: false,
-      messages: [
-        ...older,
-        { role: 'user', content: condensedPrompt },
-      ],
-    }),
+  const { data } = await invokeEdgeFunction<{ content?: string }>('assistant-chat', {
+    assistant: 'spark',
+    mode: 'fast',
+    stream: false,
+    messages: [
+      ...older,
+      { role: 'user', content: condensedPrompt },
+    ],
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`摘要失败 ${res.status} ${text.slice(0, 80)}`)
-  }
-  const data = await res.json().catch(() => ({} as Record<string, unknown>))
-  const content = typeof (data as { content?: unknown }).content === 'string' ? (data as { content: string }).content : ''
+  const content = typeof data?.content === 'string' ? data.content : ''
   return content.trim()
 }
 
@@ -685,6 +682,30 @@ export function useSparkAI() {
     }
   }
 
+  /**
+   * 即时把用户消息推入当前会话并立刻持久化 ——
+   * 给 Chat.vue 在发送前调用，保证用户敲完回车的瞬间消息就出现在气泡里，
+   * 不被后续的 RAG 检索、缓存查询或网络请求阻塞。
+   *
+   * 返回新插入消息的 id，便于上层去重 / 后续更新（例如附加附件摘要）。
+   */
+  function pushUserMessageImmediately(content: string, attachments?: FileAttachment[]): string {
+    const conversation = getCurrentConversation()
+    const id = genId('m_')
+    const now = new Date().toISOString()
+    conversation.messages.push({
+      id,
+      createdAt: now,
+      role: 'user',
+      content,
+      attachments,
+    })
+    autoTitle(conversation)
+    conversation.updatedAt = now
+    saveConversations()
+    return id
+  }
+
   async function sendMessage(
     userMessage: string,
     onChunk: (text: string) => void,
@@ -693,13 +714,17 @@ export function useSparkAI() {
     onThinking?: (text: string) => void,
     attachments?: FileAttachment[],
     extraContext?: string,
+    /** Chat.vue 已预先将用户消息推入 conversation.messages 以实现即时显示 */
+    skipPushUserMessage?: boolean,
   ) {
     const conversation = getCurrentConversation()
 
     if (hasSensitiveContent(userMessage)) {
       const safeReply = '这个话题不太合适哦，我们聊点别的吧！我可以帮你管理日程、辅导学习、规划目标 😊'
       const now = new Date().toISOString()
-      conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'user', content: userMessage, attachments })
+      if (!skipPushUserMessage) {
+        conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'user', content: userMessage, attachments })
+      }
       conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'assistant', content: safeReply })
       autoTitle(conversation)
       conversation.updatedAt = now
@@ -714,10 +739,19 @@ export function useSparkAI() {
       for (const attachment of attachments) composedUserMessage += summarizeAttachment(attachment)
     }
 
-    const nowIso = new Date().toISOString()
-    conversation.messages.push({ id: genId('m_'), createdAt: nowIso, role: 'user', content: composedUserMessage, attachments })
-    autoTitle(conversation)
-    conversation.updatedAt = nowIso
+    if (!skipPushUserMessage) {
+      const nowIso = new Date().toISOString()
+      conversation.messages.push({ id: genId('m_'), createdAt: nowIso, role: 'user', content: composedUserMessage, attachments })
+      autoTitle(conversation)
+      conversation.updatedAt = nowIso
+    } else {
+      // 已预推入但可能缺少附件摘要文本，更新最后一条 user 消息
+      const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user')
+      if (lastUserMsg && composedUserMessage !== userMessage) {
+        lastUserMsg.content = composedUserMessage
+      }
+      autoTitle(conversation)
+    }
     if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
       conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION)
     }
@@ -794,63 +828,97 @@ export function useSparkAI() {
     }, 120000)
 
     /**
-     * 调用云端 Supabase Edge Function（assistant-chat） → NVIDIA NIM API。
-     * 全链路 HTTPS，前端不接触 NVIDIA API Key。
-     * 错误处理：Edge Function 返回结构化 { error, code, attempts }，前端按 code 做差异化提示。
+     * 调用云端 Edge Function → AI 模型。
+     *
+     * 路由策略：
+     * - standard（标准）→ spark-ai-general（项目自有 Gemma4）
+     * - default/thinking/fast → assistant-chat → NVIDIA NIM API
+     *
+     * invokeEdgeFunction 内部自动获取用户 JWT 并直接 fetch
+     * （用 JWT 同时填 apikey + Authorization，绕开 sb_publishable_ 问题）。
      */
     async function callCloud(): Promise<Response> {
-      let session = await getValidSession()
-      if (!session?.access_token) {
-        const err = new Error('请先登录后再使用星火助手') as Error & { code?: string }
-        err.code = 'NO_AUTH'
+      const isStandard = currentModel.value === 'standard'
+      const functionName = isStandard ? 'spark-ai-general' : 'assistant-chat'
+
+      // spark-ai-general 的请求格式与 assistant-chat 不同
+      const requestBody = isStandard
+        ? {
+            module: 'general',
+            messages: contextMessages,
+            temperature: 0.7,
+            max_tokens: 4096,
+          }
+        : {
+            assistant: 'spark',
+            mode: currentModel.value,
+            messages: contextMessages,
+            stream: true,
+          }
+
+      try {
+        const { data } = await invokeEdgeFunction<any>(
+          functionName,
+          requestBody,
+          abortController.value!.signal,
+        )
+
+        // spark-ai-general 返回 JSON（非 SSE），包装成 Response 供下游统一处理
+        if (isStandard) {
+          const content = typeof data?.content === 'string' ? data.content : ''
+          const jsonBody = JSON.stringify({
+            choices: [{ message: { content, role: 'assistant' } }],
+          })
+          return new Response(jsonBody, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        return data as Response
+      } catch (e: any) {
+        const code = e?.code as string | undefined
+
+        // v11: 网络/边缘错误的详细诊断日志（DevTools 即可定位 GFW/扩展/DNS）
+        if (code === 'NETWORK_ERROR') {
+          console.error('[SparkAI] callCloud 网络层失败 ·', {
+            functionName,
+            mode: currentModel.value,
+            target: e?.target,
+            elapsedMs: e?.elapsedMs,
+            online: typeof navigator !== 'undefined' ? navigator.onLine : 'n/a',
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a',
+            rawMessage: e?.message,
+          })
+        }
+
+        if (code?.startsWith('HTTP_401') || code === 'NO_AUTH' || code === 'AUTH_FAILED') {
+          try {
+            await supabase.auth.refreshSession()
+            const { data } = await invokeEdgeFunction<any>(
+              functionName,
+              requestBody,
+              abortController.value!.signal,
+            )
+            if (isStandard) {
+              const content = typeof data?.content === 'string' ? data.content : ''
+              return new Response(JSON.stringify({
+                choices: [{ message: { content, role: 'assistant' } }],
+              }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+            }
+            return data as Response
+          } catch { /* 重试也失败就抛原始错误 */ }
+        }
+
+        // 用 humanizeErrorCode 美化错误
+        const reason = e?.message || ''
+        const errCode = code || 'UNKNOWN'
+        const err = Object.assign(
+          new Error(humanizeErrorCode(errCode, reason)),
+          { code: errCode },
+        )
         throw err
       }
-
-      const fetchCloud = async (token: string) => fetch(getEdgeFunctionUrl(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          assistant: 'spark',
-          mode: currentModel.value,
-          messages: contextMessages,
-          stream: true,
-        }),
-        signal: abortController.value!.signal,
-      })
-
-      let res = await fetchCloud(session.access_token)
-      if (res.ok) return res
-
-      // 401 自动刷新一次 session 再重试一次
-      if (res.status === 401) {
-        try {
-          const refreshed = await supabase.auth.refreshSession()
-          session = refreshed.data?.session ?? null
-        } catch {
-          session = null
-        }
-        if (session?.access_token) {
-          res = await fetchCloud(session.access_token)
-          if (res.ok) return res
-        }
-      }
-
-      // 解析结构化错误（Edge Function 返回 JSON）
-      let code = `HTTP_${res.status}`
-      let reason = ''
-      try {
-        const payload = await res.json()
-        if (payload && typeof payload === 'object') {
-          code = typeof payload.code === 'string' ? payload.code : code
-          reason = typeof payload.error === 'string' ? payload.error : ''
-        }
-      } catch {
-        const text = await res.text().catch(() => '')
-        reason = text.slice(0, 200)
-      }
-      const err = new Error(humanizeErrorCode(code, reason)) as Error & { code?: string }
-      err.code = code
-      throw err
     }
 
     try {
@@ -1045,6 +1113,7 @@ export function useSparkAI() {
     summarizeCurrentConversation,
     inheritMemoryToNewConversation,
     sendMessage,
+    pushUserMessageImmediately,
     stopGenerating,
   }
 }

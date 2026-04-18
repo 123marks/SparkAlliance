@@ -6,7 +6,7 @@
  * 开发环境 → 本地 Ollama (localhost:3721) 作为 fallback
  */
 
-import { supabase } from '../supabase'
+import { supabase, invokeEdgeFunction } from '../supabase'
 
 export type AIModule = 'companion' | 'planner' | 'mentor' | 'schedule' | 'general'
 
@@ -40,44 +40,27 @@ async function callViaEdgeFunction(
     signal?: AbortSignal
   },
 ): Promise<LocalAIResponse> {
-  const edgeUrl = getEdgeFunctionUrl()
-  if (!edgeUrl) throw new Error('SUPABASE_URL 未配置')
-
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw new Error('请先登录后再使用 AI 助手')
 
-  const res = await fetch(edgeUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({
-      module,
-      messages: messages.slice(-20),
-      extra_context: options?.extraContext,
-      temperature: options?.temperature,
-      max_tokens: options?.maxTokens,
-    }),
-    signal: options?.signal,
-  })
+  const { data } = await invokeEdgeFunction<{
+    content?: string
+    model?: string
+    module?: string
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  }>('spark-ai-general', {
+    module,
+    messages: messages.slice(-20),
+    extra_context: options?.extraContext,
+    temperature: options?.temperature,
+    max_tokens: options?.maxTokens,
+  }, options?.signal)
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    const reason = typeof err.error === 'string' ? err.error : ''
-    // 透传真实错误原因给前端，便于诊断（API Key 未配 / 认证失败等）
-    if (res.status === 401) throw new Error('认证失败，请重新登录')
-    if (reason.includes('AI 服务密钥未配置')) throw new Error('后端未配置 AI 模型密钥，请联系管理员')
-    if (reason.includes('AI 服务暂时不可用')) throw new Error(reason)
-    throw new Error(reason || `Edge Function 错误 (${res.status})`)
-  }
-
-  const data = await res.json()
   return {
-    content: data.content || '',
-    model: data.model || 'spark-ai',
-    module: data.module,
-    usage: data.usage,
+    content: data?.content || '',
+    model: 'spark-ai',
+    module: data?.module,
+    usage: data?.usage,
   }
 }
 
@@ -111,7 +94,7 @@ async function callViaLocalOllama(
   const data = await res.json()
   return {
     content: data.content || '',
-    model: data.model || 'gemma3:4b',
+    model: 'spark-ai',
     module: data.module,
     usage: data.usage,
   }
@@ -249,20 +232,14 @@ export async function checkLocalAIHealth(): Promise<{
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) {
-        const res = await fetch(edgeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
+        try {
+          await invokeEdgeFunction('spark-ai-general', {
             module: 'general',
             messages: [{ role: 'user', content: 'ping' }],
             max_tokens: 5,
-          }),
-          signal: AbortSignal.timeout(8000),
-        })
-        if (res.ok) return { status: 'healthy', ollama: true, model: true, source: 'edge' }
+          }, AbortSignal.timeout(8000))
+          return { status: 'healthy', ollama: true, model: true, source: 'edge' }
+        } catch { /* Edge Function 不可用, 尝试本地 */ }
       }
     } catch { /* Edge Function 不可用, 尝试本地 */ }
   }
@@ -303,21 +280,20 @@ export async function openaiCompatible(
           .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
         const systemMsg = messages.find(m => m.role === 'system')
 
-        const res = await fetch(edgeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
+        try {
+          const { data } = await invokeEdgeFunction<Record<string, unknown>>('spark-ai-general', {
             module: options?.module || 'general',
             messages: userMessages,
             extra_context: systemMsg?.content,
             temperature: options?.temperature ?? 0.7,
             max_tokens: options?.maxTokens ?? 2048,
-          }),
-        })
-        if (res.ok) return res
+          })
+          // 包装成 Response 保持接口兼容
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch { /* fallback to local */ }
       }
     } catch { /* fallback to local */ }
   }

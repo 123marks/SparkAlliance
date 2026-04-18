@@ -11,7 +11,7 @@
  * API 兼容：`retrieveRelevantContext(query, opts)` 签名不变。
  */
 
-import { supabase } from '../supabase'
+import { supabase, invokeEdgeFunction } from '../supabase'
 
 export interface KnowledgeChunk {
   source: string      // 来源：'module-docs' | 'resource' | 'moment' | 'news' | 'user-note'
@@ -29,7 +29,7 @@ const MODULE_DOCS: KnowledgeChunk[] = [
   {
     source: 'module-docs',
     title: '星火助手（Chat）',
-    content: '路径 /app/chat。用户与 AI 模型对话的主入口，支持 3 种模式（均衡/深度思考/极速）底层都用 Gemma 3 27B。支持代码块/公式/导航链接渲染，一键复制 LaTeX。',
+    content: '路径 /app/chat。用户与「星火助手」对话的主入口，支持 4 种模式：均衡 / 深度思考 / 极速 / 标准。支持代码块、数学公式、导航链接渲染，一键复制 LaTeX。具体的底层模型由后端统一调度，前端不暴露。',
   },
   {
     source: 'module-docs',
@@ -83,13 +83,13 @@ const MODULE_DOCS: KnowledgeChunk[] = [
   },
   {
     source: 'module-docs',
-    title: 'AI 模型架构',
-    content: '生产环境：前端 → Supabase Edge Function（assistant-chat / spark-ai-general）→ NVIDIA NIM API（Gemma 3 27B 主模型 + LLaMA 3.1 8B 回退）。开发环境可回退本地 Ollama（VITE_LOCAL_AI_URL）。所有 API Key 仅存在服务端，不前端明文。',
+    title: '星火 AI 架构',
+    content: '前端 → Supabase Edge Function → 星火云端推理。具体的上游模型与服务商由后端统一调度，对前端与用户完全透明，所有提供商密钥仅在服务端加密存储。',
   },
   {
     source: 'module-docs',
     title: '数据安全',
-    content: '所有敏感参数（NVIDIA_API_KEY 等）只在 Supabase Edge Function 服务端保管，前端仅持有用户 session JWT。全链路 HTTPS；内容安全层（contentSafety.ts）过滤 XSS、敏感词、AI 身份暴露。',
+    content: '所有敏感参数仅在 Supabase Edge Function 服务端保管，前端仅持有用户 session JWT。全链路 HTTPS；内容安全层（contentSafety.ts）过滤 XSS、敏感词、AI 身份暴露。',
   },
   {
     source: 'module-docs',
@@ -198,25 +198,15 @@ async function searchDatabase(query: string, k = 3, myUserId?: string): Promise<
  */
 async function searchVectorRAG(query: string, k: number): Promise<KnowledgeChunk[]> {
   try {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-    if (!supabaseUrl) return []
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) return []
-    const res = await fetch(`${supabaseUrl}/functions/v1/spark-rag`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'search',
-        query,
-        match_count: k,
-        min_score: 0.3,
-      }),
+
+    const { data } = await invokeEdgeFunction<{ chunks?: any[] }>('spark-rag', {
+      action: 'search',
+      query,
+      match_count: k,
+      min_score: 0.3,
     })
-    if (!res.ok) return []
-    const data = await res.json()
     if (!Array.isArray(data?.chunks)) return []
     return data.chunks.map((c: any): KnowledgeChunk => ({
       source: c.source || 'vector',

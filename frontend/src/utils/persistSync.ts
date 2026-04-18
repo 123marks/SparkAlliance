@@ -177,15 +177,16 @@ export async function fullSync(): Promise<void> {
         const data = loadPersist<unknown>(key, null)
         if (data == null) continue
         pushPromises.push(
-          supabase.from('spark_user_state').upsert({
-            user_id: user.id,
-            state_key: key,
-            data,
-            updated_at: new Date(localTs).toISOString(),
-          }, { onConflict: 'user_id,state_key' })
-            .then(({ error: e }) => {
-              if (e) console.warn('[persistSync] push failed:', key, e.message)
-            })
+          Promise.resolve(
+            supabase.from('spark_user_state').upsert({
+              user_id: user.id,
+              state_key: key,
+              data,
+              updated_at: new Date(localTs).toISOString(),
+            }, { onConflict: 'user_id,state_key' })
+          ).then(({ error: e }) => {
+            if (e) console.warn('[persistSync] push failed:', key, e.message)
+          })
         )
       }
     }

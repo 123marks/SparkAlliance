@@ -68,10 +68,15 @@ const SENSITIVE_PATTERNS = [
 ]
 
 const MODEL_IDENTITY_FILTERS: { pattern: RegExp; replacement: string }[] = [
-  { pattern: /(?:我是.*?(?:GPT|Claude|Gemini|Gemma|LLaMA|DeepSeek|Llama|Mistral|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
+  { pattern: /(?:我是.*?(?:GPT|Claude|Gemini|Gemma|LLaMA|DeepSeek|Llama|Mistral|Kimi|Moonshot|MiniMax|GLM|Qwen|大语言模型|大模型|AI模型|语言模型))/gi, replacement: '我是星火助手' },
   { pattern: /(?:作为(?:一个)?(?:AI|人工智能|语言模型|大模型|机器人))/gi, replacement: '作为星火助手' },
-  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Meta\s+AI|NVIDIA)/gi, replacement: '星火团队' },
+  { pattern: /(?:OpenAI|Anthropic|Google\s+AI|Meta\s+AI|NVIDIA|Moonshot\s*AI|月之暗面|智谱\s*(?:AI|清言)?|MiniMax|零一万物|Z\.AI|z-ai)/gi, replacement: '星火团队' },
   { pattern: /\bGemma\b/gi, replacement: '星火' },
+  { pattern: /\bDeepSeek\b/gi, replacement: '星火' },
+  { pattern: /\bKimi\b/gi, replacement: '星火' },
+  { pattern: /\bGLM[\s-]?\d*(?:\.\d+)?\b/gi, replacement: '星火' },
+  { pattern: /\bMiniMax[\s-]?\w*\b/gi, replacement: '星火' },
+  { pattern: /(?:我的训练数据|我的知识截止)/gi, replacement: '我了解的信息' },
 ]
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {

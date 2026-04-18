@@ -403,7 +403,7 @@ const {
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
   toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
-  sendMessage, stopGenerating,
+  sendMessage, pushUserMessageImmediately, stopGenerating,
   summarizeCurrentConversation,
   inheritMemoryToNewConversation,
 } = useSparkAI()
@@ -422,7 +422,7 @@ const thinkingText = ref('')
 // v7.3: 思考阶段动态提示（让用户知道 AI 正在工作，不是卡死）
 const thinkingHints = ['正在连接星火大脑…', '正在思考你的问题…', '正在梳理上下文…', '正在组织回复…', '马上就好…']
 const thinkingSubHints = [
-  '✨ Gemma 大模型推理中，复杂问题可能需要数秒',
+  '✨ 星火大脑推理中，复杂问题可能需要数秒',
   '🔮 正在从记忆和知识库中检索相关信息',
   '🧩 正在对多个候选答案进行权衡比较',
   '📝 正在润色语言，确保回复既准确又友好',
@@ -737,6 +737,10 @@ async function handleSend() {
   showEmoji.value = false
   if (inputRef.value) inputRef.value.style.height='auto'
   if (!currentConversationId.value) createConversation()
+
+  // ★ 立即把用户消息推入对话并落盘 —— 让 UI 第一时间显示气泡，
+  //    不被后续 RAG 检索 / 缓存查询 / 网络请求阻塞。
+  pushUserMessageImmediately(text, atts.length ? atts : undefined)
   await nextTick(); scrollBot()
 
   // v7.3: 发送前做一次"思域"RAG 检索（静态知识库 + 可选数据库全文索引）
@@ -760,16 +764,8 @@ async function handleSend() {
     const key = makeCacheKey(text, currentModel.value, fp)
     const hit = readCache(key)
     if (hit) {
-      // 写入 user 消息（正常流程）
-      conv.messages.push({
-        id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        createdAt: new Date().toISOString(),
-        role: 'user',
-        content: text,
-        attachments: atts.length ? atts : undefined,
-      })
-      conv.updatedAt = new Date().toISOString()
-
+      // 注意：用户消息已在上方 pushUserMessageImmediately 中推入并落盘，
+      // 这里不再重复 push，避免出现"我说了两遍"的视觉 bug。
       cacheHitCount.value++
       // 用 replayCachedStream 让体感与流式一致
       await replayCachedStream(hit, (chunk) => { streamingContent.value = chunk; scrollBot() }, {
@@ -814,6 +810,7 @@ async function handleSend() {
     (t) => { thinkingText.value=t; scrollBot() },
     atts.length ? atts : undefined,
     extraContext || undefined,
+    true, // skipPushUserMessage: 用户消息已在上方预推入
   )
 }
 
