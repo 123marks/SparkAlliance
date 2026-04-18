@@ -36,6 +36,12 @@ export interface ChatMessage {
   content: string
   reasoning?: string
   attachments?: FileAttachment[]
+  /** 消息稳定 ID（跨渲染、跨收藏/反应保持不变，首次出现自动补齐） */
+  id?: string
+  /** 消息创建时间（ISO），未设置时从 conversation.updatedAt 估算 */
+  createdAt?: string
+  /** 来自响应缓存时标记（UI 展示"命中缓存"徽章） */
+  fromCache?: boolean
 }
 
 export interface FileAttachment {
@@ -54,6 +60,22 @@ export interface Conversation {
   createdAt: string
   updatedAt: string
   isPinned?: boolean   // v8: 置顶会话（在列表顶部）
+  isArchived?: boolean // v9: 归档会话（默认折叠显示）
+  tags?: string[]      // v9: 会话标签（自定义分组）
+}
+
+/** 反应类型（用户对 AI 回复的快速反馈） */
+export type MessageReaction = 'like' | 'dislike'
+
+/** 全局收藏条目（跨会话汇总） */
+export interface FavoriteMessage {
+  id: string                 // 消息稳定 ID
+  conversationId: string
+  conversationTitle: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string          // 消息自身的创建时间
+  savedAt: string            // 收藏时间
 }
 
 /**
@@ -74,6 +96,15 @@ export const WORKFLOW_PRESETS: Array<{ key: string; icon: string; label: string;
 export type StreamPhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
 const STORAGE_KEY = 'spark_conversations_v2'
+/** 全局收藏消息列表（跨会话） */
+const FAVORITES_KEY = 'spark_ai_favorites_v1'
+/** 消息反应映射：{ [msgId]: 'like' | 'dislike' } */
+const REACTIONS_KEY = 'spark_ai_reactions_v1'
+/** 最多保留的会话数（超过按 updatedAt 淘汰非置顶会话） */
+const MAX_CONVERSATIONS = 80
+/** 单会话最大消息数（超过时最早的对话做摘要折叠，避免 token 和 storage 爆炸） */
+const MAX_MESSAGES_PER_CONVERSATION = 200
+
 const BINARY_EXTS = new Set([
   'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt', 'zip', 'rar', '7z', 'gz', 'tar',
   'exe', 'dll', 'bin', 'dat', 'so', 'dylib', 'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'ogg',
@@ -116,6 +147,23 @@ function summarizeAttachment(attachment: FileAttachment): string {
   return ''
 }
 
+/** 生成短稳定 ID（时间戳 + 随机，8-10 字符，足够无冲突） */
+function genId(prefix = ''): string {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+/** 回填缺失的 id/createdAt，保证老数据升级后不丢反应/收藏能力 */
+function ensureMessageMeta(conversation: Conversation): boolean {
+  let changed = false
+  const base = new Date(conversation.createdAt || conversation.updatedAt || Date.now()).getTime()
+  for (let i = 0; i < conversation.messages.length; i++) {
+    const m = conversation.messages[i]
+    if (!m.id) { m.id = genId('m_'); changed = true }
+    if (!m.createdAt) { m.createdAt = new Date(base + i * 1000).toISOString(); changed = true }
+  }
+  return changed
+}
+
 export function useSparkAI() {
   const isStreaming = ref(false)
   const streamPhase = ref<StreamPhase>('idle')
@@ -125,15 +173,46 @@ export function useSparkAI() {
   const currentModel = ref<ModelMode>('default')
   const conversations = ref<Conversation[]>([])
   const currentConversationId = ref<string | null>(null)
+  const favorites = ref<FavoriteMessage[]>([])
+  const reactions = ref<Record<string, MessageReaction>>({})
 
   function loadConversations() {
     const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
-    if (Array.isArray(arr)) conversations.value = sortConversations(arr)
+    if (!Array.isArray(arr)) return
+    // 老数据回填 id/createdAt，保证跨版本兼容
+    let anyChanged = false
+    for (const c of arr) {
+      if (ensureMessageMeta(c)) anyChanged = true
+    }
+    conversations.value = sortConversations(arr)
+    if (anyChanged) saveConversations()
   }
+
+  function loadFavorites() {
+    const arr = loadPersist<FavoriteMessage[]>(FAVORITES_KEY, [])
+    if (Array.isArray(arr)) favorites.value = arr
+  }
+  function saveFavorites() { savePersist(FAVORITES_KEY, favorites.value.slice(0, 500)) }
+
+  function loadReactions() {
+    const obj = loadPersist<Record<string, MessageReaction>>(REACTIONS_KEY, {})
+    if (obj && typeof obj === 'object') reactions.value = obj
+  }
+  function saveReactions() { savePersist(REACTIONS_KEY, reactions.value) }
 
   function saveConversations() {
     // v8: 通过 persistSync 自动云同步（spark_conversations_v2 已加入 SYNC_KEYS）
-    savePersist(STORAGE_KEY, conversations.value.slice(0, 50))
+    // 按 updatedAt 倒序保留 MAX_CONVERSATIONS 条（置顶优先保留）
+    const sorted = sortConversations(conversations.value)
+    const trimmed: Conversation[] = []
+    for (const c of sorted) {
+      if (trimmed.length >= MAX_CONVERSATIONS) {
+        if (c.isPinned) trimmed.push(c)
+        continue
+      }
+      trimmed.push(c)
+    }
+    savePersist(STORAGE_KEY, trimmed)
   }
 
   /** 排序：置顶会话按 updatedAt 排前，其他会话按 updatedAt 倒序 */
@@ -147,12 +226,13 @@ export function useSparkAI() {
   }
 
   function createConversation(): Conversation {
+    const now = new Date().toISOString()
     const conversation: Conversation = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      id: genId('c_'),
       title: '新对话',
       messages: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     }
 
     conversations.value.unshift(conversation)
@@ -203,6 +283,117 @@ export function useSparkAI() {
     conversations.value = sortConversations(conversations.value)
     saveConversations()
     return !!c.isPinned
+  }
+
+  /** 切换归档（v9：归档会话默认在侧边栏折叠显示） */
+  function toggleArchiveConversation(id: string): boolean {
+    const c = conversations.value.find((item) => item.id === id)
+    if (!c) return false
+    c.isArchived = !c.isArchived
+    // 归档时自动取消置顶
+    if (c.isArchived && c.isPinned) c.isPinned = false
+    conversations.value = sortConversations(conversations.value)
+    saveConversations()
+    return !!c.isArchived
+  }
+
+  /** 克隆会话（v9：复制完整消息列表到新会话，方便做"从此分支"类型探索） */
+  function duplicateConversation(id: string): Conversation | null {
+    const src = conversations.value.find((item) => item.id === id)
+    if (!src) return null
+    const now = new Date().toISOString()
+    const clone: Conversation = {
+      id: genId('c_'),
+      title: `${src.title} · 副本`,
+      // 深拷贝消息，并重新生成每条消息的 id（避免与原会话收藏/反应错乱）
+      messages: src.messages.map((m) => ({ ...m, id: genId('m_') })),
+      createdAt: now,
+      updatedAt: now,
+      tags: src.tags ? [...src.tags] : undefined,
+    }
+    conversations.value.unshift(clone)
+    currentConversationId.value = clone.id
+    saveConversations()
+    return clone
+  }
+
+  /** 搜索会话（v9）：按标题 + 消息内容模糊匹配，返回高亮结果 */
+  function searchConversations(query: string): Array<{ conversation: Conversation; hitInTitle: boolean; hitSnippet: string }> {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const out: Array<{ conversation: Conversation; hitInTitle: boolean; hitSnippet: string }> = []
+    for (const c of conversations.value) {
+      const title = (c.title || '').toLowerCase()
+      const hitInTitle = title.includes(q)
+      let hitSnippet = ''
+      if (!hitInTitle) {
+        for (const m of c.messages) {
+          const content = (m.content || '').toLowerCase()
+          const pos = content.indexOf(q)
+          if (pos >= 0) {
+            const start = Math.max(0, pos - 12)
+            const end = Math.min(m.content.length, pos + q.length + 24)
+            hitSnippet = (start > 0 ? '…' : '') + m.content.slice(start, end) + (end < m.content.length ? '…' : '')
+            break
+          }
+        }
+      }
+      if (hitInTitle || hitSnippet) out.push({ conversation: c, hitInTitle, hitSnippet })
+    }
+    return out
+  }
+
+  /** 收藏/取消收藏一条消息（跨会话汇总到 favorites 列表） */
+  function toggleFavoriteMessage(conversationId: string, messageId: string): boolean {
+    const conv = conversations.value.find((c) => c.id === conversationId)
+    if (!conv) return false
+    const msg = conv.messages.find((m) => m.id === messageId)
+    if (!msg) return false
+    const idx = favorites.value.findIndex((f) => f.id === messageId)
+    if (idx >= 0) {
+      favorites.value.splice(idx, 1)
+      saveFavorites()
+      return false
+    }
+    favorites.value.unshift({
+      id: messageId,
+      conversationId,
+      conversationTitle: conv.title,
+      role: msg.role === 'system' ? 'assistant' : msg.role,
+      content: msg.content,
+      createdAt: msg.createdAt || new Date().toISOString(),
+      savedAt: new Date().toISOString(),
+    })
+    saveFavorites()
+    return true
+  }
+
+  /** 是否已收藏 */
+  function isMessageFavorited(messageId: string): boolean {
+    return favorites.value.some((f) => f.id === messageId)
+  }
+
+  /** 设置反应（like / dislike / null 取消） */
+  function setMessageReaction(messageId: string, reaction: MessageReaction | null) {
+    if (reaction === null) {
+      delete reactions.value[messageId]
+    } else {
+      reactions.value[messageId] = reaction
+    }
+    saveReactions()
+  }
+
+  /** 获取反应 */
+  function getMessageReaction(messageId: string): MessageReaction | null {
+    return reactions.value[messageId] || null
+  }
+
+  /** 跳转到收藏所在会话 + 对应消息 */
+  function jumpToFavorite(favorite: FavoriteMessage): boolean {
+    const exists = conversations.value.some((c) => c.id === favorite.conversationId)
+    if (!exists) return false
+    currentConversationId.value = favorite.conversationId
+    return true
   }
 
   /**
@@ -284,10 +475,11 @@ export function useSparkAI() {
 
     if (hasSensitiveContent(userMessage)) {
       const safeReply = '这个话题不太合适哦，我们聊点别的吧！我可以帮你管理日程、辅导学习、规划目标 😊'
-      conversation.messages.push({ role: 'user', content: userMessage, attachments })
-      conversation.messages.push({ role: 'assistant', content: safeReply })
+      const now = new Date().toISOString()
+      conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'user', content: userMessage, attachments })
+      conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'assistant', content: safeReply })
       autoTitle(conversation)
-      conversation.updatedAt = new Date().toISOString()
+      conversation.updatedAt = now
       saveConversations()
       onChunk(safeReply)
       onDone(safeReply, [], '')
@@ -299,9 +491,14 @@ export function useSparkAI() {
       for (const attachment of attachments) composedUserMessage += summarizeAttachment(attachment)
     }
 
-    conversation.messages.push({ role: 'user', content: composedUserMessage, attachments })
+    const nowIso = new Date().toISOString()
+    conversation.messages.push({ id: genId('m_'), createdAt: nowIso, role: 'user', content: composedUserMessage, attachments })
     autoTitle(conversation)
-    conversation.updatedAt = new Date().toISOString()
+    conversation.updatedAt = nowIso
+    // 单会话消息上限保护：超过时最早的消息按批折叠（保留最近 MAX_MESSAGES_PER_CONVERSATION）
+    if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
+      conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION)
+    }
 
     const contextMessages = conversation.messages
       .slice(-60)
@@ -531,12 +728,15 @@ export function useSparkAI() {
       const finalAnswer = safetyCheck.content
       const { cleanContent, actions } = parseSparkActions(finalAnswer)
 
+      const assistantNow = new Date().toISOString()
       conversation.messages.push({
+        id: genId('m_'),
+        createdAt: assistantNow,
         role: 'assistant',
         content: finalAnswer,
         reasoning: finalReasoning || undefined,
       })
-      conversation.updatedAt = new Date().toISOString()
+      conversation.updatedAt = assistantNow
       saveConversations()
 
       pendingActions.value = actions
@@ -560,7 +760,12 @@ export function useSparkAI() {
       onError?.(error.value)
 
       if (rawText && err instanceof Error && err.name !== 'AbortError') {
-        conversation.messages.push({ role: 'assistant', content: `${rawText}\n\n⚠️ *生成中断*` })
+        conversation.messages.push({
+          id: genId('m_'),
+          createdAt: new Date().toISOString(),
+          role: 'assistant',
+          content: `${rawText}\n\n⚠️ *生成中断*`,
+        })
         saveConversations()
       }
     } finally {
@@ -580,6 +785,15 @@ export function useSparkAI() {
   }
 
   loadConversations()
+  loadFavorites()
+  loadReactions()
+  // 跨设备同步：其他设备写入收藏/反应时自动应用
+  subscribePersist<FavoriteMessage[]>(FAVORITES_KEY, (v) => {
+    if (Array.isArray(v)) favorites.value = v
+  })
+  subscribePersist<Record<string, MessageReaction>>(REACTIONS_KEY, (v) => {
+    if (v && typeof v === 'object') reactions.value = v
+  })
 
   return {
     isStreaming,
@@ -589,6 +803,8 @@ export function useSparkAI() {
     conversations,
     currentConversationId,
     pendingActions,
+    favorites,
+    reactions,
     createConversation,
     getCurrentConversation,
     switchConversation,
@@ -596,7 +812,15 @@ export function useSparkAI() {
     clearAllConversations,
     renameConversation,
     togglePinConversation,
+    toggleArchiveConversation,
+    duplicateConversation,
+    searchConversations,
     exportConversation,
+    toggleFavoriteMessage,
+    isMessageFavorited,
+    setMessageReaction,
+    getMessageReaction,
+    jumpToFavorite,
     sendMessage,
     stopGenerating,
   }

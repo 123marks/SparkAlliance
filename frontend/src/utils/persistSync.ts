@@ -41,8 +41,14 @@ export const SYNC_KEYS = [
   'spark_companion_blacklist',
   'spark_companion_friend_permissions',
   'spark_companion_moment_visibility',
-  // useSparkAI
-  'spark_ai_conversations',
+  // useSparkAI（星火助手会话列表，key 必须与 useSparkAI.ts 中 STORAGE_KEY 一致）
+  'spark_conversations_v2',
+  // 星火助手收藏消息（跨设备同步，由 useSparkAI.toggleFavoriteMessage 写入）
+  'spark_ai_favorites_v1',
+  // 星火助手消息反应（👍/👎，用于未来调优信号）
+  'spark_ai_reactions_v1',
+  // 星火助手响应缓存最近索引（TTL 已由 sparkCache 本地控制，只同步索引）
+  'spark_ai_emoji_recent_v1',
   // useSettings / 外观
   'spark_appearance',
   // useSemester

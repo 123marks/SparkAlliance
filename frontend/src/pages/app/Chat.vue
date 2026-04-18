@@ -12,28 +12,122 @@
 
     <!-- 侧边栏 -->
     <aside class="chat-sidebar" :class="{ open: sidebarOpen }">
-      <div class="sb-top"><button class="new-btn" @click="handleNewChat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>新对话</button></div>
+      <div class="sb-top">
+        <button class="new-btn" aria-label="新建对话（Ctrl+N）" @click="handleNewChat">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          新对话
+        </button>
+      </div>
+      <!-- v9: 搜索框 -->
+      <div class="sb-search">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="sb-search-input" v-model="sbSearchQuery" placeholder="搜索会话或消息（Ctrl+K）" class="sb-search-input" aria-label="搜索会话" />
+        <button v-if="sbSearchQuery" class="sb-search-clear" aria-label="清空搜索" @click="sbSearchQuery = ''">×</button>
+      </div>
+
       <div class="sb-list">
-        <div v-for="g in groupedConvs" :key="g.label" class="sb-group">
-          <div class="sb-label">{{ g.label }}</div>
-          <div v-for="c in g.items" :key="c.id" class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
-            <span class="sb-text">{{ c.title }}</span><button class="sb-del" @click.stop="handleDelete(c.id)">×</button>
+        <!-- 搜索态 -->
+        <template v-if="sbSearchQuery.trim()">
+          <div class="sb-label">🔎 搜索结果（{{ sbSearchResults.length }}）</div>
+          <div v-for="r in sbSearchResults" :key="r.conversation.id" class="sb-item sb-item-search" :class="{ active: r.conversation.id === currentConversationId }" @click="handleSwitch(r.conversation.id)">
+            <div class="sb-text-wrap">
+              <div class="sb-text">
+                <span v-if="r.conversation.isPinned" class="pin-dot">⭐</span>
+                {{ r.conversation.title }}
+              </div>
+              <div v-if="r.hitSnippet" class="sb-hit">{{ r.hitSnippet }}</div>
+            </div>
           </div>
-        </div>
+          <div v-if="!sbSearchResults.length" class="sb-empty">无匹配</div>
+        </template>
+
+        <!-- 正常分组 -->
+        <template v-else>
+          <div v-for="g in groupedConvs" :key="g.label" class="sb-group" :class="{ 'sb-group-pinned': g.kind === 'pinned' }">
+            <div class="sb-label">{{ g.label }}</div>
+            <template v-for="c in g.items" :key="c.id">
+              <!-- 重命名态：显示输入框 -->
+              <div v-if="renamingId === c.id" class="sb-rename">
+                <input
+                  :id="'rn-input-' + c.id"
+                  v-model="renameText"
+                  class="sb-rename-input"
+                  maxlength="40"
+                  @click.stop
+                  @keydown.enter="confirmRename"
+                  @keydown.esc="cancelRename"
+                  @blur="confirmRename"
+                />
+              </div>
+              <!-- 正常态：会话项 -->
+              <div v-else class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
+                <span v-if="c.isPinned" class="pin-dot" title="已置顶">⭐</span>
+                <span class="sb-text">{{ c.title }}</span>
+                <button class="sb-more" aria-label="会话操作菜单" @click.stop="toggleMenu(c.id)">⋯</button>
+                <!-- v9: 浮层菜单 -->
+                <div v-if="openMenuId === c.id" class="sb-menu" @click.stop>
+                  <button class="sb-menu-item" @click="startRename(c)">
+                    <span class="mi-icon">✏️</span><span>重命名</span>
+                  </button>
+                  <button class="sb-menu-item" @click="(openMenuId = null, togglePinConversation(c.id) && toast('⭐ 已置顶'))">
+                    <span class="mi-icon">{{ c.isPinned ? '📍' : '⭐' }}</span><span>{{ c.isPinned ? '取消置顶' : '置顶' }}</span>
+                  </button>
+                  <button class="sb-menu-item" @click="(openMenuId = null, toggleArchiveConversation(c.id) && toast(c.isArchived ? '已归档' : '已取消归档'))">
+                    <span class="mi-icon">📦</span><span>{{ c.isArchived ? '取消归档' : '归档' }}</span>
+                  </button>
+                  <button class="sb-menu-item" @click="openMenuId = null; duplicateConversation(c.id); toast('✓ 已克隆为新会话')">
+                    <span class="mi-icon">📄</span><span>克隆会话</span>
+                  </button>
+                  <div class="sb-menu-div"></div>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'markdown')">
+                    <span class="mi-icon">📥</span><span>导出 Markdown</span>
+                  </button>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'json')">
+                    <span class="mi-icon">📥</span><span>导出 JSON</span>
+                  </button>
+                  <div class="sb-menu-div"></div>
+                  <button class="sb-menu-item sb-menu-item-danger" @click="openMenuId = null; handleDelete(c.id)">
+                    <span class="mi-icon">🗑️</span><span>删除</span>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
         <div v-if="conversations.length === 0" class="sb-empty">开始你的第一次对话</div>
+
+        <!-- 归档折叠开关 -->
+        <button v-if="archivedCount > 0 && !sbSearchQuery.trim()" class="sb-toggle-archived" @click="showArchived = !showArchived">
+          {{ showArchived ? '▼' : '▶' }} 已归档（{{ archivedCount }}）
+        </button>
       </div>
     </aside>
 
     <!-- 主区域 -->
     <main class="chat-main">
       <header class="top-bar">
-        <button class="menu-btn" @click="sidebarOpen = !sidebarOpen">☰</button>
+        <button class="menu-btn" aria-label="切换侧边栏" @click="sidebarOpen = !sidebarOpen">☰</button>
         <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
-        <div class="top-right"></div>
+        <div class="top-right">
+          <!-- 上下文窗口用量指示器 -->
+          <div class="ctx-gauge" :title="`本轮已占用 ${contextUsage.used} / ${contextUsage.limit} 条对话记忆`" v-if="contextUsage.used > 0">
+            <span class="ctx-label">记忆</span>
+            <span class="ctx-bar"><span class="ctx-fill" :class="{ warn: contextUsage.ratio > 0.8 }" :style="{ width: (contextUsage.ratio * 100).toFixed(0) + '%' }"></span></span>
+            <span class="ctx-num">{{ contextUsage.used }}/{{ contextUsage.limit }}</span>
+          </div>
+          <!-- 离线指示 -->
+          <span v-if="!isOnline" class="offline-dot" title="离线">● 离线</span>
+          <!-- 收藏夹入口 -->
+          <button class="top-fav" aria-label="查看收藏消息" :title="`收藏夹（${favorites.length}）`" @click="showFavorites = true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span v-if="favorites.length" class="top-fav-count">{{ favorites.length }}</span>
+          </button>
+        </div>
       </header>
 
       <!-- 消息区 -->
-      <div class="msgs" ref="scrollRef">
+      <div class="msgs" ref="scrollRef" @click="handleMsgAreaClick">
         <div v-if="displayMsgs.length === 0 && !isStreaming" class="empty">
           <div class="empty-icon">⚡</div>
           <h2>你好，我是星火助手</h2>
@@ -43,10 +137,18 @@
               <span class="qi">{{ q.i }}</span><span class="qt">{{ q.l }}</span><span class="qd">{{ q.t }}</span>
             </button>
           </div>
+          <div class="workflow-intro">
+            <div class="wi-title">🚀 一键工作流</div>
+            <div class="workflow-row">
+              <button v-for="w in WORKFLOW_PRESETS" :key="w.key" class="wf-chip" @click="applyWorkflow(w)" :title="w.hint">
+                <span class="wf-icon">{{ w.icon }}</span>{{ w.label }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <template v-for="(msg, idx) in displayMsgs" :key="idx">
-          <div class="msg-row" :class="msg.role">
+          <div class="msg-row" :class="msg.role" :title="msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : ''">
             <div v-if="msg.role === 'assistant'" class="av">⚡</div>
             <div class="msg-content">
               <div v-if="msg.attachments?.length" class="file-cards">
@@ -73,10 +175,40 @@
               </div>
               <!-- AI 回复（含导航链接渲染） -->
               <div v-if="msg.role === 'assistant' && msg.content" class="md-body" v-html="renderMd(msg.content)" @click="handleMdClick"></div>
+              <!-- v9: 命中缓存徽章 -->
+              <span v-if="msg.role === 'assistant' && msg.fromCache" class="cache-badge" title="此回复来自本地响应缓存，内容与最新请求一致">⚡ 来自缓存</span>
               <span v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'streaming'" class="cursor"></span>
               <div v-if="msg.role === 'assistant' && !isStreaming && msg.content" class="msg-acts">
-                <button @click="copyText(msg.content)" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
-                <button @click="retryFrom(idx)" title="重新回答"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>
+                <button @click="copyText(msg.content)" title="复制" aria-label="复制回复">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                </button>
+                <button @click="retryFrom(idx)" title="重新回答" aria-label="重新回答">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+                <button
+                  :class="{ active: msg.id && isMessageFavorited(msg.id) }"
+                  @click="handleToggleFavorite(idx)"
+                  :title="msg.id && isMessageFavorited(msg.id) ? '取消收藏' : '收藏此回复'"
+                  aria-label="收藏消息"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" :fill="msg.id && isMessageFavorited(msg.id) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                </button>
+                <button
+                  :class="{ active: msg.id && getMessageReaction(msg.id) === 'like' }"
+                  @click="handleReact(idx, 'like')"
+                  title="回复质量好"
+                  aria-label="点赞"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10v12M15 5.88L14 10h5.83a2 2 0 011.92 2.56l-2.33 8A2 2 0 0117.5 22H4a2 2 0 01-2-2v-8a2 2 0 012-2h2.76a2 2 0 001.79-1.11L12 2a3.13 3.13 0 013 3.88z"/></svg>
+                </button>
+                <button
+                  :class="{ active: msg.id && getMessageReaction(msg.id) === 'dislike' }"
+                  @click="handleReact(idx, 'dislike')"
+                  title="回复需改进"
+                  aria-label="标记不佳"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 14V2M9 18.12L10 14H4.17a2 2 0 01-1.92-2.56l2.33-8A2 2 0 016.5 2H20a2 2 0 012 2v8a2 2 0 01-2 2h-2.76a2 2 0 00-1.79 1.11L12 22a3.13 3.13 0 01-3-3.88z"/></svg>
+                </button>
               </div>
             </div>
           </div>
@@ -115,38 +247,125 @@
         </div>
         <div v-else class="ibox" :class="{ focus: iFocus }">
           <div class="itools">
-            <button class="itool" @click="fileInput?.click()" title="上传文件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
-            <button class="itool" @click="toggleVoice" title="语音"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></button>
+            <button class="itool" @click="fileInput?.click()" title="上传文件" aria-label="上传文件">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <button class="itool" @click="toggleVoice" title="语音" aria-label="语音输入">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            </button>
+            <button class="itool itool-emoji" :class="{ active: showEmoji }" @click="showEmoji = !showEmoji" title="表情" aria-label="表情选择">
+              <span style="font-size:16px;">😊</span>
+            </button>
           </div>
           <input ref="fileInput" type="file" multiple accept="*/*" @change="onFileInput" style="display:none">
-          <textarea ref="inputRef" v-model="inputText" placeholder="输入你的问题..." rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste"></textarea>
-          <button v-if="isStreaming" class="send stop-mode" @click="stopGenerating" title="停止"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
-          <button v-else class="send" :disabled="!inputText.trim() && !pendingFiles.length" @click="handleSend" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+          <textarea ref="inputRef" v-model="inputText" :placeholder="isOnline ? '输入你的问题...（Shift+Enter 换行 · Ctrl+/ 工作流 · Ctrl+K 搜索）' : '离线中，恢复网络后才能发送'" rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste" :disabled="!isOnline"></textarea>
+          <button v-if="isStreaming" class="send stop-mode" @click="stopGenerating" title="停止" aria-label="停止生成">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
+          <button v-else class="send" :disabled="!isOnline || (!inputText.trim() && !pendingFiles.length)" @click="handleSend" title="发送（Enter）" aria-label="发送">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
         </div>
+
+        <!-- v9: Emoji 选择器 -->
+        <Transition name="emoji-pop">
+          <div v-if="showEmoji" class="emoji-panel">
+            <div class="emoji-cats">
+              <button class="emoji-cat" :class="{ active: emojiCategory === 'recent' }" @click="emojiCategory = 'recent'">🕒</button>
+              <button v-for="cat in EMOJI_CATEGORIES" :key="cat.key" class="emoji-cat" :class="{ active: emojiCategory === cat.key }" :title="cat.label" @click="emojiCategory = cat.key">{{ cat.icon }}</button>
+            </div>
+            <div class="emoji-grid">
+              <template v-if="emojiCategory === 'recent'">
+                <button v-for="e in emojiRecent" :key="'r-' + e" class="emoji-btn" @click="pickEmoji(e)">{{ e }}</button>
+                <div v-if="!emojiRecent.length" class="emoji-empty">暂无最近使用，试着点几个下面的表情</div>
+              </template>
+              <template v-else>
+                <button v-for="e in (EMOJI_CATEGORIES.find(c => c.key === emojiCategory)?.emojis || [])" :key="emojiCategory + '-' + e" class="emoji-btn" @click="pickEmoji(e)">{{ e }}</button>
+              </template>
+            </div>
+          </div>
+        </Transition>
+
         <!-- 能力工具栏 + 模型选择器（参考DeepSeek设计，在输入框下方） -->
         <div class="ability-bar">
           <div class="ab-left">
-            <button v-for="(opt, key) in MODEL_OPTIONS" :key="key" class="ab-model" :class="{ active: currentModel === key }" @click="switchModel(key as ModelMode)">
+            <button v-for="(opt, key) in MODEL_OPTIONS" :key="key" class="ab-model" :class="{ active: currentModel === key }" @click="switchModel(key as ModelMode)" :title="opt.desc">
               <span class="ab-dot" :class="key"></span>{{ opt.label }}
             </button>
           </div>
           <div class="ab-divider"></div>
           <div class="ab-tools">
+            <!-- v9: 工作流入口 -->
+            <button class="ab-tool workflow-btn" :class="{ active: showWorkflow }" @click="showWorkflow = !showWorkflow" title="一键工作流（Ctrl+/）">
+              <span>🚀</span><span>工作流</span>
+            </button>
             <button v-for="t in ABILITY_TOOLS" :key="t.key" class="ab-tool" @click="activateAbility(t)">
               <span>{{ t.icon }}</span><span>{{ t.label }}</span>
             </button>
           </div>
         </div>
+
+        <!-- v9: 工作流面板 -->
+        <Transition name="wf-pop">
+          <div v-if="showWorkflow" class="workflow-panel">
+            <div class="wf-head">
+              <div class="wf-title">🚀 一键工作流 <span class="wf-hint">选中后自动填充模板，把 "{光标处}" 补齐即可发送</span></div>
+              <button class="wf-close" aria-label="关闭" @click="showWorkflow = false">×</button>
+            </div>
+            <div class="wf-grid">
+              <button v-for="w in WORKFLOW_PRESETS" :key="w.key" class="wf-card" @click="applyWorkflow(w)">
+                <div class="wf-card-icon">{{ w.icon }}</div>
+                <div class="wf-card-main">
+                  <div class="wf-card-label">{{ w.label }}</div>
+                  <div v-if="w.hint" class="wf-card-hint">{{ w.hint }}</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </Transition>
       </div>
     </main>
+
+    <!-- v9: 收藏夹面板 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showFavorites" class="fav-overlay" @click.self="showFavorites = false">
+          <div class="fav-modal">
+            <div class="fav-head">
+              <h3>⭐ 收藏的消息（{{ favorites.length }}）</h3>
+              <button class="fav-close" aria-label="关闭" @click="showFavorites = false">×</button>
+            </div>
+            <div v-if="!favorites.length" class="fav-empty">
+              <div class="fav-empty-icon">✨</div>
+              <p>还没有收藏。在 AI 回复下点 ⭐ 即可加入收藏夹。</p>
+            </div>
+            <div v-else class="fav-list">
+              <div v-for="fav in favorites" :key="fav.id" class="fav-item">
+                <div class="fav-meta">
+                  <span class="fav-role" :class="fav.role">{{ fav.role === 'user' ? '🧑' : '⚡' }} {{ fav.role === 'user' ? '我' : '星火' }}</span>
+                  <span class="fav-conv-title">{{ fav.conversationTitle }}</span>
+                  <span class="fav-time">{{ new Date(fav.savedAt).toLocaleString('zh-CN') }}</span>
+                </div>
+                <div class="fav-content">{{ fav.content.length > 280 ? fav.content.slice(0, 280) + '…' : fav.content }}</div>
+                <div class="fav-acts">
+                  <button class="fav-act" @click="openFavorite(fav)">打开会话</button>
+                  <button class="fav-act" @click="copyText(fav.content)">复制</button>
+                  <button class="fav-act fav-act-danger" @click="toggleFavoriteMessage(fav.conversationId, fav.id); toast('已从收藏夹移除')">移除</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
-import type { SparkAction, FileAttachment, ModelMode } from '../../composables/useSparkAI'
+import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, WORKFLOW_PRESETS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
+import type { SparkAction, FileAttachment, ModelMode, Conversation } from '../../composables/useSparkAI'
 import { useSchedule } from '../../composables/useSchedule'
 import { usePlanner } from '../../composables/usePlanner'
 import { resolveAssistantLocation } from '../../utils/assistantProtocol'
@@ -156,9 +375,19 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
 import DOMPurify from 'dompurify'
+import { readCache, writeCache, makeCacheKey, fingerprintContext, replayCachedStream, getCacheStats } from '../../utils/sparkCache'
+import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } from '../../utils/emojiPack'
 
 const router = useRouter()
-const { isStreaming, streamPhase, error: aiError, currentModel, conversations, currentConversationId, createConversation, getCurrentConversation, switchConversation, deleteConversation, sendMessage, stopGenerating } = useSparkAI()
+const {
+  isStreaming, streamPhase, error: aiError, currentModel,
+  conversations, currentConversationId, favorites,
+  createConversation, getCurrentConversation, switchConversation, deleteConversation,
+  renameConversation, togglePinConversation, toggleArchiveConversation,
+  duplicateConversation, searchConversations, exportConversation,
+  toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
+  sendMessage, stopGenerating,
+} = useSparkAI()
 const { createEvent } = useSchedule()
 const { createGoal } = usePlanner()
 
@@ -210,6 +439,63 @@ const collapsedThinking = reactive<Record<number, boolean>>({})
 const pendingFiles = ref<FileAttachment[]>([])
 interface ACard { icon:string; label:string; desc:string; action:SparkAction; done:boolean }
 const actionCards = ref<ACard[]>([])
+
+// v9: 侧边栏搜索
+const sbSearchQuery = ref('')
+const sbSearchResults = computed(() => sbSearchQuery.value.trim() ? searchConversations(sbSearchQuery.value) : [])
+
+// v9: 会话 ... 菜单
+const openMenuId = ref<string | null>(null)
+function toggleMenu(id: string) { openMenuId.value = openMenuId.value === id ? null : id }
+
+// v9: 重命名态
+const renamingId = ref<string | null>(null)
+const renameText = ref('')
+function startRename(c: Conversation) { renamingId.value = c.id; renameText.value = c.title; openMenuId.value = null; nextTick(() => { document.getElementById(`rn-input-${c.id}`)?.focus() }) }
+function confirmRename() {
+  if (!renamingId.value) return
+  if (renameText.value.trim()) renameConversation(renamingId.value, renameText.value)
+  renamingId.value = null
+  renameText.value = ''
+}
+function cancelRename() { renamingId.value = null; renameText.value = '' }
+
+// v9: 工作流面板
+const showWorkflow = ref(false)
+
+// v9: emoji 选择器
+const showEmoji = ref(false)
+const emojiCategory = ref('recent')
+const emojiRecent = ref<string[]>(getRecentEmojis())
+function pickEmoji(e: string) {
+  const el = inputRef.value
+  if (el) {
+    const start = el.selectionStart ?? inputText.value.length
+    const end = el.selectionEnd ?? inputText.value.length
+    inputText.value = inputText.value.slice(0, start) + e + inputText.value.slice(end)
+    nextTick(() => {
+      const pos = start + e.length
+      el.focus()
+      el.setSelectionRange(pos, pos)
+      autoResize()
+    })
+  } else {
+    inputText.value += e
+  }
+  pushRecentEmoji(e)
+  emojiRecent.value = getRecentEmojis()
+}
+
+// v9: 收藏夹面板
+const showFavorites = ref(false)
+
+// v9: 网络状态
+const isOnline = ref(typeof navigator !== 'undefined' ? navigator.onLine : true)
+function handleOnline() { isOnline.value = true; toast('网络已恢复') }
+function handleOffline() { isOnline.value = false; toast('已离线，发送功能已暂停') }
+
+// v9: 响应缓存命中计数（UI 展示）
+const cacheHitCount = ref(0)
 
 // 模型切换
 function switchModel(key: ModelMode) {
@@ -352,18 +638,61 @@ const displayMsgs = computed(() => {
   }
   return msgs
 })
+const showArchived = ref(false)
 const groupedConvs = computed(() => {
   const now = new Date(); const td = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const yd = td - 86400000; const wk = td - 7 * 86400000
-  const gs: { label:string; items:typeof conversations.value }[] = [{ label:'今天', items:[] },{ label:'昨天', items:[] },{ label:'近7天', items:[] },{ label:'更早', items:[] }]
-  for (const c of conversations.value) { const t = new Date(c.updatedAt).getTime(); if (t>=td) gs[0].items.push(c); else if(t>=yd) gs[1].items.push(c); else if(t>=wk) gs[2].items.push(c); else gs[3].items.push(c) }
-  return gs.filter(g => g.items.length > 0)
+  const gs: { label:string; items:typeof conversations.value; kind?: string }[] = [
+    { label:'⭐ 置顶', items:[], kind: 'pinned' },
+    { label:'今天', items:[] },
+    { label:'昨天', items:[] },
+    { label:'近7天', items:[] },
+    { label:'更早', items:[] },
+    { label:'📦 已归档', items:[], kind: 'archived' },
+  ]
+  for (const c of conversations.value) {
+    if (c.isArchived) { gs[5].items.push(c); continue }
+    if (c.isPinned) { gs[0].items.push(c); continue }
+    const t = new Date(c.updatedAt).getTime()
+    if (t>=td) gs[1].items.push(c)
+    else if(t>=yd) gs[2].items.push(c)
+    else if(t>=wk) gs[3].items.push(c)
+    else gs[4].items.push(c)
+  }
+  return gs.filter(g => {
+    if (g.kind === 'archived') return g.items.length > 0 && showArchived.value
+    return g.items.length > 0
+  })
+})
+
+// 归档组里有内容但默认折叠时的计数（供顶部按钮显示）
+const archivedCount = computed(() => conversations.value.filter((c) => c.isArchived).length)
+
+// 上下文窗口使用率（基于 messages 数，粗略但足够 UI 提示）
+const contextUsage = computed(() => {
+  const conv = conversations.value.find((c) => c.id === currentConversationId.value)
+  if (!conv) return { used: 0, limit: 60, ratio: 0 }
+  const used = conv.messages.filter((m) => m.role !== 'system').length
+  const limit = 60 // sendMessage 中 slice(-60)
+  return { used, limit, ratio: Math.min(1, used / limit) }
 })
 
 async function handleSend() {
-  const text = inputText.value.trim()
+  // v9: 离线守护
+  if (!isOnline.value) { toast('当前无网络连接，请稍后重试'); return }
+
+  // v9: emoji 短码扩展
+  const raw = inputText.value.trim()
+  const text = expandShortcodes(raw)
   if ((!text && !pendingFiles.value.length) || isStreaming.value) return
+
+  // v9: 文件大小硬限制（单文件 5MB，附件总数 5 个）
+  const OVERSIZE = pendingFiles.value.find((f) => f.size && /([0-9.]+)\s*MB/.test(f.size) && parseFloat(f.size) > 5)
+  if (OVERSIZE) { toast('文件不能超过 5 MB：' + OVERSIZE.name); return }
+  if (pendingFiles.value.length > 5) { toast('单次最多附带 5 个文件'); return }
+
   const atts = [...pendingFiles.value]; inputText.value=''; streamingContent.value=''; thinkingText.value=''; actionCards.value=[]; pendingFiles.value=[]
+  showEmoji.value = false
   if (inputRef.value) inputRef.value.style.height='auto'
   if (!currentConversationId.value) createConversation()
   await nextTick(); scrollBot()
@@ -380,12 +709,64 @@ async function handleSend() {
     }
   }
 
+  // v9: 响应缓存命中（仅对无附件、无 extraContext 的短提问生效）
+  const canCache = !atts.length && !extraContext && text.length >= 4 && text.length <= 400
+  if (canCache) {
+    const conv = getCurrentConversation()
+    const recent = conv.messages.slice(-5).filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
+    const fp = fingerprintContext(recent)
+    const key = makeCacheKey(text, currentModel.value, fp)
+    const hit = readCache(key)
+    if (hit) {
+      // 写入 user 消息（正常流程）
+      conv.messages.push({
+        id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        role: 'user',
+        content: text,
+        attachments: atts.length ? atts : undefined,
+      })
+      conv.updatedAt = new Date().toISOString()
+
+      cacheHitCount.value++
+      // 用 replayCachedStream 让体感与流式一致
+      await replayCachedStream(hit, (chunk) => { streamingContent.value = chunk; scrollBot() }, {
+        onThinking: (t) => { thinkingText.value = t },
+      })
+      // 写入 assistant 消息并打 fromCache 标记
+      conv.messages.push({
+        id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        role: 'assistant',
+        content: hit.content,
+        reasoning: hit.reasoning,
+        fromCache: true,
+      })
+      conv.updatedAt = new Date().toISOString()
+      streamingContent.value = ''
+      toast(`✨ 命中缓存（已节省 ${cacheHitCount.value} 次 API 调用）`)
+      return
+    }
+  }
+
+  // 记录本次请求用于命中后写缓存
+  let rawAnswerForCache = ''
+  let rawReasoningForCache = ''
   await sendMessage(text,
     (t) => { streamingContent.value=t; scrollBot() },
-    (_ct, acts) => {
+    (ct, acts, reasoning) => {
       streamingContent.value=''
+      rawAnswerForCache = ct
+      rawReasoningForCache = reasoning
       if (acts.length) actionCards.value = acts.map(a => ({ icon: a.action==='add_schedule'?'📅':a.action==='create_goal'?'🎯':'🔗', label: a.action==='add_schedule'?'同步日程':a.action==='create_goal'?'创建规划':'跳转', desc: String(a.data.title||a.data.label||a.data.path||''), action:a, done:false }))
       scrollBot()
+      // v9: 成功完成后写入响应缓存
+      if (canCache && rawAnswerForCache) {
+        const conv = getCurrentConversation()
+        const recent = conv.messages.slice(-7).filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
+        const fp = fingerprintContext(recent.slice(0, -1)) // 写缓存时不包含最后这条 assistant
+        writeCache({ prompt: text, mode: currentModel.value, content: rawAnswerForCache, reasoning: rawReasoningForCache, contextFingerprint: fp })
+      }
     },
     () => { streamingContent.value='' },
     (t) => { thinkingText.value=t; scrollBot() },
@@ -455,13 +836,49 @@ async function execAction(a: SparkAction) {
 }
 
 function copyText(t: string) { navigator.clipboard.writeText(t); toast('已复制到剪贴板') }
-function retryFrom(idx: number) {
-  const conv = getCurrentConversation()
-  while (conv.messages.length > idx && conv.messages[conv.messages.length-1].role !== 'system') { const last = conv.messages[conv.messages.length-1]; if (last.role==='user'&&conv.messages.length<=idx+1) break; conv.messages.pop() }
-  const lastUser = [...conv.messages].reverse().find((m:{role:string}) => m.role==='user')
-  if (lastUser) { inputText.value=lastUser.content; conv.messages.pop(); handleSend() }
+
+/** 从 displayMsgs 的索引映射回 conversation.messages 的真实索引（displayMsgs 过滤了 system） */
+function mapDisplayIdxToReal(displayIdx: number): number {
+  const msgs = getCurrentConversation().messages
+  let cursor = -1
+  for (let i = 0; i < msgs.length; i++) {
+    if (msgs[i].role !== 'system') {
+      cursor++
+      if (cursor === displayIdx) return i
+    }
+  }
+  return -1
 }
-function editMessage(idx: number) { const msgs = getCurrentConversation().messages.filter(m => m.role !== 'system'); if (msgs[idx]) inputText.value = msgs[idx].content }
+
+/** 重新回答：点某条 assistant 消息 → 删除其对应 user 到末尾的所有消息 → 用 user 内容重新发送 */
+function retryFrom(displayIdx: number) {
+  if (isStreaming.value) return
+  const conv = getCurrentConversation()
+  const realIdx = mapDisplayIdxToReal(displayIdx)
+  if (realIdx < 0 || conv.messages[realIdx]?.role !== 'assistant') return
+  let userIdx = -1
+  for (let i = realIdx - 1; i >= 0; i--) {
+    if (conv.messages[i].role === 'user') { userIdx = i; break }
+  }
+  if (userIdx < 0) return
+  const lastUser = conv.messages[userIdx]
+  conv.messages.splice(userIdx)
+  inputText.value = lastUser.content
+  handleSend()
+}
+
+/** 编辑用户消息：删除该消息及之后所有消息，把 user.content 放回输入框等待用户修改后发送 */
+function editMessage(displayIdx: number) {
+  if (isStreaming.value) return
+  const conv = getCurrentConversation()
+  const realIdx = mapDisplayIdxToReal(displayIdx)
+  if (realIdx < 0 || conv.messages[realIdx]?.role !== 'user') return
+  const target = conv.messages[realIdx]
+  conv.messages.splice(realIdx)
+  inputText.value = target.content
+  nextTick(() => { inputRef.value?.focus(); autoResize() })
+  toast('可编辑后按 Enter 重发')
+}
 function retryLast() {
   const conv = getCurrentConversation(); const lu = [...conv.messages].reverse().find((m:{role:string}) => m.role==='user')
   if (lu) { if(conv.messages[conv.messages.length-1]?.role==='assistant') conv.messages.pop(); inputText.value=lu.content; conv.messages.pop(); handleSend() }
@@ -671,15 +1088,159 @@ function cleanupVoice() {
 }
 
 function handleQuick(t: string) { inputText.value=t; handleSend() }
-function handleNewChat() { createConversation(); sidebarOpen.value=false; streamingContent.value=''; thinkingText.value=''; actionCards.value=[] }
-function handleSwitch(id: string) { if(isStreaming.value) return; switchConversation(id); streamingContent.value=''; thinkingText.value=''; actionCards.value=[]; sidebarOpen.value=false; nextTick(scrollBot) }
-function handleDelete(id: string) { deleteConversation(id) }
+function handleNewChat() {
+  if (isStreaming.value) stopGenerating()
+  createConversation()
+  sidebarOpen.value = false
+  streamingContent.value = ''
+  thinkingText.value = ''
+  actionCards.value = []
+  nextTick(() => { inputRef.value?.focus() })
+}
+function handleSwitch(id: string) {
+  // v9: 正在生成时先终止，避免流式内容错乱到新会话
+  if (isStreaming.value) stopGenerating()
+  switchConversation(id)
+  streamingContent.value = ''
+  thinkingText.value = ''
+  actionCards.value = []
+  sidebarOpen.value = false
+  openMenuId.value = null
+  nextTick(scrollBot)
+}
+function handleDelete(id: string) {
+  if (!confirm('确定删除这条会话？不可恢复')) return
+  deleteConversation(id)
+  openMenuId.value = null
+}
 function onKey(e: KeyboardEvent) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend()} }
 function autoResize() { const el=inputRef.value; if(!el) return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,180)+'px' }
 function scrollBot() { nextTick(()=>{ if(scrollRef.value) scrollRef.value.scrollTop=scrollRef.value.scrollHeight }) }
 
-onMounted(() => { if(conversations.value.length&&!currentConversationId.value) currentConversationId.value=conversations.value[0].id; nextTick(scrollBot) })
+// v9: 全局键盘快捷键 + 点击外部关闭菜单
+function onGlobalKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (showEmoji.value) { showEmoji.value = false; return }
+    if (showWorkflow.value) { showWorkflow.value = false; return }
+    if (showFavorites.value) { showFavorites.value = false; return }
+    if (openMenuId.value) { openMenuId.value = null; return }
+    if (renamingId.value) { cancelRename(); return }
+    if (sidebarOpen.value) { sidebarOpen.value = false; return }
+  }
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    sidebarOpen.value = true
+    nextTick(() => { document.getElementById('sb-search-input')?.focus() })
+    return
+  }
+  if (mod && (e.key === 'n' || e.key === 'N')) {
+    e.preventDefault()
+    handleNewChat()
+    return
+  }
+  if (mod && (e.key === '/' || e.key === '?')) {
+    e.preventDefault()
+    showWorkflow.value = !showWorkflow.value
+  }
+}
+function onGlobalClick(e: MouseEvent) {
+  const el = e.target as HTMLElement
+  if (openMenuId.value && !el.closest('.sb-menu') && !el.closest('.sb-more')) openMenuId.value = null
+  if (showEmoji.value && !el.closest('.emoji-panel') && !el.closest('.itool-emoji')) showEmoji.value = false
+  if (showWorkflow.value && !el.closest('.workflow-panel') && !el.closest('.workflow-btn')) showWorkflow.value = false
+}
+
+onMounted(() => {
+  if(conversations.value.length&&!currentConversationId.value) currentConversationId.value=conversations.value[0].id
+  nextTick(scrollBot)
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
+  window.addEventListener('keydown', onGlobalKeyDown)
+  document.addEventListener('click', onGlobalClick)
+  // 读取缓存统计用于 UI 展示
+  const stats = getCacheStats()
+  if (stats.hits > 0) console.log(`[SparkCache] 历史累计命中 ${stats.hits} 次，缓存大小 ${stats.size}`)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('online', handleOnline)
+  window.removeEventListener('offline', handleOffline)
+  window.removeEventListener('keydown', onGlobalKeyDown)
+  document.removeEventListener('click', onGlobalClick)
+})
 watch(currentConversationId, () => nextTick(scrollBot))
+
+// v9: 导出会话 → 触发浏览器下载
+function triggerExport(id: string, format: 'markdown' | 'json') {
+  const out = exportConversation(id, format)
+  if (!out) { toast('导出失败'); return }
+  const blob = new Blob([out.content], { type: out.mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = out.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+  toast(`✓ 已导出 ${format.toUpperCase()}`)
+  openMenuId.value = null
+}
+
+// v9: 收藏消息切换
+function handleToggleFavorite(displayIdx: number) {
+  const conv = getCurrentConversation()
+  const realIdx = mapDisplayIdxToReal(displayIdx)
+  if (realIdx < 0) return
+  const msg = conv.messages[realIdx]
+  if (!msg?.id) return
+  const favored = toggleFavoriteMessage(conv.id, msg.id)
+  toast(favored ? '⭐ 已加入收藏夹' : '已从收藏夹移除')
+}
+
+// v9: 消息反应（like/dislike 切换）
+function handleReact(displayIdx: number, r: 'like' | 'dislike') {
+  const conv = getCurrentConversation()
+  const realIdx = mapDisplayIdxToReal(displayIdx)
+  if (realIdx < 0) return
+  const msg = conv.messages[realIdx]
+  if (!msg?.id) return
+  const current = getMessageReaction(msg.id)
+  setMessageReaction(msg.id, current === r ? null : r)
+}
+
+// v9: 工作流点击 → 填充 prompt + 光标定位到 \n\n 位置（用户补充空白）
+function applyWorkflow(preset: (typeof WORKFLOW_PRESETS)[number]) {
+  const tpl = preset.prompt
+  inputText.value = tpl
+  showWorkflow.value = false
+  nextTick(() => {
+    const el = inputRef.value
+    if (!el) return
+    el.focus()
+    autoResize()
+    // 光标放到第一个 \n\n 之后（即用户补充空白位置）
+    const insertPos = tpl.indexOf('\n\n')
+    const pos = insertPos >= 0 ? insertPos + 2 : tpl.length
+    el.setSelectionRange(pos, pos)
+    el.scrollTop = el.scrollHeight
+  })
+}
+
+// v9: 对话区移动端点击自动关闭侧边栏
+function handleMsgAreaClick() {
+  if (sidebarOpen.value && window.innerWidth <= 768) sidebarOpen.value = false
+}
+
+// v9: 跳转到收藏的会话
+function openFavorite(fav: (typeof favorites.value)[number]) {
+  if (jumpToFavorite(fav)) {
+    showFavorites.value = false
+    toast('已跳转到所在会话')
+  } else {
+    toast('原会话已删除')
+  }
+}
 </script>
 
 <style scoped>
@@ -926,4 +1487,156 @@ watch(currentConversationId, () => nextTick(scrollBot))
 .ab-tools { display:flex; gap:2px; flex-wrap:wrap; }
 .ab-tool { display:flex; align-items:center; gap:3px; padding:4px 8px; border-radius:7px; border:none; background:none; color:rgba(255,255,255,.18); font-size:11px; cursor:pointer; transition:all .15s; white-space:nowrap; }
 .ab-tool:hover { color:rgba(139,92,246,.55); background:rgba(139,92,246,.03); }
+
+/* ============ v9: 侧边栏搜索 + 菜单 + 置顶 ============ */
+.sb-search { display:flex; align-items:center; gap:6px; margin:2px 10px 6px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.03); transition:all .15s; }
+.sb-search:focus-within { border-color:rgba(139,92,246,.15); background:rgba(139,92,246,.025); }
+.sb-search svg { color:rgba(255,255,255,.25); flex-shrink:0; }
+.sb-search-input { flex:1; background:none; border:none; color:rgba(255,255,255,.65); font-size:12px; outline:none; min-width:0; }
+.sb-search-input::placeholder { color:rgba(255,255,255,.18); }
+.sb-search-clear { background:none; border:none; color:rgba(255,255,255,.25); cursor:pointer; font-size:14px; padding:0 2px; line-height:1; }
+.sb-search-clear:hover { color:rgba(255,255,255,.5); }
+
+.sb-item { position:relative; }
+.pin-dot { font-size:10px; margin-right:4px; flex-shrink:0; }
+.sb-more { opacity:0; background:none; border:none; color:rgba(255,255,255,.25); font-size:13px; cursor:pointer; padding:0 4px; border-radius:4px; }
+.sb-item:hover .sb-more { opacity:1; }
+.sb-item.active .sb-more { opacity:1; }
+.sb-more:hover { color:rgba(139,92,246,.8); background:rgba(139,92,246,.08); }
+
+.sb-group-pinned .sb-label { color:rgba(245,158,11,.7); }
+.sb-group-pinned .sb-item { background:rgba(245,158,11,.015); }
+.sb-group-pinned .sb-item.active { background:rgba(245,158,11,.05); color:rgba(245,158,11,.8); }
+
+.sb-menu { position:absolute; right:8px; top:100%; margin-top:4px; z-index:20; background:rgba(18,14,32,.98); backdrop-filter:blur(20px); border:1px solid rgba(139,92,246,.15); border-radius:10px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.4); min-width:160px; animation:menuFade .18s ease-out; }
+@keyframes menuFade { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+.sb-menu-item { width:100%; display:flex; align-items:center; gap:8px; padding:6px 10px; border:none; background:none; color:rgba(255,255,255,.7); font-size:11.5px; cursor:pointer; border-radius:6px; text-align:left; transition:all .12s; }
+.sb-menu-item:hover { background:rgba(139,92,246,.1); color:white; }
+.sb-menu-item-danger { color:rgba(239,68,68,.7); }
+.sb-menu-item-danger:hover { background:rgba(239,68,68,.1); color:rgba(239,68,68,.95); }
+.mi-icon { font-size:13px; width:16px; text-align:center; }
+.sb-menu-div { height:1px; background:rgba(255,255,255,.05); margin:3px 4px; }
+
+.sb-rename { padding:6px 8px; }
+.sb-rename-input { width:100%; background:rgba(139,92,246,.08); border:1px solid rgba(139,92,246,.2); border-radius:6px; padding:5px 8px; color:white; font-size:12px; outline:none; }
+
+.sb-toggle-archived { width:100%; margin:8px 8px 4px; padding:5px 8px; background:none; border:1px dashed rgba(255,255,255,.04); border-radius:6px; color:rgba(255,255,255,.2); font-size:11px; cursor:pointer; text-align:left; }
+.sb-toggle-archived:hover { color:rgba(255,255,255,.4); border-color:rgba(139,92,246,.1); }
+
+.sb-item-search { flex-direction:column; align-items:flex-start; padding:6px 10px; gap:2px; }
+.sb-text-wrap { flex:1; width:100%; overflow:hidden; }
+.sb-hit { font-size:10px; color:rgba(255,255,255,.3); line-height:1.45; margin-top:2px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+
+/* ============ v9: 顶部指示器 ============ */
+.top-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.ctx-gauge { display:flex; align-items:center; gap:6px; padding:3px 10px; border-radius:8px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.06); }
+.ctx-label { font-size:10px; color:rgba(255,255,255,.35); font-weight:600; }
+.ctx-bar { width:42px; height:4px; border-radius:2px; background:rgba(255,255,255,.05); overflow:hidden; }
+.ctx-fill { display:block; height:100%; background:linear-gradient(90deg, rgba(139,92,246,.7), rgba(59,130,246,.7)); transition:width .4s; }
+.ctx-fill.warn { background:linear-gradient(90deg, rgba(245,158,11,.8), rgba(239,68,68,.8)); }
+.ctx-num { font-size:10px; color:rgba(255,255,255,.35); font-variant-numeric:tabular-nums; }
+.offline-dot { font-size:10px; color:rgba(239,68,68,.7); padding:2px 8px; border-radius:10px; background:rgba(239,68,68,.06); border:1px solid rgba(239,68,68,.12); animation:offlinePulse 1.6s ease-in-out infinite; }
+@keyframes offlinePulse { 0%,100%{opacity:.8} 50%{opacity:1} }
+.top-fav { position:relative; background:none; border:1px solid rgba(255,255,255,.04); color:rgba(255,255,255,.35); width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; }
+.top-fav:hover { color:rgba(245,158,11,.85); border-color:rgba(245,158,11,.3); background:rgba(245,158,11,.06); }
+.top-fav-count { position:absolute; top:-4px; right:-4px; background:linear-gradient(135deg,#f59e0b,#ef4444); color:white; font-size:9px; font-weight:700; padding:1px 4px; border-radius:8px; line-height:1.2; min-width:14px; text-align:center; }
+
+/* ============ v9: 工作流面板 ============ */
+.workflow-intro { margin-top:24px; }
+.wi-title { font-size:11px; font-weight:700; color:rgba(255,255,255,.3); letter-spacing:1px; text-align:center; margin-bottom:10px; text-transform:uppercase; }
+.workflow-row { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; max-width:560px; margin:0 auto; }
+.wf-chip { display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:16px; border:1px solid rgba(139,92,246,.08); background:rgba(139,92,246,.03); color:rgba(139,92,246,.65); font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; }
+.wf-chip:hover { background:rgba(139,92,246,.08); border-color:rgba(139,92,246,.2); color:white; transform:translateY(-1px); box-shadow:0 3px 10px rgba(139,92,246,.12); }
+.wf-icon { font-size:13px; }
+
+.workflow-btn { background:rgba(139,92,246,.04) !important; color:rgba(139,92,246,.7) !important; border:1px solid rgba(139,92,246,.08) !important; }
+.workflow-btn.active { background:rgba(139,92,246,.12) !important; color:rgba(139,92,246,.95) !important; border-color:rgba(139,92,246,.25) !important; }
+
+.workflow-panel { position:absolute; bottom:calc(100% + 6px); left:14%; right:14%; background:rgba(12,10,24,.98); backdrop-filter:blur(22px); border:1px solid rgba(139,92,246,.2); border-radius:14px; padding:14px 16px; box-shadow:0 -8px 28px rgba(0,0,0,.4); z-index:15; }
+@media(max-width:1200px) { .workflow-panel { left:4%; right:4%; } }
+@media(max-width:768px) { .workflow-panel { left:8px; right:8px; } }
+.wf-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+.wf-title { font-size:13px; font-weight:700; color:white; }
+.wf-hint { font-size:10px; color:rgba(255,255,255,.35); font-weight:400; margin-left:8px; }
+.wf-close { background:none; border:none; color:rgba(255,255,255,.3); font-size:16px; cursor:pointer; padding:0 4px; line-height:1; }
+.wf-close:hover { color:white; }
+.wf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px; }
+.wf-card { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid rgba(255,255,255,.04); border-radius:10px; background:rgba(255,255,255,.015); text-align:left; cursor:pointer; transition:all .18s; }
+.wf-card:hover { background:rgba(139,92,246,.05); border-color:rgba(139,92,246,.15); transform:translateY(-1px); }
+.wf-card-icon { font-size:18px; flex-shrink:0; }
+.wf-card-main { flex:1; min-width:0; }
+.wf-card-label { font-size:12px; font-weight:700; color:rgba(255,255,255,.85); margin-bottom:2px; }
+.wf-card-hint { font-size:10px; color:rgba(255,255,255,.3); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wf-pop-enter-active, .wf-pop-leave-active { transition:all .22s cubic-bezier(.2,.8,.2,1); }
+.wf-pop-enter-from, .wf-pop-leave-to { opacity:0; transform:translateY(10px); }
+
+/* ============ v9: Emoji 选择器 ============ */
+.emoji-panel { position:absolute; bottom:calc(100% + 6px); left:14%; background:rgba(12,10,24,.98); backdrop-filter:blur(22px); border:1px solid rgba(139,92,246,.2); border-radius:12px; padding:6px; box-shadow:0 -8px 28px rgba(0,0,0,.4); z-index:15; width:320px; max-width:90vw; }
+@media(max-width:1200px) { .emoji-panel { left:4%; } }
+@media(max-width:768px) { .emoji-panel { left:8px; right:8px; width:auto; } }
+.emoji-cats { display:flex; gap:2px; border-bottom:1px solid rgba(255,255,255,.04); padding-bottom:4px; margin-bottom:4px; overflow-x:auto; }
+.emoji-cat { background:none; border:none; padding:4px 8px; border-radius:6px; font-size:15px; cursor:pointer; opacity:.5; transition:all .15s; }
+.emoji-cat:hover { opacity:.85; background:rgba(255,255,255,.03); }
+.emoji-cat.active { opacity:1; background:rgba(139,92,246,.12); }
+.emoji-grid { display:grid; grid-template-columns:repeat(10, 1fr); gap:2px; max-height:220px; overflow-y:auto; padding:2px; }
+.emoji-btn { background:none; border:none; padding:4px; border-radius:4px; font-size:18px; cursor:pointer; transition:all .1s; line-height:1; }
+.emoji-btn:hover { background:rgba(139,92,246,.1); transform:scale(1.15); }
+.emoji-grid::-webkit-scrollbar { width:4px; } .emoji-grid::-webkit-scrollbar-thumb { background:rgba(139,92,246,.25); border-radius:4px; }
+.emoji-empty { grid-column:1 / -1; padding:14px; text-align:center; color:rgba(255,255,255,.3); font-size:11px; }
+.itool-emoji.active { color:rgba(139,92,246,.9); background:rgba(139,92,246,.08); }
+.emoji-pop-enter-active, .emoji-pop-leave-active { transition:all .18s; }
+.emoji-pop-enter-from, .emoji-pop-leave-to { opacity:0; transform:translateY(6px) scale(.96); }
+
+/* ============ v9: 消息操作按钮激活态 + 缓存徽章 ============ */
+.msg-acts button.active { background:rgba(139,92,246,.12); color:rgba(139,92,246,.9); }
+.msg-acts button.active:hover { background:rgba(139,92,246,.18); }
+.cache-badge { display:inline-flex; align-items:center; gap:3px; margin-top:6px; padding:2px 8px; border-radius:10px; background:linear-gradient(135deg, rgba(34,197,94,.12), rgba(59,130,246,.08)); border:1px solid rgba(34,197,94,.2); color:rgba(134,239,172,.85); font-size:10px; font-weight:600; }
+
+/* ============ v9: 收藏夹 Modal ============ */
+.fav-overlay { position:fixed; inset:0; background:rgba(4,4,12,.7); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px; }
+.fav-modal { width:100%; max-width:620px; max-height:85vh; display:flex; flex-direction:column; background:linear-gradient(180deg, rgba(18,14,32,.98), rgba(12,10,24,.98)); border:1px solid rgba(139,92,246,.2); border-radius:16px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.5); }
+.fav-head { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid rgba(255,255,255,.04); }
+.fav-head h3 { font-size:14px; font-weight:700; color:white; margin:0; }
+.fav-close { background:rgba(255,255,255,.04); border:none; color:rgba(255,255,255,.5); width:28px; height:28px; border-radius:8px; cursor:pointer; font-size:14px; }
+.fav-close:hover { background:rgba(239,68,68,.1); color:rgba(239,68,68,.85); }
+.fav-empty { padding:50px 20px; text-align:center; color:rgba(255,255,255,.35); }
+.fav-empty-icon { font-size:36px; margin-bottom:10px; }
+.fav-empty p { font-size:12px; }
+.fav-list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
+.fav-list::-webkit-scrollbar { width:4px; } .fav-list::-webkit-scrollbar-thumb { background:rgba(139,92,246,.25); border-radius:4px; }
+.fav-item { padding:12px 14px; border:1px solid rgba(255,255,255,.04); border-radius:10px; background:rgba(255,255,255,.01); transition:all .18s; }
+.fav-item:hover { border-color:rgba(139,92,246,.15); background:rgba(139,92,246,.02); }
+.fav-meta { display:flex; align-items:center; gap:8px; font-size:10px; color:rgba(255,255,255,.4); margin-bottom:6px; flex-wrap:wrap; }
+.fav-role { padding:1px 6px; border-radius:4px; background:rgba(139,92,246,.08); color:rgba(196,181,253,.85); font-weight:600; }
+.fav-role.user { background:rgba(59,130,246,.08); color:rgba(147,197,253,.85); }
+.fav-conv-title { font-weight:600; color:rgba(255,255,255,.55); }
+.fav-time { margin-left:auto; font-variant-numeric:tabular-nums; }
+.fav-content { font-size:12px; line-height:1.6; color:rgba(255,255,255,.75); margin-bottom:8px; white-space:pre-wrap; word-break:break-word; }
+.fav-acts { display:flex; gap:6px; }
+.fav-act { padding:4px 10px; border:1px solid rgba(255,255,255,.06); border-radius:6px; background:rgba(255,255,255,.02); color:rgba(255,255,255,.55); font-size:10.5px; cursor:pointer; transition:all .15s; }
+.fav-act:hover { background:rgba(139,92,246,.1); color:white; border-color:rgba(139,92,246,.2); }
+.fav-act-danger:hover { background:rgba(239,68,68,.1); color:rgba(239,68,68,.9); border-color:rgba(239,68,68,.2); }
+
+.input-area { position:relative; } /* 相对定位用于 workflow-panel / emoji-panel 绝对定位 */
+
+/* ============ v9: 移动端细节优化 ============ */
+@media(max-width:768px) {
+  .sb-menu { right:4px; min-width:140px; max-width:calc(100vw - 20px); font-size:12px; }
+  .emoji-grid { grid-template-columns:repeat(8, 1fr); max-height:40vh; }
+  .wf-grid { grid-template-columns:1fr; }
+  .ctx-gauge { display:none; } /* 移动端空间紧张，先藏起 */
+  .top-right { gap:6px; }
+  .ibox textarea { font-size:14px; } /* 防止 iOS 自动缩放 */
+  .fav-modal { max-height:92vh; }
+  .fav-meta { font-size:9.5px; }
+}
+
+/* textarea 禁用态样式（离线） */
+.ibox textarea:disabled { cursor:not-allowed; color:rgba(255,255,255,.3); }
+.ibox textarea:disabled::placeholder { color:rgba(239,68,68,.5); }
+
+/* v9: 思考过程滚动适配 —— 长的 reasoning 折叠框支持滚动 */
+.think-body { max-height:320px; overflow-y:auto; }
+.think-body::-webkit-scrollbar { width:3px; }
+.think-body::-webkit-scrollbar-thumb { background:rgba(139,92,246,.2); border-radius:4px; }
 </style>
