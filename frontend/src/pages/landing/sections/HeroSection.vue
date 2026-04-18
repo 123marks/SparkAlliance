@@ -115,6 +115,7 @@ function hs(stagger: number): CSSProperties {
 <style scoped>
 .hero-section {
   position: relative;
+  z-index: 1;
   width: 100%;
   min-height: 100vh;
   display: flex;

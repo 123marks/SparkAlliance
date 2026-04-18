@@ -6,28 +6,15 @@
       <p class="subtitle">基础功能永久免费，AI 调用需消耗额度，升级解锁无限 AI 与专属权益</p>
     </div>
 
-    <!-- 月付/年付切换 -->
-    <PricingToggle v-model="isAnnual" />
-
-    <div class="pricing-grid">
+    <div class="pricing-grid" :style="rs(isVisible, 'scale', 0.15)">
       <!-- 免费版 -->
-      <PricingCard
-        v-bind="freePlan"
-        :is-annual="isAnnual"
-      />
+      <PricingCard v-bind="freePlan" />
 
       <!-- 高级版 (推荐) -->
-      <PricingCard
-        v-bind="proPlan"
-        :is-annual="isAnnual"
-        featured
-      />
+      <PricingCard v-bind="proPlan" featured />
 
       <!-- 年度版 -->
-      <PricingCard
-        v-bind="annualPlan"
-        :is-annual="isAnnual"
-      />
+      <PricingCard v-bind="annualPlan" />
     </div>
 
     <!-- 功能对比表格 -->
@@ -42,16 +29,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
-import PricingToggle from './components/PricingToggle.vue'
 import PricingCard from './components/PricingCard.vue'
 import PricingComparison from './components/PricingComparison.vue'
 import PricingFAQ from './components/PricingFAQ.vue'
 import TrustBadges from './components/TrustBadges.vue'
 
 const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.1 })
-const isAnnual = ref(true)
 
 // 定价数据
 const freePlan = {
@@ -75,7 +59,7 @@ const freePlan = {
   ctaLink: '/register'
 }
 
-const proPlan = computed(() => ({
+const proPlan = {
   name: '高级版',
   description: '解锁全部功能，成为学习效率达人',
   monthlyPrice: 19.9,
@@ -94,8 +78,7 @@ const proPlan = computed(() => ({
   ],
   cta: '立即升级',
   ctaLink: '/register?plan=pro',
-  savings: isAnnual.value ? '省 ¥40' : null
-}))
+}
 
 const annualPlan = {
   name: '年度版',
@@ -122,6 +105,8 @@ const annualPlan = {
 
 <style scoped>
 .pricing-section {
+  position: relative;
+  z-index: 1;
   padding: 120px 40px;
   background: transparent;
   display: flex;

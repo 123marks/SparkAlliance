@@ -1,14 +1,14 @@
 <template>
   <section class="testimonials-section" ref="sectionRef">
-    <div class="header" :style="rs(isVisible, 'up')">
+    <div class="header" :style="rs(isVisible, 'scale')">
       <span class="section-eyebrow">用户好评</span>
       <h2 class="section-title">听到他们的声音</h2>
       <p class="section-subtitle" style="margin: 0 auto">来自全国各大高校学生的真实反馈</p>
     </div>
 
     <!-- 第一行跑马灯 → 向左滚动 -->
-    <div class="marquee-wrapper">
-      <div class="marquee row-1" :class="{ 'is-running': isVisible }">
+    <div class="marquee-wrapper" :style="rs(isVisible, 'fade', 0.15)">
+      <div class="marquee row-1">
         <div class="marquee-content">
           <div class="t-card" v-for="t in row1" :key="t.name">
             <div class="t-top">
@@ -62,8 +62,8 @@
     </div>
 
     <!-- 第二行跑马灯 → 向右滚动（反向） -->
-    <div class="marquee-wrapper">
-      <div class="marquee row-2" :class="{ 'is-running': isVisible }">
+    <div class="marquee-wrapper" :style="rs(isVisible, 'fade', 0.3)">
+      <div class="marquee row-2">
         <div class="marquee-content">
           <div class="t-card" v-for="t in row2" :key="t.name">
             <div class="t-top">
@@ -122,7 +122,7 @@
 import { computed } from 'vue'
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
-const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.08 })
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.03 })
 
 const testimonials = [
   {
@@ -206,6 +206,8 @@ const row2 = computed(() => testimonials.filter((_, i) => i % 2 === 1))
 
 <style scoped>
 .testimonials-section {
+  position: relative;
+  z-index: 1;
   padding: 120px 0;
   background-color: transparent;
   overflow: hidden;
@@ -242,10 +244,7 @@ const row2 = computed(() => testimonials.filter((_, i) => i % 2 === 1))
   width: fit-content;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
-  animation-play-state: paused; /* 默认暂停 */
-}
-.marquee.is-running {
-  animation-play-state: running; /* isVisible 后开始滚动 */
+  animation-play-state: running;
 }
 .marquee:hover {
   animation-play-state: paused;

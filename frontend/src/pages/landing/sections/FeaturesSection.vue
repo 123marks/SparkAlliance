@@ -2,7 +2,7 @@
   <section id="features" class="features-section" ref="sectionRef">
     <div class="features-container">
       <!-- Section 头部 -->
-      <div class="features-header" :style="rs(isVisible, 'up')">
+      <div class="features-header" :style="rs(isVisible, 'fade')">
         <span class="section-eyebrow">核心功能</span>
         <h2 class="section-title">一站式校园智能平台</h2>
         <p class="section-subtitle">覆盖你校园生活的方方面面，从学习到社交，从日程到求职</p>
@@ -95,7 +95,7 @@
 import { reactive } from 'vue'
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
-const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.08 })
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.03 })
 
 // 追光效果状态
 const spotlightStyles = reactive<Record<number, Record<string, string>>>({})
@@ -168,6 +168,8 @@ const futureFeatures = [
 
 <style scoped>
 .features-section {
+  position: relative;
+  z-index: 1;
   padding: 120px 40px;
   background-color: transparent;
 }

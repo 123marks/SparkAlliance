@@ -1,7 +1,7 @@
 <template>
   <section class="roadmap-section" ref="sectionRef">
     <div class="roadmap-container">
-      <div class="roadmap-header" :style="rs(isVisible, 'up')">
+      <div class="roadmap-header" :style="rs(isVisible, 'scale')">
         <span class="section-eyebrow">产品路线图</span>
         <h2 class="section-title">持续进化，不止于此</h2>
         <p class="section-subtitle" style="margin: 0 auto;">每一步都在为你的校园生活创造更大可能</p>
@@ -16,7 +16,7 @@
           :key="phase.title"
           class="timeline-item"
           :class="{ active: phase.active }"
-          :style="rs(isVisible, index % 2 === 0 ? 'up' : 'down', 0.3 + index * 0.15)"
+          :style="rs(isVisible, index % 2 === 0 ? 'left' : 'right', 0.3 + index * 0.15)"
         >
           <div class="timeline-dot" :class="{ active: phase.active }">
             <span v-if="phase.active" class="dot-pulse"></span>
@@ -79,6 +79,8 @@ const phases = [
 
 <style scoped>
 .roadmap-section {
+  position: relative;
+  z-index: 1;
   padding: 120px 40px;
   background-color: transparent;
 }

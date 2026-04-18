@@ -2,7 +2,7 @@
   <section class="stats-section" ref="sectionRef">
     <div class="stats-bg-glow"></div>
     <div class="stats-container">
-      <div class="stats-header" :style="rs(isVisible, 'up')">
+      <div class="stats-header" :style="rs(isVisible, 'down')">
         <span class="section-eyebrow">平台数据</span>
         <h2 class="section-title">为校园而生的力量</h2>
       </div>
@@ -84,6 +84,7 @@ const stats = [
 <style scoped>
 .stats-section {
   position: relative;
+  z-index: 1;
   padding: 120px 40px;
   overflow: hidden;
 }

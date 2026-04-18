@@ -7,7 +7,7 @@
     <div class="plan-price">
       <span class="currency">¥</span>
       <span class="amount">{{ displayPrice }}</span>
-      <span class="period">/{{ isAnnual && badgeType === 'annual' ? '年' : '月' }}</span>
+      <span class="period">/{{ badgeType === 'annual' ? '年' : '月' }}</span>
     </div>
 
     <p v-if="savings" class="savings-text">相比月付 {{ savings }}</p>
@@ -47,7 +47,7 @@ interface Feature {
   highlight?: boolean
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   name: string
   description: string
   monthlyPrice: number
@@ -57,19 +57,17 @@ const props = defineProps<{
   features: Feature[]
   cta: string
   ctaLink: string
-  isAnnual: boolean
+  isAnnual?: boolean
   featured?: boolean
   savings?: string | null
-}>()
+}>(), {
+  isAnnual: false,
+})
 
 const displayPrice = computed(() => {
   if (props.badgeType === 'free') return '0'
-  if (props.badgeType === 'annual') {
-    return props.isAnnual ? '199' : '19.9'
-  }
-  // pro
-  const price = props.isAnnual ? props.annualPrice : props.monthlyPrice
-  return price === 0 ? '0' : price.toFixed(price < 10 ? 1 : 0)
+  if (props.badgeType === 'annual') return '199'
+  return props.monthlyPrice === 0 ? '0' : props.monthlyPrice.toFixed(props.monthlyPrice < 10 ? 1 : 0)
 })
 </script>
 

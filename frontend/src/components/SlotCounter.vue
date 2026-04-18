@@ -1,8 +1,8 @@
 <template>
   <!--
-    SlotCounter — 密码锁式数字翻滚组件
-    数字竖直方向滚动，像行李箱密码锁一样翻转到目标数字。
-    支持不同滚动方向（奇偶位交替上/下）和错开延迟。
+    SlotCounter — 密码锁式数字翻滚组件 v2
+    数字会像行李箱密码锁一样滚过多圈再落到目标数字。
+    支持前缀后缀、每位错开延迟、奇偶位不同缓动。
   -->
   <span class="slot-counter" :style="{ fontSize: size, color: color }">
     <span v-if="prefix" class="slot-affix">{{ prefix }}</span>
@@ -12,15 +12,14 @@
         :key="i"
         class="slot-digit"
       >
-        <!-- 渐隐遮罩：顶部和底部 -->
         <span class="slot-mask-top"></span>
         <span class="slot-mask-bottom"></span>
-        <!-- 数字条：0-9 竖直排列 -->
+        <!-- 数字条：0-9 重复 CYCLES+1 圈，用于翻滚效果 -->
         <span
           class="slot-strip"
           :style="stripStyle(digit, i)"
         >
-          <span v-for="n in 10" :key="n" class="slot-num">{{ n - 1 }}</span>
+          <span v-for="n in TOTAL_NUMS" :key="n" class="slot-num">{{ (n - 1) % 10 }}</span>
         </span>
       </span>
     </span>
@@ -31,18 +30,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+/** 额外滚动圈数 — 密码锁经过几圈才停下 */
+const CYCLES = 2
+/** 总数字格数 */
+const TOTAL_NUMS = 10 * (CYCLES + 1) // 30
+
 const props = withDefaults(defineProps<{
-  /** 目标数值 */
   value: number
-  /** 是否激活滚动（true 时滚动到目标值，false 显示 0） */
   active?: boolean
-  /** 前缀（如 ¥） */
   prefix?: string
-  /** 后缀（如 +、%、h） */
   suffix?: string
-  /** 字号 */
   size?: string
-  /** 颜色 */
   color?: string
 }>(), {
   active: false,
@@ -52,35 +50,28 @@ const props = withDefaults(defineProps<{
   color: 'inherit',
 })
 
-/** 把数值拆成单个数字数组 */
-const targetDigits = computed(() => {
-  return String(props.value).split('').map(Number)
-})
+const targetDigits = computed(() => String(props.value).split('').map(Number))
 
 /**
  * 计算每个数字条的 transform 样式
- * 奇数位向上滚动，偶数位向下滚动（视觉差异化）
+ * 每位数字滚过 CYCLES 个完整圈再停在目标数字
  */
 function stripStyle(digit: number, index: number) {
   if (!props.active) {
-    // 未激活：停在 0
-    return {
-      transform: 'translateY(0)',
-      transition: 'none',
-    }
+    return { transform: 'translateY(0)', transition: 'none' }
   }
-  const delay = 0.15 + index * 0.12 // 级联延迟
-  const isOdd = index % 2 === 1
-  // 奇数位先翻过所有数字再回来（下→上），偶数位直接上翻
-  const direction = isOdd ? 'down' : 'up'
-  const offset = direction === 'up'
-    ? -digit * 10 // 直接滚到目标位（向上）
-    : -(10 - digit) * 10 + 100 // 反向：先到底再翻回（模拟向下）
-
-  // 统一使用向上翻转，但奇偶位交替用不同缓动模拟方向感
+  // 目标位置：滚过 CYCLES 个完整圈 + 目标数字
+  const targetPos = CYCLES * 10 + digit
+  const pct = -(targetPos / TOTAL_NUMS) * 100
+  const delay = 0.15 + index * 0.18
+  const dur = 1.6 + index * 0.25 // 后面的位数滚得更久
+  // 奇偶位不同缓动 → 机械感
+  const ease = index % 2 === 0
+    ? 'cubic-bezier(0.12, 0.8, 0.20, 1.0)'
+    : 'cubic-bezier(0.25, 0.75, 0.15, 1.0)'
   return {
-    transform: `translateY(${-digit * 10}%)`,
-    transition: `transform 1.5s cubic-bezier(${isOdd ? '0.34, 1.56, 0.64, 1' : '0.16, 1, 0.3, 1'}) ${delay}s`,
+    transform: `translateY(${pct}%)`,
+    transition: `transform ${dur}s ${ease} ${delay}s`,
   }
 }
 </script>

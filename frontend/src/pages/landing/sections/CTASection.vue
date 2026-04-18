@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { useRevealOnScroll, rs } from '../../../composables/useRevealOnScroll'
 
-const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.12 })
+const { isVisible, sectionRef } = useRevealOnScroll({ threshold: 0.03 })
 
 const avatarColors = [
   'linear-gradient(135deg, #4f8ef7, #8b5cf6)',
@@ -70,6 +70,8 @@ const avatarInitials = ['李', '王', '张', '赵']
 
 <style scoped>
 .cta-section {
+  position: relative;
+  z-index: 1;
   padding: 100px 40px;
   background-color: transparent;
   display: flex;

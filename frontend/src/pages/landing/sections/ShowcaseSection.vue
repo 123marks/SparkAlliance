@@ -9,7 +9,7 @@
       </div>
 
       <!-- 左右分栏主体 -->
-      <div class="showcase-body" :style="rs(isVisible, 'up', 0.15, 0.9)">
+      <div class="showcase-body" :style="rs(isVisible, 'left', 0.15, 0.9)">
         <!-- 左侧：功能选择器 -->
         <div class="feature-selector">
           <div
@@ -226,7 +226,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.showcase-section { padding: 120px 40px; background-color: transparent; position: relative; }
+.showcase-section { padding: 120px 40px; background-color: transparent; position: relative; z-index: 1; }
 .container { max-width: 1280px; margin: 0 auto; }
 
 .showcase-header { text-align: center; margin-bottom: 64px; }
