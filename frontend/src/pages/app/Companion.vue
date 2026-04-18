@@ -433,9 +433,9 @@
                       />
                       <button v-if="memberSearchQuery" class="cs-member-search-clear" @click="memberSearchQuery=''">×</button>
                     </div>
-                    <div v-if="filteredGroupMembers.length===0" class="cs-member-empty">无匹配成员</div>
+                    <div v-if="filteredMembersForMgmt.length===0" class="cs-member-empty">无匹配成员</div>
                     <div
-                      v-for="m in filteredGroupMembers"
+                      v-for="m in filteredMembersForMgmt"
                       :key="m.spark_id"
                       class="cs-member-row"
                       :class="{ 'multi-select': memberMultiSelect, 'checked': memberMultiSelect && selectedMemberIds.includes(m.spark_id) }"
@@ -672,6 +672,28 @@
                 <span v-if="myProfile?.region">📍{{ myProfile.region }}</span>
                 <span v-if="myProfile?.identity">🎓{{ myProfile.identity }}</span>
               </p>
+              <!-- v13: 游戏化徽章栏（签到连击 + 等级 + 成就数） -->
+              <div class="cp-ml-gamify">
+                <button
+                  class="cp-gamify-pill cp-gamify-checkin"
+                  :class="{ done: isCheckedInToday }"
+                  @click.stop="showCheckinModal = true"
+                  :title="isCheckedInToday ? `已签到 · 连续 ${currentStreak} 天` : '今日未签到'"
+                >
+                  <span class="cp-gamify-icon">🔥</span>
+                  <span class="cp-gamify-num">{{ currentStreak || 0 }}</span>
+                  <span class="cp-gamify-label">{{ isCheckedInToday ? '已签' : '签到' }}</span>
+                </button>
+                <button
+                  class="cp-gamify-pill cp-gamify-level"
+                  @click.stop="showAchievementPanel = true"
+                  :title="`Lv.${userStats.level} · ${unlockedAchievements.length}/${ACHIEVEMENTS.length} 成就`"
+                >
+                  <span class="cp-gamify-icon">⚡</span>
+                  <span class="cp-gamify-num">Lv.{{ userStats.level }}</span>
+                  <span class="cp-gamify-label">{{ unlockedAchievements.length }}/{{ ACHIEVEMENTS.length }}</span>
+                </button>
+              </div>
             </div>
             <button class="cp-ml-gear" @click.stop="showVisibilitySettings=!showVisibilitySettings" title="动态可见范围设置">⚙️</button>
           </div>
@@ -1249,6 +1271,31 @@
 
     <!-- 好友标签组管理 -->
     <FriendTagManager :visible="showTagManager" @close="showTagManager=false" />
+
+    <!-- v13: 每日签到 Modal -->
+    <CheckinModal
+      :open="showCheckinModal"
+      @close="showCheckinModal = false"
+      @checked-in="handleCheckedIn"
+    />
+
+    <!-- v13: 成就徽章面板 -->
+    <AchievementPanel
+      :open="showAchievementPanel"
+      @close="showAchievementPanel = false"
+    />
+
+    <!-- v13: 成就解锁 Toast（顶部飘入，3 秒后淡出） -->
+    <Transition name="unlock-toast">
+      <div v-if="newlyUnlocked" class="cp-unlock-toast">
+        <span class="cp-unlock-icon">{{ newlyUnlocked.icon }}</span>
+        <div class="cp-unlock-body">
+          <div class="cp-unlock-title">🎉 解锁成就 · {{ newlyUnlocked.name }}</div>
+          <div class="cp-unlock-desc">{{ newlyUnlocked.description }} · +{{ newlyUnlocked.reward_xp }} XP</div>
+        </div>
+        <button class="cp-unlock-close" @click="clearNewlyUnlocked">✕</button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -1258,6 +1305,11 @@ import { useCompanion, formatTimeAgo, formatMsgTime as formatMsgTimeUtil, should
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import ProfilePopup from '../../components/ProfilePopup.vue'
 import FriendTagManager from '../../components/companion/FriendTagManager.vue'
+import CheckinModal from '../../components/companion/CheckinModal.vue'
+import AchievementPanel from '../../components/companion/AchievementPanel.vue'
+import { useCheckin } from '../../composables/useCheckin'
+import { useAchievements } from '../../composables/useAchievements'
+import { useEasterEggs, type EasterEgg } from '../../composables/useEasterEggs'
 import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
 
@@ -1275,6 +1327,80 @@ const {
 } = useCompanion()
 
 const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😜','🤗','🤔','😏','😭','😡','🥺','😴','🤮','😷','🤯','🥳','😎','🤩','😤','🙄','😱','🤡','👍','👎','👏','🙏','💪','❤️','💔','🔥','⭐','🎉','🎊','💯','✅','🚀','🌟','💡','📚','🎯','🎵','🎮','🏆','🌈','☀️','🌙','⚡','🌸','🍀','🐱','🐶','🦊','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦋','🐝','🌹','🍎','🍕','🍔','🍦','☕','🎂','🎁','💎','🔑','💌','🎈','📱','💻']
+
+// v13: 签到 + 成就系统（独立 composable 实例化）
+const {
+  isCheckedInToday,
+  currentStreak,
+  fetchCheckinData,
+} = useCheckin()
+
+const {
+  userStats,
+  unlockedAchievements,
+  newlyUnlocked,
+  ACHIEVEMENTS,
+  fetchUserAchievements,
+  checkAndUnlockAchievements,
+  clearNewlyUnlocked,
+} = useAchievements()
+
+const eastereggs = useEasterEggs()
+
+// v13.1: 节日 / 里程碑彩蛋横幅（顶部漂浮，可手动关闭）
+const easterEggBanner = ref<EasterEgg | null>(null)
+let _eggBannerTimer: ReturnType<typeof setTimeout> | null = null
+function showEasterEggBanner(egg: EasterEgg, autoCloseMs = 8000) {
+  if (_eggBannerTimer) clearTimeout(_eggBannerTimer)
+  easterEggBanner.value = egg
+  if (autoCloseMs > 0) {
+    _eggBannerTimer = setTimeout(() => {
+      easterEggBanner.value = null
+      _eggBannerTimer = null
+    }, autoCloseMs)
+  }
+}
+function closeEasterEggBanner() {
+  if (_eggBannerTimer) clearTimeout(_eggBannerTimer)
+  _eggBannerTimer = null
+  easterEggBanner.value = null
+}
+
+/** 把彩蛋的 system_msg 注入到 AI 聊天历史，让用户下次打开 AI 聊天能看到 */
+function pushEggSystemMsg(egg: EasterEgg) {
+  if (!egg.system_msg) return
+  aiChatHistory.value.push({
+    id: 'egg_' + egg.key + '_' + Date.now().toString(36),
+    sender_id: 'spark_ai_001',
+    sender_name: '星火AI',
+    sender_avatar: '🌟',
+    sender_type: 'ai',
+    content: egg.system_msg,
+    type: 'text',
+    is_read: false,
+    created_at: new Date().toISOString(),
+  })
+}
+
+const showCheckinModal = ref(false)
+const showAchievementPanel = ref(false)
+
+async function handleCheckedIn(streak: number) {
+  showToast('✨ 签到成功 +XP')
+  // 签到完成后立即触发成就检查（daily_streak / streak_3/7/30/100 类成就可能因此解锁）
+  try {
+    await checkAndUnlockAchievements('checkin')
+  } catch (err) {
+    console.warn('[Companion] 成就检查失败:', err)
+  }
+  // v13.1: 检查里程碑彩蛋（3 / 7 / 30 / 100 天）
+  const milestone = eastereggs.detectStreakEgg(streak)
+  if (milestone && !eastereggs.hasFiredToday(milestone.key)) {
+    eastereggs.markFiredToday(milestone.key)
+    showEasterEggBanner(milestone, 12000)
+    pushEggSystemMsg(milestone)
+  }
+}
 
 const sideTab = ref<'chat'|'contacts'|'moments'>('chat')
 const showTagManager = ref(false)
@@ -1796,7 +1922,7 @@ async function handleChatSend(){
   // 构建引用消息数据
   const quoteData = quoteMsg.value ? { sender_name: quoteMsg.value.sender_name, content: quoteMsg.value.content } : undefined
   quoteMsg.value = null
-  if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat()}
+  if(activeChat.value?.type==='ai'){await sendToAI(text);scrollChat();try{ gameEvent('companion_ai_chat') }catch{}}
   else if(activeChat.value?.type==='group'){
     if(mentionIds.value.length>0){sendGroupMsgWithMentions(activeChat.value.id,text,[...mentionIds.value]);mentionIds.value=[]}
     else{sendGroupMsg(activeChat.value.id,text)}
@@ -2576,7 +2702,13 @@ function handleGlobalSearch(){const q=globalSearch.value.trim().toLowerCase();if
 let _searchTimer:ReturnType<typeof setTimeout>|null=null
 function debouncedSearch(){if(_searchTimer)clearTimeout(_searchTimer);_searchTimer=setTimeout(handleGlobalSearch,300)}
 function handleSearchFriend(){addFriendResult.value=addFriendQuery.value.trim()?searchUser(addFriendQuery.value.trim()):null}
-function handleAddFriendResult(){if(!addFriendResult.value)return;const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio});showToast(r.msg);addFriendResult.value=null;addFriendQuery.value='';showAddFriendModal.value=false}
+function handleAddFriendResult(){
+  if(!addFriendResult.value)return
+  const r=addFriend({spark_id:addFriendResult.value.spark_id,nickname:addFriendResult.value.nickname,avatar:addFriendResult.value.avatar,bio:addFriendResult.value.bio})
+  showToast(r.msg)
+  if(r.ok){ try{ gameEvent('companion_friend_added') }catch{} }
+  addFriendResult.value=null;addFriendQuery.value='';showAddFriendModal.value=false
+}
 const PINYIN_INITIAL: Record<string,string> = {'阿':'A','安':'A','白':'B','包':'B','北':'B','曹':'C','陈':'C','成':'C','程':'C','大':'D','丁':'D','段':'D','邓':'D','方':'F','范':'F','冯':'F','高':'G','葛':'G','郭':'G','何':'H','韩':'H','胡':'H','黄':'H','江':'J','蒋':'J','金':'J','孔':'K','李':'L','刘':'L','梁':'L','林':'L','马':'M','孟':'M','牛':'N','欧':'O','潘':'P','彭':'P','秦':'Q','钱':'Q','任':'R','沈':'S','宋':'S','苏':'S','孙':'S','唐':'T','田':'T','万':'W','王':'W','魏':'W','吴':'W','夏':'X','徐':'X','许':'X','谢':'X','杨':'Y','叶':'Y','于':'Y','张':'Z','赵':'Z','周':'Z','朱':'Z','郑':'Z'}
 function getInitialLetter(name:string):string{const c=name[0]||'';const code=c.charCodeAt(0);if(code<128)return c.toUpperCase();return PINYIN_INITIAL[c]||'#'}
 const createGroupFilteredFriends = computed(() => {
@@ -2598,8 +2730,20 @@ const createGroupLetterGroups = computed(() => {
   }
   return groups
 })
-function handleCreateGroup(){if(!newGroupName.value.trim())return;createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value);showToast('群聊已创建！');showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[];newGroupSearch.value=''}
-function handlePost(){if(!postContent.value.trim())return;postMoment(postContent.value.trim(),[],postVis.value);postContent.value='';showToast('已发布')}
+function handleCreateGroup(){
+  if(!newGroupName.value.trim())return
+  createGroup(newGroupName.value.trim(),newGroupMembers.value,newGroupAI.value)
+  showToast('群聊已创建！')
+  try{ gameEvent('companion_group_created') }catch{}
+  showCreateModal.value=false;newGroupName.value='';newGroupMembers.value=[];newGroupSearch.value=''
+}
+function handlePost(){
+  if(!postContent.value.trim())return
+  postMoment(postContent.value.trim(),[],postVis.value)
+  postContent.value=''
+  showToast('已发布')
+  try{ gameEvent('companion_moment_posted') }catch{}
+}
 void handlePost
 function handleComment(id:string){const c=commentInputs[id]?.trim();if(!c)return;commentMoment(id,c);commentInputs[id]=''}
 
@@ -2652,13 +2796,21 @@ async function handleQRPaste(){
   const input = qrPasteInput.value.trim()
   if(!input){showToast('请输入数据');return}
   const r=addFriendByQR(input)
-  if(r.ok){showToast(r.msg);qrPasteInput.value='';scanResult.value={type:'success',msg:r.msg}}
+  if(r.ok){
+    showToast(r.msg);qrPasteInput.value='';scanResult.value={type:'success',msg:r.msg}
+    try{ gameEvent('companion_friend_added') }catch{}
+  }
   else{
     try{
       const results=await searchBySparkId(input)
       if(results.length){
         const sr=results[0]
-        scanResult.value={type:'success',msg:`找到用户: ${sr.nickname}`,action:()=>{const ar=addFriend({spark_id:sr.spark_id,nickname:sr.nickname,avatar:sr.avatar,bio:sr.bio});showToast(ar.msg);scanResult.value=null;showQRModal.value=false}}
+        scanResult.value={type:'success',msg:`找到用户: ${sr.nickname}`,action:()=>{
+          const ar=addFriend({spark_id:sr.spark_id,nickname:sr.nickname,avatar:sr.avatar,bio:sr.bio})
+          showToast(ar.msg)
+          if(ar.ok){ try{ gameEvent('companion_friend_added') }catch{} }
+          scanResult.value=null;showQRModal.value=false
+        }}
       } else {
         scanResult.value={type:'error',msg:'未找到该用户'}
       }
@@ -2701,8 +2853,17 @@ async function scanQRFromFile(file:File){
       const parsed=JSON.parse(data)
       if(parsed.platform==='SparkAlliance'&&parsed.type==='user'){
         const r=addFriendByQR(data)
-        if(r.ok){scanResult.value={type:'success',msg:`已识别用户: ${parsed.name||parsed.id}`};showToast(r.msg)}
-        else scanResult.value={type:'success',msg:`识别到: ${parsed.name||parsed.id}`,action:()=>{addFriend({spark_id:parsed.id,nickname:parsed.name||'星火用户',avatar:parsed.avatar||'🌟',bio:''});showToast('已发送好友请求');showQRModal.value=false}}
+        if(r.ok){
+          scanResult.value={type:'success',msg:`已识别用户: ${parsed.name||parsed.id}`}
+          showToast(r.msg)
+          try{ gameEvent('companion_friend_added') }catch{}
+        }
+        else scanResult.value={type:'success',msg:`识别到: ${parsed.name||parsed.id}`,action:()=>{
+          const ar=addFriend({spark_id:parsed.id,nickname:parsed.name||'星火用户',avatar:parsed.avatar||'🌟',bio:''})
+          showToast(ar.ok?'已发送好友请求':ar.msg)
+          if(ar.ok){ try{ gameEvent('companion_friend_added') }catch{} }
+          showQRModal.value=false
+        }}
       } else if(parsed.platform==='SparkAlliance'&&parsed.type==='group'){
         scanResult.value={type:'success',msg:`识别到群聊: ${parsed.name||'未知群'}`,action:()=>{showToast('暂不支持扫码加群，请通过邀请加入');scanResult.value=null}}
       } else {
@@ -2751,6 +2912,31 @@ onMounted(async ()=>{
       updateProfile({})
     }
   } catch { /* 离线模式忽略 */ }
+
+  // v13: 加载签到 + 成就数据（失败静默，不影响主功能）
+  try {
+    await Promise.all([fetchCheckinData(), fetchUserAchievements()])
+  } catch (err) {
+    console.warn('[Companion] 游戏化数据加载失败:', err)
+  }
+
+  // v13.1: 节日彩蛋——首次进入伴侣页时显示一次
+  try {
+    const fest = eastereggs.getFestivalEgg()
+    if (fest && !eastereggs.hasFiredToday(fest.key)) {
+      eastereggs.markFiredToday(fest.key)
+      showEasterEggBanner(fest, 10000)
+      pushEggSystemMsg(fest)
+    }
+    // 当日 streak 命中里程碑也展示一次（覆盖"用户没主动签到但 streak 已经达成"的场景）
+    const streakEgg = eastereggs.detectStreakEgg(currentStreak.value)
+    if (streakEgg && !eastereggs.hasFiredToday(streakEgg.key)) {
+      eastereggs.markFiredToday(streakEgg.key)
+      showEasterEggBanner(streakEgg, 8000)
+    }
+  } catch (err) {
+    console.warn('[Companion] 彩蛋检查失败:', err)
+  }
 })
 onUnmounted(()=>{window.removeEventListener('click',closeMenus);if(_resizeHandler)window.removeEventListener('resize',_resizeHandler);clearAllPendingFiles();if(_searchTimer)clearTimeout(_searchTimer)})
 watch(showQRModal,v=>{if(v){qrTab.value='my';nextTick(()=>renderQR(userQrCanvas.value,getQRData()))}})
@@ -2908,26 +3094,30 @@ function canManageMember(m: { spark_id: string; role: string }): boolean {
   return false
 }
 
-// ====== v11: 群成员搜索 + 多选批量操作 ======
+// ====== v11: 群成员管理搜索 + 多选批量操作（独立于顶部 groupMemberSearch） ======
 const memberSearchQuery = ref('')
 const memberMultiSelect = ref(false)
 const selectedMemberIds = ref<string[]>([])
 
-const filteredGroupMembers = computed(() => {
+/** 群管理面板专用的成员列表（搜索 + 角色排序），与顶部的 filteredGroupMembers 互不影响 */
+const filteredMembersForMgmt = computed(() => {
   if (!activeGroup.value) return []
   const kw = memberSearchQuery.value.trim().toLowerCase()
-  let list = [...activeGroup.value.members]
+  const list = [...activeGroup.value.members]
   list.sort((a, b) => {
     const rankOf = (r: string) => r === 'owner' ? 0 : r === 'admin' ? 1 : 2
     if (rankOf(a.role) !== rankOf(b.role)) return rankOf(a.role) - rankOf(b.role)
-    return (a.group_nickname || a.nickname).localeCompare(b.group_nickname || b.nickname, 'zh-CN')
+    const aName = ((a as Record<string, string>).group_nickname) || a.nickname
+    const bName = ((b as Record<string, string>).group_nickname) || b.nickname
+    return aName.localeCompare(bName, 'zh-CN')
   })
   if (!kw) return list
-  return list.filter(m =>
-    (m.group_nickname || '').toLowerCase().includes(kw)
-    || (m.nickname || '').toLowerCase().includes(kw)
-    || (m.spark_id || '').toLowerCase().includes(kw)
-  )
+  return list.filter(m => {
+    const groupNick = ((m as Record<string, string>).group_nickname) || ''
+    return groupNick.toLowerCase().includes(kw)
+      || (m.nickname || '').toLowerCase().includes(kw)
+      || (m.spark_id || '').toLowerCase().includes(kw)
+  })
 })
 
 function toggleMemberMultiSelect() {
@@ -3472,6 +3662,7 @@ function handlePublish() {
     }
   )
   showToast('已发布')
+  try{ gameEvent('companion_moment_posted') }catch{}
   publishContent.value = ''
   publishImages.value = []
   publishVideos.value = []
@@ -3982,6 +4173,35 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cs-act-btn:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6);border-color:rgba(139,92,246,.1)}
 .cs-act-btn.warn{color:rgba(251,191,36,.5);border-color:rgba(251,191,36,.1)}.cs-act-btn.warn:hover{background:rgba(251,191,36,.06);color:rgba(251,191,36,.7)}
 .cs-act-btn.danger{color:rgba(239,68,68,.5);border-color:rgba(239,68,68,.1)}.cs-act-btn.danger:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.7)}
+
+/* ========= v11: 群成员管理 搜索 + 多选批量操作 ========= */
+.cs-mgmt-header{display:flex;align-items:center;justify-content:space-between;padding-right:4px}
+.cs-mgmt-toggle{padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:none;color:rgba(255,255,255,.4);font-size:10px;cursor:pointer;font-weight:600;transition:all .15s}
+.cs-mgmt-toggle:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);border-color:rgba(139,92,246,.15)}
+.cs-mgmt-toggle.active{background:rgba(139,92,246,.15);color:rgba(196,181,253,.95);border-color:rgba(139,92,246,.35)}
+
+.cs-member-search{display:flex;align-items:center;gap:4px;padding:4px 8px;margin:4px 0 6px;border-radius:8px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.04)}
+.cs-member-search-icon{font-size:11px;opacity:.4}
+.cs-member-search-input{flex:1;border:none;background:none;outline:none;color:rgba(255,255,255,.8);font-size:11px;padding:3px 0}
+.cs-member-search-input::placeholder{color:rgba(255,255,255,.2)}
+.cs-member-search-clear{border:none;background:none;color:rgba(255,255,255,.3);font-size:14px;cursor:pointer;padding:0 4px;line-height:1}
+.cs-member-search-clear:hover{color:rgba(239,68,68,.7)}
+.cs-member-empty{text-align:center;padding:10px;color:rgba(255,255,255,.2);font-size:11px}
+
+.cs-member-row.multi-select{cursor:pointer;user-select:none}
+.cs-member-row.multi-select:hover{background:rgba(139,92,246,.04)}
+.cs-member-row.checked{background:linear-gradient(90deg,rgba(139,92,246,.12),rgba(59,130,246,.06));box-shadow:inset 0 0 0 1px rgba(139,92,246,.2)}
+.cs-member-checkbox{width:16px;height:16px;border-radius:4px;border:1.5px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white;flex-shrink:0;transition:all .15s}
+.cs-member-checkbox.checked{background:linear-gradient(135deg,rgba(139,92,246,.85),rgba(59,130,246,.7));border-color:rgba(139,92,246,.9)}
+.cs-member-checkbox.disabled{opacity:.25;border-style:dashed}
+
+.cs-bulk-bar{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:8px;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.1),rgba(59,130,246,.05));border:1px solid rgba(139,92,246,.18)}
+.cs-bulk-count{font-size:11px;font-weight:600;color:rgba(196,181,253,.95)}
+.cs-bulk-acts{display:flex;flex-wrap:wrap;gap:4px}
+.cs-bulk-btn{padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);color:rgba(255,255,255,.6);font-size:10px;cursor:pointer;font-weight:600;transition:all .15s;white-space:nowrap}
+.cs-bulk-btn:hover{background:rgba(139,92,246,.12);color:rgba(196,181,253,.95);border-color:rgba(139,92,246,.3)}
+.cs-bulk-btn.danger{color:rgba(239,68,68,.7);border-color:rgba(239,68,68,.15)}
+.cs-bulk-btn.danger:hover{background:rgba(239,68,68,.15);color:rgba(239,68,68,1);border-color:rgba(239,68,68,.4)}
 /* 发布按钮(侧栏) */
 .cp-sb-publish-btn{display:block;width:calc(100% - 16px);margin:8px;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(109,40,217,.15));color:rgba(139,92,246,.7);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center}
 .cp-sb-publish-btn:hover{background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(109,40,217,.25));color:rgba(139,92,246,.9)}
@@ -4359,4 +4579,143 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-scan-result.error{background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.1);color:rgba(239,68,68,.6)}
 .cp-scan-result button{padding:4px 12px;border-radius:6px;border:none;background:rgba(16,185,129,.12);color:rgba(16,185,129,.9);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
 .cp-scan-result button:hover{background:rgba(16,185,129,.2)}
+
+/* ======= v13: 游戏化徽章栏（签到 + 等级 + 成就） ======= */
+.cp-ml-gamify {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.cp-gamify-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cp-gamify-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.cp-gamify-checkin {
+  --pill-color: 255, 107, 74;
+}
+
+.cp-gamify-checkin.done {
+  background: rgba(var(--pill-color), 0.15);
+  border-color: rgba(var(--pill-color), 0.35);
+  color: #FFB899;
+}
+
+.cp-gamify-level {
+  --pill-color: 139, 92, 246;
+  background: rgba(var(--pill-color), 0.12);
+  border-color: rgba(var(--pill-color), 0.3);
+  color: #C4B5FD;
+}
+
+.cp-gamify-icon {
+  font-size: 13px;
+}
+
+.cp-gamify-num {
+  font-weight: 700;
+}
+
+.cp-gamify-label {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+/* ======= v13: 成就解锁 Toast ======= */
+.cp-unlock-toast {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(236, 72, 153, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(139, 92, 246, 0.45);
+  min-width: 280px;
+  max-width: 340px;
+  color: #fff;
+}
+
+.cp-unlock-icon {
+  font-size: 36px;
+  animation: unlock-bounce 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+@keyframes unlock-bounce {
+  0%   { transform: scale(0.3) rotate(-30deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(10deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.cp-unlock-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-unlock-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.cp-unlock-desc {
+  font-size: 11px;
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
+.cp-unlock-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.cp-unlock-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Transition for unlock-toast */
+.unlock-toast-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.unlock-toast-leave-active {
+  transition: all 0.3s;
+}
+.unlock-toast-enter-from {
+  opacity: 0;
+  transform: translateX(40px) scale(0.9);
+}
+.unlock-toast-leave-to {
+  opacity: 0;
+  transform: translateX(40px) scale(0.95);
+}
 </style>

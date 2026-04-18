@@ -188,32 +188,67 @@ CREATE POLICY ck_del ON checkin_records FOR DELETE USING (auth.uid() = user_id);
 
 -- =============================================
 -- 六、user_achievements —— 成就徽章表（V13 趣味玩法）
+-- 与 frontend/src/composables/useAchievements.ts 的 UserAchievement 接口对齐
+-- （name/description/icon/rarity/category 都由前端常量 ACHIEVEMENTS 数组提供，DB 只存触发记录）
 -- =============================================
 
 CREATE TABLE IF NOT EXISTS user_achievements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  achievement_code VARCHAR(50) NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  icon TEXT NOT NULL DEFAULT '🏆',
-  rarity VARCHAR(20) DEFAULT 'common'
-    CHECK (rarity IN ('common', 'rare', 'epic', 'legendary')),
+  achievement_key VARCHAR(50) NOT NULL,  -- 对应 ACHIEVEMENTS[].key
+  progress INT DEFAULT 100 CHECK (progress BETWEEN 0 AND 100),
   unlocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  progress JSONB DEFAULT '{}'::jsonb,
-  UNIQUE(user_id, achievement_code)
+  UNIQUE(user_id, achievement_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ua_user ON user_achievements(user_id, unlocked_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ua_code ON user_achievements(achievement_code);
+CREATE INDEX IF NOT EXISTS idx_ua_key ON user_achievements(achievement_key);
 
 ALTER TABLE user_achievements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ua_sel ON user_achievements;
 DROP POLICY IF EXISTS ua_ins ON user_achievements;
 DROP POLICY IF EXISTS ua_del ON user_achievements;
-CREATE POLICY ua_sel ON user_achievements FOR SELECT USING (TRUE);  -- 徽章公开可见
+CREATE POLICY ua_sel ON user_achievements FOR SELECT USING (TRUE);  -- 徽章公开可见（支持排行榜）
 CREATE POLICY ua_ins ON user_achievements FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY ua_del ON user_achievements FOR DELETE USING (auth.uid() = user_id);
+
+
+-- =============================================
+-- 六-B、user_stats —— 用户统计（XP/等级/任务数/连续天数）
+-- 配合 useAchievements.ts 的 UserStats 接口
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS user_stats (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  total_tasks_completed INT NOT NULL DEFAULT 0,
+  total_goals_completed INT NOT NULL DEFAULT 0,
+  current_daily_streak INT NOT NULL DEFAULT 0,
+  longest_daily_streak INT NOT NULL DEFAULT 0,
+  longest_habit_streak INT NOT NULL DEFAULT 0,
+  total_xp INT NOT NULL DEFAULT 0,
+  level INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE user_stats ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS us_sel ON user_stats;
+DROP POLICY IF EXISTS us_ins ON user_stats;
+DROP POLICY IF EXISTS us_upd ON user_stats;
+CREATE POLICY us_sel ON user_stats FOR SELECT USING (TRUE);  -- 公开（支持 XP 排行榜）
+CREATE POLICY us_ins ON user_stats FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY us_upd ON user_stats FOR UPDATE USING (auth.uid() = user_id);
+
+-- updated_at 自动维护
+CREATE OR REPLACE FUNCTION us_touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_us_touch ON user_stats;
+CREATE TRIGGER trg_us_touch BEFORE UPDATE ON user_stats
+  FOR EACH ROW EXECUTE FUNCTION us_touch_updated_at();
 
 
 -- =============================================

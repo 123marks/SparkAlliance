@@ -21,6 +21,9 @@
 import { ref, computed } from 'vue'
 import { requestAssistantChat } from '../utils/assistantApi'
 import { supabase } from '../supabase'
+import { getTodayMood, getCurrentStreak, isCheckedInTodaySync, MOOD_META } from './useCheckin'
+import { getCurrentLevelSync, getRecentlyUnlockedSync, gameEvent } from './useAchievements'
+import { useEasterEggs } from './useEasterEggs'
 
 // ============ 类型定义 ============
 
@@ -59,6 +62,7 @@ export interface Friend {
   spark_id: string
   nickname: string
   avatar: string
+  avatar_url?: string    // v11: 头像 URL（上传到 Storage 的真实头像）
   profile?: SparkProfile
   remark?: string        // 备注
   bio: string
@@ -67,6 +71,8 @@ export interface Friend {
   last_msg_time?: string
   unread: number
   is_starred?: boolean   // 星标好友
+  is_chat_pinned?: boolean // v11: 会话置顶
+  is_muted?: boolean     // v11: 消息免打扰
 }
 
 /** 好友标签组 */
@@ -103,17 +109,37 @@ export interface ChatMsg {
   sender_id: string      // spark_id
   sender_name: string
   sender_avatar: string
+  sender_avatar_url?: string // v11: 发送者头像 URL
   sender_type: 'user' | 'ai'
   receiver_id?: string   // 私聊接收者
   content: string
   type: 'text' | 'image' | 'share' | 'system' | 'voice' | 'file' | 'video' | 'poke'
   media_url?: string
-  share_data?: { type: string; title: string; route: string }
+  voice_duration?: number       // v11: 语音时长（秒）
+  voice_blob_url?: string       // v11: 语音文件 Blob URL
+  voice_transcript?: string     // v11: 语音转文字内容
+  share_data?: {
+    type: string
+    title: string
+    route: string
+    cover?: string                // v11: 分享卡片封面（URL）
+    cover_style?: string          // v11: 分享卡片封面样式
+  }
   is_read: boolean       // 已读状态
   read_at?: string       // 读取时间
   created_at: string
   synced?: boolean       // 是否已同步到数据库
   mentions?: string[]    // @提及的 spark_id 列表
+  quote_msg?: { sender_name: string; content: string } // v11: 引用消息
+}
+
+/** 群公告历史记录 */
+export interface GroupAnnouncementRecord {
+  id: string
+  content: string
+  author_id: string
+  author_name: string
+  created_at: string
 }
 
 /** 群聊 */
@@ -123,11 +149,23 @@ export interface GroupChat {
   avatar: string        // emoji
   owner_id: string      // spark_id
   ai_enabled: boolean
-  members: { spark_id: string; nickname: string; avatar: string; role: 'owner' | 'admin' | 'member' }[]
+  members: {
+    spark_id: string
+    nickname: string
+    avatar: string
+    avatar_url?: string    // v11: 成员头像 URL
+    role: 'owner' | 'admin' | 'member'
+    group_nickname?: string // v11: 群内昵称（覆盖显示名）
+  }[]
   messages: ChatMsg[]
   created_at: string
   unread: number
-  announcement?: string // 群公告
+  announcement?: string            // 群公告
+  announcement_history?: GroupAnnouncementRecord[] // v11: 公告历史
+  is_chat_pinned?: boolean          // v11: 会话置顶
+  is_muted?: boolean                // v11: 免打扰
+  group_remark?: string             // v11: 群备注（仅自己可见）
+  show_member_nickname?: boolean    // v11: 是否显示群成员昵称
 }
 
 /** 动态可见时间范围设置 */
@@ -688,6 +726,8 @@ export function useCompanion() {
       remark: '', bio: data.bio, added_at: now(), unread: 0,
     })
     saveData(STORAGE_KEYS.friends, friends.value)
+    // v13.1: 触发伴侣社交成就
+    gameEvent('companion_friend_added', { spark_id: data.spark_id }).catch(() => { /* 静默 */ })
     return { ok: true, msg: `已添加 ${data.nickname} 为好友！` }
   }
 
@@ -829,6 +869,8 @@ export function useCompanion() {
       // 更新好友最后消息
       const f = friends.value.find(f => f.spark_id === friendId)
       if (f) { f.last_msg = reply.slice(0, 30); f.last_msg_time = now(); saveData(STORAGE_KEYS.friends, friends.value) }
+      // v13.1: 私聊与 AI 对话也算 AI 对话
+      gameEvent('companion_ai_chat').catch(() => { /* 静默 */ })
     } catch { /* 静默失败 */ }
     isAiTyping.value = false
   }
@@ -924,6 +966,8 @@ export function useCompanion() {
     }
     groups.value.push(g)
     saveData(STORAGE_KEYS.groups, groups.value)
+    // v13.1: 触发伴侣社交成就
+    gameEvent('companion_group_created', { group_id: g.id, name }).catch(() => { /* 静默 */ })
     return g.id
   }
 
@@ -1008,6 +1052,8 @@ export function useCompanion() {
     }
     moments.value.unshift(m)
     saveData(STORAGE_KEYS.moments, moments.value)
+    // v13.1: 触发伴侣"动态发布"成就
+    gameEvent('companion_moment_posted', { moment_id: m.id }).catch(() => { /* 静默 */ })
     return m
   }
 
@@ -1115,6 +1161,8 @@ export function useCompanion() {
         saveData(STORAGE_KEYS.groups, groups.value)
       }
     }
+    // v13.1: 触发伴侣"分享动态"成就
+    gameEvent('companion_moment_shared', { moment_id: momentId, target_type: target.type }).catch(() => { /* 静默 */ })
     return true
   }
 
@@ -1160,6 +1208,9 @@ export function useCompanion() {
       }
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      // v13.1: 分享给 AI 同时算 ai_chat + share
+      gameEvent('companion_ai_chat').catch(() => { /* 静默 */ })
+      gameEvent('companion_moment_shared', { moment_id: momentId, target_type: 'ai' }).catch(() => { /* 静默 */ })
       return reply
     } finally {
       isAiTyping.value = false
@@ -1207,25 +1258,89 @@ export function useCompanion() {
   }
 
   // ------ AI 通信 ------
+
+  /** 取最后一条 user 文本，用于彩蛋词句检测 */
+  function getLastUserText(messages: { role: 'user' | 'assistant'; content: string }[]): string {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return messages[i].content
+    }
+    return ''
+  }
+
+  /** 构造"用户当下游戏状态" Context（让 AI 共情用户的心情/连击/等级/新解锁徽章） */
+  function buildGameStateContext(): string {
+    const parts: string[] = []
+    const checked = isCheckedInTodaySync()
+    const mood = getTodayMood()
+    const streak = getCurrentStreak()
+    const level = getCurrentLevelSync()
+    const recent = getRecentlyUnlockedSync()
+
+    parts.push('## 用户当下状态（请据此调整语气，但不要主动复述这些数字）')
+    parts.push(`- 今日签到：${checked ? '✅ 已签到' : '⏳ 未签到'}`)
+    if (mood) {
+      const meta = MOOD_META[mood]
+      parts.push(`- 今日心情：${meta?.icon || ''} ${meta?.label || mood}`)
+    }
+    if (streak > 0) parts.push(`- 连续签到：${streak} 天`)
+    parts.push(`- 当前等级：Lv.${level}`)
+    if (recent.length) {
+      parts.push(`- 最近解锁徽章：${recent.slice(0, 3).map(a => `${a.icon}${a.name}`).join('、')}`)
+    }
+    parts.push('')
+    parts.push('回复策略：')
+    if (mood === 'tired' || mood === 'sad') {
+      parts.push('- 用户今天情绪偏低落/疲惫，**先共情再建议**，不要立刻给行动清单。')
+    } else if (mood === 'excited' || mood === 'motivated') {
+      parts.push('- 用户今天状态高昂，可以给更进取的建议、更长远的目标。')
+    } else if (mood === 'happy') {
+      parts.push('- 用户今天心情好，回复轻快一点，可以多用 emoji。')
+    }
+    if (streak >= 30) {
+      parts.push('- 用户已连续签到 30+ 天，是真正的长期主义者，给他配得上的尊重。')
+    } else if (streak >= 7) {
+      parts.push('- 用户已连续签到一周以上，习惯正在形成，给点积极反馈。')
+    }
+    return parts.join('\n')
+  }
+
+  /** 构造彩蛋上下文：检测节日、当前 streak、用户最新一条话里的隐藏词句 */
+  function buildEasterEggContext(userText: string): string {
+    try {
+      const eggs = useEasterEggs()
+      const fired: string[] = []
+
+      // 节日 + streak 里程碑
+      const ctxEggs = eggs.getActiveContextEggs({ streak: getCurrentStreak() })
+      for (const e of ctxEggs) fired.push(e.ai_context)
+
+      // 隐藏词句
+      const phraseEgg = eggs.detectPhraseEgg(userText)
+      if (phraseEgg) fired.push(phraseEgg.ai_context)
+
+      return fired.join('\n\n')
+    } catch {
+      return ''
+    }
+  }
+
   async function callAI(messages: { role: 'user' | 'assistant'; content: string }[], extraSystem?: string): Promise<string> {
-    const scopedMessages = extraSystem
-      ? [{ role: 'user' as const, content: `[Context]\n${extraSystem}` }, ...messages.slice(-20)]
+    const lastUserText = getLastUserText(messages)
+    const gameCtx = buildGameStateContext()
+    const eggCtx = buildEasterEggContext(lastUserText)
+
+    const composedSystem = [extraSystem, gameCtx, eggCtx].filter(Boolean).join('\n\n')
+
+    const scopedMessages = composedSystem
+      ? [{ role: 'user' as const, content: `[Context]\n${composedSystem}` }, ...messages.slice(-20)]
       : messages.slice(-20)
+
     const response = await requestAssistantChat({
       assistant: 'companion',
       mode: 'fast',
       messages: scopedMessages,
     })
-    const res = {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        choices: [{ message: { content: response.content } }],
-      }),
-    }
-    if (!res.ok) throw new Error(`AI请求失败 (${res.status})`)
-    const data = await res.json()
-    return data.choices?.[0]?.message?.content || '抱歉，我暂时无法回复 🤔'
+    return response.content || '抱歉，我暂时无法回复 🤔'
   }
 
   /** 发消息给AI伴侣（独立聊天，非群聊/私聊） */
@@ -1250,6 +1365,8 @@ export function useCompanion() {
       }
       aiChatHistory.value.push(aiMsg)
       saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      // v13.1: 触发"AI 对话"成就
+      gameEvent('companion_ai_chat').catch(() => { /* 静默 */ })
       return reply
     } finally { isAiTyping.value = false }
   }

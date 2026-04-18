@@ -372,13 +372,17 @@ async function handleCompleteTask(taskId: string) {
   
   // 检查成就解锁
   checkAndUnlockAchievements('task_complete')
-  
+
   // 检查里程碑（目标进度变化）
   if (targetGoal) {
     // 重新获取目标以获取更新后的进度
     const updatedGoal = goals.value.find(g => g.id === targetGoal!.id)
     if (updatedGoal) {
       checkMilestone(oldProgress, updatedGoal.total_progress, updatedGoal.title)
+      // 目标刚刚完成（旧状态非 completed，新状态 completed）→ 追加目标类成就检查
+      if (targetGoal.status !== 'completed' && updatedGoal.status === 'completed') {
+        checkAndUnlockAchievements('goal_complete')
+      }
     }
   }
   
