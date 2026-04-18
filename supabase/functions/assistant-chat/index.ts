@@ -5,14 +5,44 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-type AssistantKind = 'spark' | 'companion'
 type ModelMode = 'default' | 'thinking' | 'fast'
 
-// 统一使用 gamma4 (gemma-3-27b-it)，通过 NVIDIA NIM API 调用
-const MODEL_MAP: Record<ModelMode, { id: string; fallbacks: string[]; temperature: number; maxTokens: number }> = {
-  default: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.75, maxTokens: 4096 },
-  thinking: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.6, maxTokens: 8192 },
-  fast: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], temperature: 0.8, maxTokens: 2048 },
+/**
+ * 模式 → 真实底层模型（NVIDIA NIM slug）。
+ * - default（标准）：Gemma 3 27B —— 本项目默认模型，速度/质量平衡
+ * - thinking（深度）：DeepSeek R1 —— 真推理链（reasoning_content），适合复杂题
+ * - fast（极速）：Llama 3.1 8B —— 轻量快速，适合闲聊/小问题
+ *
+ * 支持通过环境变量覆盖（部署时可临时换模型而不需要改代码）：
+ *   SPARK_MODEL_DEFAULT / SPARK_MODEL_THINKING / SPARK_MODEL_FAST
+ */
+function resolveModelConfig(mode: ModelMode): { id: string; fallbacks: string[]; temperature: number; maxTokens: number } {
+  const envGet = (key: string) => Deno.env.get(key) || ''
+
+  switch (mode) {
+    case 'thinking':
+      return {
+        id: envGet('SPARK_MODEL_THINKING') || 'deepseek-ai/deepseek-r1',
+        fallbacks: ['google/gemma-3-27b-it', 'meta/llama-3.1-8b-instruct'],
+        temperature: 0.6,
+        maxTokens: 8192,
+      }
+    case 'fast':
+      return {
+        id: envGet('SPARK_MODEL_FAST') || 'meta/llama-3.1-8b-instruct',
+        fallbacks: ['google/gemma-3-27b-it'],
+        temperature: 0.8,
+        maxTokens: 2048,
+      }
+    case 'default':
+    default:
+      return {
+        id: envGet('SPARK_MODEL_DEFAULT') || 'google/gemma-3-27b-it',
+        fallbacks: ['meta/llama-3.1-8b-instruct'],
+        temperature: 0.75,
+        maxTokens: 4096,
+      }
+  }
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -195,7 +225,7 @@ Deno.serve(async (req) => {
     }
 
     const providerBaseUrl = Deno.env.get('NVIDIA_BASE_URL') || 'https://integrate.api.nvidia.com/v1'
-    const modelConfig = MODEL_MAP[mode]
+    const modelConfig = resolveModelConfig(mode)
     const today = new Date().toISOString().slice(0, 10)
     const systemPrompt = assistant === 'companion'
       ? buildCompanionPrompt(today)
@@ -206,6 +236,7 @@ Deno.serve(async (req) => {
     const modelsToTry = [modelConfig.id, ...modelConfig.fallbacks]
     let upstream: Response | null = null
     let lastError = ''
+    let usedModel = modelConfig.id
 
     for (const modelId of modelsToTry) {
       try {
@@ -227,7 +258,10 @@ Deno.serve(async (req) => {
             ],
           }),
         })
-        if (upstream.ok) break
+        if (upstream.ok) {
+          usedModel = modelId
+          break
+        }
         lastError = await upstream.text().catch(() => '')
         upstream = null
       } catch (e) {
@@ -249,6 +283,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
+          'X-Spark-Model': usedModel,
         },
       })
     }
@@ -262,7 +297,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       content,
       reasoning,
-      model: modelConfig.id,
+      model: usedModel,
       assistant,
     })
   } catch (error) {

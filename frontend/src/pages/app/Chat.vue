@@ -570,11 +570,19 @@ function renderLatex(text: string): string {
 
 // Markdown（含内联导航链接渲染）
 const mdRenderer = new marked.Renderer()
+// v10: 代码块加"星光 + 火苗"装饰层（CSS-only 动画，不影响选择/复制），
+// 装饰元素都带 aria-hidden 和 pointer-events:none，不会干扰可访问性
 mdRenderer.code = function({ text, lang }: { text:string; lang?:string }) {
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const hi = hljs.highlight(text, { language }).value
   const encoded = encodeURIComponent(text)
-  return `<div class="codeblock"><div class="cb-head"><span class="cb-lang">${language}</span><button class="cb-copy" data-copy-text="${encoded}">复制</button></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
+  const decorationLayer = `<span class="cb-fx" aria-hidden="true">` +
+    `<span class="cb-star s1"></span><span class="cb-star s2"></span><span class="cb-star s3"></span>` +
+    `<span class="cb-star s4"></span><span class="cb-star s5"></span><span class="cb-star s6"></span>` +
+    `<span class="cb-ember e1"></span><span class="cb-ember e2"></span><span class="cb-ember e3"></span>` +
+    `<span class="cb-ember e4"></span>` +
+  `</span>`
+  return `<div class="codeblock">${decorationLayer}<div class="cb-head"><span class="cb-lang">${language}</span><button class="cb-copy" data-copy-text="${encoded}">复制</button></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
 }
 // 导航链接渲染为可点击按钮
 mdRenderer.link = function({ href, text }: { href: string; text: string }) {
@@ -598,7 +606,7 @@ function renderMd(content: string): string {
     c = renderLatex(c)
     c = c.replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
     const html = marked.parse(c) as string
-    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['class','style','data-path','data-copy-text','data-latex','title'] })
+    return DOMPurify.sanitize(html, { ADD_TAGS: ['button','span'], ADD_ATTR: ['class','style','data-path','data-copy-text','data-latex','title','aria-hidden'] })
   } catch { return DOMPurify.sanitize(content.replace(/\n/g, '<br>')) }
 }
 
@@ -1371,80 +1379,224 @@ async function handleBackendChange(b: 'cloud' | 'local' | 'auto') {
 .md-body :deep(code:not(.hljs)) { padding:1px 5px; border-radius:4px; background:rgba(139,92,246,.05); color:rgba(139,92,246,.65); font-size:11px; font-family:'JetBrains Mono','Fira Code',monospace; }
 .md-body :deep(.katex-display) { margin:12px 0; padding:10px 16px; background:rgba(255,255,255,.012); border-radius:8px; border:1px solid rgba(255,255,255,.025); overflow-x:auto; }
 .md-body :deep(.katex) { font-size:1.05em; color:rgba(255,255,255,.85); }
-/* v7.3 代码块：星空背景 + 醒目复制按钮 + 语言标签 */
+/* ============ v10: 代码块「星火深空」主题 ============
+ * 设计目标：
+ *   - 深邃的宇宙星云背景（多层径向渐变，不是纯色）
+ *   - 静态星光 + 闪烁星星 + 火苗升空动画（纯 CSS，零 JS 开销）
+ *   - 装饰层 pointer-events:none，不干扰代码选择 / 滚动 / 复制
+ *   - 代码高亮配色参考 Dracula / Tokyo Night，鲜明且护眼
+ */
 .md-body :deep(.codeblock) {
-  margin:10px 0;
-  border-radius:12px;
-  overflow:hidden;
-  border:1px solid rgba(139,92,246,.15);
-  background:
-    radial-gradient(ellipse at top right, rgba(139,92,246,.08), transparent 60%),
-    radial-gradient(ellipse at bottom left, rgba(59,130,246,.05), transparent 55%),
-    linear-gradient(180deg, rgba(8,6,20,.96) 0%, rgba(12,10,24,.98) 100%);
-  box-shadow: 0 4px 20px rgba(0,0,0,.35), inset 0 0 20px rgba(139,92,246,.04);
   position:relative;
+  margin:12px 0;
+  border-radius:14px;
+  overflow:hidden;
+  border:1px solid rgba(139,92,246,.22);
+  background:
+    radial-gradient(ellipse at 18% 12%, rgba(139,92,246,.16) 0%, transparent 52%),
+    radial-gradient(ellipse at 82% 88%, rgba(236,72,153,.10) 0%, transparent 58%),
+    radial-gradient(ellipse at 50% 50%, rgba(59,130,246,.06) 0%, transparent 70%),
+    linear-gradient(180deg, #05020f 0%, #0a0620 48%, #07030f 100%);
+  box-shadow:
+    0 6px 28px rgba(0,0,0,.5),
+    inset 0 0 30px rgba(139,92,246,.05),
+    inset 0 1px 0 rgba(255,255,255,.03);
 }
-/* 代码块星光装饰 */
+/* 静态星光点缀（底层漫天星图，不动） */
 .md-body :deep(.codeblock)::before {
   content:'';
   position:absolute; inset:0;
   background-image:
-    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.35), transparent),
-    radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,.25), transparent),
-    radial-gradient(1px 1px at 40% 80%, rgba(139,92,246,.3), transparent),
-    radial-gradient(1px 1px at 90% 20%, rgba(255,255,255,.2), transparent);
-  background-size: 100% 100%;
+    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,.5), transparent 2px),
+    radial-gradient(1px 1px at 72% 45%, rgba(196,181,253,.45), transparent 2px),
+    radial-gradient(1px 1px at 35% 75%, rgba(255,255,255,.35), transparent 2px),
+    radial-gradient(1px 1px at 88% 25%, rgba(139,92,246,.4), transparent 2px),
+    radial-gradient(1px 1px at 55% 92%, rgba(255,255,255,.25), transparent 2px),
+    radial-gradient(1px 1px at 8% 58%, rgba(196,181,253,.3), transparent 2px),
+    radial-gradient(1px 1px at 94% 68%, rgba(255,255,255,.2), transparent 2px),
+    radial-gradient(1px 1px at 48% 35%, rgba(236,72,153,.25), transparent 2px);
+  background-size:100% 100%;
   pointer-events:none;
-  opacity:.7;
+  opacity:.9;
+  z-index:0;
 }
+
+/* ============ 装饰层：闪烁星星 + 升空火苗 ============
+ * .cb-fx 是 inline span，但 position:absolute 让它脱离文字流
+ */
+.md-body :deep(.cb-fx) {
+  position:absolute; inset:0;
+  pointer-events:none;
+  overflow:hidden;
+  z-index:0;
+  display:block;
+}
+/* 闪烁星星 —— 6 颗，各自不同位置/大小/动画延迟 */
+.md-body :deep(.cb-star) {
+  position:absolute;
+  width:3px; height:3px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(196,181,253,.7) 40%, transparent 70%);
+  box-shadow:0 0 6px rgba(255,255,255,.65), 0 0 12px rgba(139,92,246,.35);
+  animation:cb-twinkle 2.8s ease-in-out infinite;
+  opacity:0;
+}
+.md-body :deep(.cb-star.s1) { top:15%;  left:22%;  animation-delay:0s;    animation-duration:2.4s; }
+.md-body :deep(.cb-star.s2) { top:42%;  left:78%;  animation-delay:.7s;   animation-duration:3.1s; width:2.5px; height:2.5px; }
+.md-body :deep(.cb-star.s3) { top:68%;  left:12%;  animation-delay:1.3s;  animation-duration:2.7s; }
+.md-body :deep(.cb-star.s4) { top:28%;  left:92%;  animation-delay:.4s;   animation-duration:2.9s; width:2px; height:2px; }
+.md-body :deep(.cb-star.s5) { top:82%;  left:45%;  animation-delay:1.8s;  animation-duration:3.4s; }
+.md-body :deep(.cb-star.s6) { top:55%;  left:63%;  animation-delay:1.1s;  animation-duration:2.5s; width:2px; height:2px; }
+@keyframes cb-twinkle {
+  0%, 100% { opacity:0;   transform:scale(.6); }
+  50%      { opacity:1;   transform:scale(1.3); }
+}
+
+/* 升空火苗 —— 4 颗，从底部随机位置升起然后消散 */
+.md-body :deep(.cb-ember) {
+  position:absolute;
+  bottom:-6px;
+  width:4px; height:4px;
+  border-radius:50%;
+  background:radial-gradient(circle, #ffdb8b 0%, #ff8c42 45%, rgba(236,72,153,.4) 75%, transparent 100%);
+  filter:blur(.3px);
+  box-shadow:0 0 8px rgba(255,140,66,.8), 0 0 16px rgba(255,140,66,.3);
+  animation:cb-ember-rise 5.8s ease-out infinite;
+  opacity:0;
+}
+.md-body :deep(.cb-ember.e1) { left:18%; animation-delay:0s;    animation-duration:5.4s; }
+.md-body :deep(.cb-ember.e2) { left:52%; animation-delay:1.6s;  animation-duration:6.2s; width:3px; height:3px; }
+.md-body :deep(.cb-ember.e3) { left:78%; animation-delay:3.2s;  animation-duration:5.8s; }
+.md-body :deep(.cb-ember.e4) { left:34%; animation-delay:4.5s;  animation-duration:6.6s; width:3px; height:3px; }
+@keyframes cb-ember-rise {
+  0%   { opacity:0;  transform:translateY(0)     translateX(0)    scale(.6); }
+  15%  { opacity:.95;transform:translateY(-20%)  translateX(4px)  scale(1); }
+  50%  { opacity:.65;transform:translateY(-60%)  translateX(-8px) scale(.9); }
+  85%  { opacity:.25;transform:translateY(-95%)  translateX(6px)  scale(.55); }
+  100% { opacity:0;  transform:translateY(-110%) translateX(0)    scale(.3); }
+}
+
+/* 代码块头部 */
 .md-body :deep(.cb-head) {
+  position:relative;
+  z-index:2;
   display:flex;
   justify-content:space-between;
   align-items:center;
-  padding:8px 14px;
-  background:linear-gradient(90deg, rgba(139,92,246,.08), rgba(139,92,246,.02));
-  border-bottom:1px solid rgba(139,92,246,.12);
-  position:relative;
-  z-index:1;
+  padding:9px 14px;
+  background:linear-gradient(90deg, rgba(139,92,246,.12), rgba(59,130,246,.04));
+  border-bottom:1px solid rgba(139,92,246,.18);
+  backdrop-filter:blur(4px);
 }
 .md-body :deep(.cb-lang) {
   font-size:11px;
-  color:rgba(196,181,253,.7);
+  color:rgba(196,181,253,.85);
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:1.2px;
   display:inline-flex;
   align-items:center;
-  gap:6px;
+  gap:7px;
 }
 .md-body :deep(.cb-lang)::before {
   content:'';
-  width:6px; height:6px; border-radius:50%;
-  background:linear-gradient(135deg, #8b5cf6, #3b82f6);
-  box-shadow:0 0 6px rgba(139,92,246,.5);
+  width:7px; height:7px; border-radius:50%;
+  background:linear-gradient(135deg, #fbbf24, #f97316);
+  box-shadow:0 0 8px rgba(251,191,36,.6), 0 0 4px rgba(249,115,22,.9);
+  animation:cb-lang-pulse 2.4s ease-in-out infinite;
+}
+@keyframes cb-lang-pulse {
+  0%, 100% { box-shadow:0 0 8px rgba(251,191,36,.6), 0 0 4px rgba(249,115,22,.9); transform:scale(1); }
+  50%      { box-shadow:0 0 12px rgba(251,191,36,.9), 0 0 20px rgba(249,115,22,.5); transform:scale(1.15); }
 }
 .md-body :deep(.cb-copy) {
-  background:rgba(139,92,246,.12);
-  border:1px solid rgba(139,92,246,.25);
+  background:rgba(139,92,246,.14);
+  border:1px solid rgba(139,92,246,.3);
   border-radius:6px;
   padding:4px 12px;
   font-size:11px;
-  color:rgba(196,181,253,.9);
+  color:rgba(196,181,253,.95);
   cursor:pointer;
   font-weight:600;
   transition:all .18s ease;
+  letter-spacing:.3px;
 }
 .md-body :deep(.cb-copy:hover) {
-  background:rgba(139,92,246,.22);
+  background:rgba(139,92,246,.28);
   color:#fff;
-  border-color:rgba(139,92,246,.45);
+  border-color:rgba(139,92,246,.55);
   transform:translateY(-1px);
-  box-shadow:0 3px 10px rgba(139,92,246,.25);
+  box-shadow:0 3px 12px rgba(139,92,246,.4);
 }
-.md-body :deep(pre) { margin:0; padding:16px; overflow-x:auto; position:relative; z-index:1; }
-.md-body :deep(pre code) { font-size:12.5px; line-height:1.7; font-family:'JetBrains Mono','Fira Code','SF Mono',monospace; }
-.md-body :deep(pre::-webkit-scrollbar) { height:6px; } .md-body :deep(pre::-webkit-scrollbar-thumb) { background:rgba(139,92,246,.25); border-radius:4px; }
-.md-body :deep(pre::-webkit-scrollbar-thumb:hover) { background:rgba(139,92,246,.45); }
+
+.md-body :deep(pre) {
+  position:relative;
+  z-index:2;
+  margin:0;
+  padding:16px 18px;
+  overflow-x:auto;
+  background:rgba(0,0,0,.18);
+}
+.md-body :deep(pre code) {
+  font-size:12.5px;
+  line-height:1.75;
+  font-family:'JetBrains Mono','Fira Code','SF Mono',ui-monospace,monospace;
+  color:#e8e9ff;
+  text-shadow:0 0 12px rgba(139,92,246,.08);
+}
+.md-body :deep(pre::-webkit-scrollbar) { height:6px; }
+.md-body :deep(pre::-webkit-scrollbar-thumb) { background:rgba(139,92,246,.3); border-radius:4px; }
+.md-body :deep(pre::-webkit-scrollbar-thumb:hover) { background:rgba(139,92,246,.55); }
+
+/* ============ highlight.js 配色覆盖（Spark 主题） ============
+ * 配色受 Dracula + Tokyo Night 启发，保证在深邃背景上高辨识度
+ */
+.md-body :deep(.hljs)                      { color:#e8e9ff; background:transparent; }
+.md-body :deep(.hljs-comment),
+.md-body :deep(.hljs-quote)                { color:#6b7394; font-style:italic; }
+.md-body :deep(.hljs-keyword),
+.md-body :deep(.hljs-selector-tag),
+.md-body :deep(.hljs-literal),
+.md-body :deep(.hljs-doctag)               { color:#ff79c6; font-weight:600; }
+.md-body :deep(.hljs-built_in),
+.md-body :deep(.hljs-type),
+.md-body :deep(.hljs-class .hljs-title)    { color:#8be9fd; }
+.md-body :deep(.hljs-string),
+.md-body :deep(.hljs-template-tag),
+.md-body :deep(.hljs-template-variable),
+.md-body :deep(.hljs-regexp),
+.md-body :deep(.hljs-link),
+.md-body :deep(.hljs-symbol)               { color:#9dffc3; }
+.md-body :deep(.hljs-number),
+.md-body :deep(.hljs-variable.constant_),
+.md-body :deep(.hljs-meta)                 { color:#ffb86c; }
+.md-body :deep(.hljs-title),
+.md-body :deep(.hljs-title.function_),
+.md-body :deep(.hljs-function .hljs-title),
+.md-body :deep(.hljs-title.class_)         { color:#ffd866; font-weight:600; }
+.md-body :deep(.hljs-params),
+.md-body :deep(.hljs-variable),
+.md-body :deep(.hljs-attr)                 { color:#c4b5fd; }
+.md-body :deep(.hljs-tag),
+.md-body :deep(.hljs-name)                 { color:#ff92d0; }
+.md-body :deep(.hljs-attribute)            { color:#82aaff; }
+.md-body :deep(.hljs-section),
+.md-body :deep(.hljs-bullet)               { color:#ff79c6; font-weight:700; }
+.md-body :deep(.hljs-operator),
+.md-body :deep(.hljs-punctuation)          { color:#d8d8f0; }
+.md-body :deep(.hljs-deletion)             { color:#ff5c7c; background:rgba(255,92,124,.12); }
+.md-body :deep(.hljs-addition)             { color:#9dffc3; background:rgba(157,255,195,.1); }
+.md-body :deep(.hljs-emphasis)             { font-style:italic; }
+.md-body :deep(.hljs-strong)               { font-weight:700; }
+
+/* 允许用户在降低动效偏好时关闭装饰动画（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  .md-body :deep(.cb-star),
+  .md-body :deep(.cb-ember),
+  .md-body :deep(.cb-lang)::before { animation:none; }
+  .md-body :deep(.cb-star) { opacity:.7; }
+  .md-body :deep(.cb-ember) { opacity:0; }
+}
 
 /* v7.3 公式包装 + LaTeX 复制按钮 */
 .md-body :deep(.formula-wrap) {

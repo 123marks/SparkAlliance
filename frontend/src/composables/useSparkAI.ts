@@ -12,6 +12,35 @@ function getEdgeFunctionUrl(): string {
   return `${base}/functions/v1/assistant-chat`
 }
 
+/**
+ * 获取有效的 Supabase session —— 若剩余生命周期 < 90s 会主动刷新。
+ * 这是修复"明明登录了却报登录过期"bug 的核心：之前只在 session 为空时才刷新，
+ * 对于过期但未清除的 session 会把坏 token 发给 Edge Function。
+ */
+async function getValidSession() {
+  try {
+    let { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      try {
+        const refreshed = await supabase.auth.refreshSession()
+        session = refreshed.data?.session ?? null
+      } catch { /* ignore */ }
+      return session
+    }
+    const nowSec = Math.floor(Date.now() / 1000)
+    const expSec = session.expires_at ?? 0
+    if (expSec > 0 && expSec - nowSec < 90) {
+      try {
+        const refreshed = await supabase.auth.refreshSession()
+        session = refreshed.data?.session ?? session
+      } catch { /* refresh 失败就走原 token，让 Edge Function 明确 401 */ }
+    }
+    return session
+  } catch {
+    return null
+  }
+}
+
 /** 本地 Gamma4 / Gemma 3 Ollama 服务地址（services/local-ai）
  *  - 开发环境：同机 http://localhost:3721
  *  - 生产环境：设置 VITE_LOCAL_AI_URL 到反向代理的 HTTPS 域名
@@ -26,10 +55,38 @@ export type ModelMode = 'default' | 'thinking' | 'fast'
 /** 后端选择：cloud=只用云端 Edge Function；local=只用本机 Ollama；auto=先云端失败降级本地 */
 export type BackendMode = 'cloud' | 'local' | 'auto'
 
+/**
+ * 3 种模式映射到不同的真实底层模型（Edge Function 侧实际路由），
+ * 前端这里仅展示用途。品牌对外统一叫"星火"，内部使用 NVIDIA NIM。
+ * - default（标准）→ Gemma 3 27B：本项目默认，速度质量平衡
+ * - thinking（深度）→ DeepSeek R1：真推理链，适合复杂题
+ * - fast（极速）→ Llama 3.1 8B：快速回答
+ */
 export const MODEL_OPTIONS: Record<ModelMode, { id: string; fallbacks: string[]; label: string; desc: string; icon: string; maxTokens: number }> = {
-  default: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '均衡', desc: '星火 Gamma4 · 全能均衡', icon: '⚡', maxTokens: 4096 },
-  thinking: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '深度思考', desc: '星火 Gamma4 · 推理增强', icon: '🧠', maxTokens: 8192 },
-  fast: { id: 'google/gemma-3-27b-it', fallbacks: ['meta/llama-3.1-8b-instruct'], label: '极速', desc: '星火 Gamma4 · 快速回复', icon: '🚀', maxTokens: 2048 },
+  default: {
+    id: 'google/gemma-3-27b-it',
+    fallbacks: ['meta/llama-3.1-8b-instruct'],
+    label: '标准',
+    desc: '星火 · Gemma 3 27B（项目默认）',
+    icon: '⚡',
+    maxTokens: 4096,
+  },
+  thinking: {
+    id: 'deepseek-ai/deepseek-r1',
+    fallbacks: ['google/gemma-3-27b-it', 'meta/llama-3.1-8b-instruct'],
+    label: '深度思考',
+    desc: '星火 · DeepSeek R1 推理链',
+    icon: '🧠',
+    maxTokens: 8192,
+  },
+  fast: {
+    id: 'meta/llama-3.1-8b-instruct',
+    fallbacks: ['google/gemma-3-27b-it'],
+    label: '极速',
+    desc: '星火 · Llama 3.1 8B 快答',
+    icon: '🚀',
+    maxTokens: 2048,
+  },
 }
 
 export const ABILITY_TOOLS = [
@@ -602,15 +659,13 @@ export function useSparkAI() {
       onError?.(error.value)
     }, 120000)
 
-    // v9: 云端调用（Supabase Edge Function → NVIDIA API）
+    // v10: 云端调用（Supabase Edge Function → NVIDIA API）
+    // 关键修复：之前只在首次 session 为空或拿到 401 时才刷新 token，
+    // 对于已经过期但前端尚未同步的 session，会把过期 token 先发给服务端，
+    // 触发"登录状态已过期"提示（其实用户 UI 上明明已登录）。
+    // 这里改为：发送前主动检查 expires_at，剩余 < 90s 主动 refresh。
     async function callCloud(): Promise<Response> {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        try {
-          const refreshed = await supabase.auth.refreshSession()
-          session = refreshed.data?.session ?? null
-        } catch { /* ignore */ }
-      }
+      let session = await getValidSession()
       if (!session?.access_token) throw new Error('NO_AUTH')
 
       const fetchCloud = async (token: string) => fetch(getEdgeFunctionUrl(), {
@@ -629,24 +684,24 @@ export function useSparkAI() {
       if (res.ok) return res
 
       if (res.status === 401) {
-        // 401 时尝试 refreshSession 重试一次
         try {
           const refreshed = await supabase.auth.refreshSession()
-          const newToken = refreshed.data?.session?.access_token
-          if (newToken) {
-            res = await fetchCloud(newToken)
-            if (res.ok) return res
-            if (res.status === 401) throw new Error('登录状态已过期，请重新登录')
-            if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-            throw new Error(`Edge Function 失败 (${res.status})`)
-          }
-        } catch (e) {
-          if (e instanceof Error && e.message.includes('登录状态已过期')) throw e
+          session = refreshed.data?.session ?? null
+        } catch {
+          session = null
         }
-        throw new Error('登录状态已过期，请重新登录')
+        if (session?.access_token) {
+          res = await fetchCloud(session.access_token)
+          if (res.ok) return res
+          if (res.status === 401) throw new Error('AI 服务认证异常，请刷新页面后重试')
+          if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
+          throw new Error(`Edge Function 失败 (${res.status})`)
+        }
+        throw new Error('AI 服务认证异常，请刷新页面后重试')
       }
       if (res.status === 429) throw new Error('请求过于频繁，请等待几秒后重试')
-      throw new Error(`Edge Function 失败 (${res.status})`)
+      const errText = await res.text().catch(() => '')
+      throw new Error(`Edge Function 失败 (${res.status})${errText ? ': ' + errText.slice(0, 120) : ''}`)
     }
 
     // v9: 本地调用（services/local-ai + Ollama Gamma4 / Gemma3）
