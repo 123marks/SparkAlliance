@@ -1296,6 +1296,18 @@
         <button class="cp-unlock-close" @click="clearNewlyUnlocked">✕</button>
       </div>
     </Transition>
+
+    <!-- v13.1: 彩蛋横幅（节日 / 里程碑触发，比 toast 更隆重） -->
+    <Transition name="egg-banner">
+      <div v-if="easterEggBanner" class="cp-egg-banner" :class="'egg-' + easterEggBanner.type">
+        <span class="cp-egg-icon">{{ easterEggBanner.banner?.icon || '✨' }}</span>
+        <div class="cp-egg-body">
+          <div class="cp-egg-title">{{ easterEggBanner.title }}</div>
+          <div class="cp-egg-desc">{{ easterEggBanner.banner?.text || easterEggBanner.system_msg || '触发了一个隐藏彩蛋' }}</div>
+        </div>
+        <button class="cp-egg-close" @click="closeEasterEggBanner" aria-label="关闭">✕</button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -4717,5 +4729,99 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .unlock-toast-leave-to {
   opacity: 0;
   transform: translateX(40px) scale(0.95);
+}
+
+/* v13.1 彩蛋横幅（节日 / 里程碑） —— 居中漂浮、节日类暖色、里程碑类冷色 */
+.cp-egg-banner {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(236, 72, 153, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  box-shadow: 0 14px 40px rgba(245, 158, 11, 0.45), 0 0 0 6px rgba(255, 255, 255, 0.06);
+  min-width: 280px;
+  max-width: 460px;
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.cp-egg-banner.egg-milestone {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.95), rgba(139, 92, 246, 0.92));
+  box-shadow: 0 14px 40px rgba(139, 92, 246, 0.45), 0 0 0 6px rgba(255, 255, 255, 0.06);
+}
+
+.cp-egg-banner.egg-phrase {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(14, 165, 233, 0.92));
+  box-shadow: 0 14px 40px rgba(34, 197, 94, 0.4), 0 0 0 6px rgba(255, 255, 255, 0.06);
+}
+
+.cp-egg-icon {
+  font-size: 32px;
+  animation: egg-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+@keyframes egg-pop {
+  0%   { transform: scale(0.2) rotate(-30deg); opacity: 0; }
+  55%  { transform: scale(1.25) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.cp-egg-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-egg-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+}
+
+.cp-egg-desc {
+  font-size: 12px;
+  opacity: 0.94;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.cp-egg-close {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.cp-egg-close:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.egg-banner-enter-active {
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.egg-banner-leave-active {
+  transition: all 0.35s ease;
+}
+.egg-banner-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-30px) scale(0.85);
+}
+.egg-banner-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-12px) scale(0.95);
 }
 </style>
