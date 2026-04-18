@@ -190,3 +190,39 @@ export function coverStyleToCss(style: CoverStyle): string {
   const angle = style.angle ?? 135
   return `linear-gradient(${angle}deg, ${style.gradient[0]} 0%, ${style.gradient[1]} 100%)`
 }
+
+/**
+ * v13.1 助手：把数据库 / 老代码里的 cover_style（可能是 JSON 字符串、主题名、或对象）
+ * 统一归一化为 CoverStyle 对象，无效输入返回 null。
+ */
+export function parseCoverStyle(input: string | CoverStyle | null | undefined): CoverStyle | null {
+  if (!input) return null
+  if (typeof input === 'object') {
+    if ('emoji' in input && Array.isArray((input as CoverStyle).gradient)) {
+      return input as CoverStyle
+    }
+    return null
+  }
+  // string 形式：先尝试 JSON 解析
+  if (typeof input === 'string') {
+    const trimmed = input.trim()
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed && typeof parsed === 'object' && parsed.emoji && Array.isArray(parsed.gradient)) {
+          return parsed as CoverStyle
+        }
+      } catch { /* not JSON */ }
+    }
+    // 主题名 fallback：匹配 COVER_GRADIENTS 的 key
+    if (trimmed in COVER_GRADIENTS) {
+      return {
+        emoji: '✨',
+        gradient: COVER_GRADIENTS[trimmed as CoverTheme],
+        theme: trimmed as CoverTheme,
+        angle: 135,
+      }
+    }
+  }
+  return null
+}

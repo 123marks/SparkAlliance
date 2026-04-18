@@ -1320,7 +1320,7 @@ import FriendTagManager from '../../components/companion/FriendTagManager.vue'
 import CheckinModal from '../../components/companion/CheckinModal.vue'
 import AchievementPanel from '../../components/companion/AchievementPanel.vue'
 import { useCheckin } from '../../composables/useCheckin'
-import { useAchievements } from '../../composables/useAchievements'
+import { useAchievements, gameEvent } from '../../composables/useAchievements'
 import { useEasterEggs, type EasterEgg } from '../../composables/useEasterEggs'
 import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
@@ -2785,7 +2785,7 @@ function handleCommentEnhanced(momentId: string) {
   const text = commentInputs[momentId]?.trim()
   const imgUrl = commentImagePreview[momentId]
   if (!text && !imgUrl) return
-  commentMoment(momentId, text || '[图片]', imgUrl)
+  commentMoment(momentId, text || '[图片]', imgUrl ? { mediaUrl: imgUrl, mediaType: 'image' } : undefined)
   commentInputs[momentId] = ''
   clearCommentImage(momentId)
   commentEmojiVisible.value = null

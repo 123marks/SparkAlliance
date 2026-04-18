@@ -202,6 +202,8 @@ export interface Moment {
   is_pinned: boolean      // 是否置顶
   stranger_comments_visible?: boolean  // 是否允许陌生人之间互看评论
   cover_style?: string    // 智能封面样式 key（由 utils/momentCover 生成）
+  tags?: string[]         // v13.1: 话题标签（#xx）
+  region?: string         // v13.1: 用户填写的地区（独立于 location.name 的人工标签）
   location?: {            // 地理位置
     name: string          // 人类可读地址（如 "杭州 · 西湖区"）
     latitude?: number
@@ -227,6 +229,8 @@ export interface MomentComment {
   content: string
   media_url?: string       // 评论图片/视频 URL
   media_type?: 'image' | 'video'
+  image_url?: string       // v13.1: 评论附图 URL（与 media_url 等价的别名，兼容旧 UI）
+  likes?: string[]         // v13.1: 评论点赞者 spark_id 列表
   reply_to?: string        // 回复目标评论 ID（二级评论）
   reply_to_name?: string   // 回复目标昵称
   created_at: string
@@ -333,6 +337,16 @@ function loadData<T>(key: string, fallback: T): T {
 function saveData(key: string, data: unknown) {
   try { localStorage.setItem(key, JSON.stringify(data)) } catch { /* 空间不够就跳过 */ }
 }
+
+// ============ 碰一碰预设动作 ============
+/** v13.1: 多分类碰一碰文案预设；用户可在此基础上自定义 poke_text */
+export const POKE_PRESETS_GROUPED: Array<{ category: string; icon: string; items: string[] }> = [
+  { category: '友好', icon: '👋', items: ['碰了碰', '戳了戳', '拍了拍', '推了推', '揉了揉', '抱了抱'] },
+  { category: '俏皮', icon: '😜', items: ['弹脑门', '挠了挠', '咬了一口', '亲了一下', '蹭了蹭'] },
+  { category: '猛烈', icon: '💥', items: ['捶了捶', '踹了一脚', '拍肩膀', '挥拳头'] },
+  { category: '关怀', icon: '🤗', items: ['递了杯咖啡', '送上一束花', '搂了搂肩膀', '塞了块小饼干'] },
+  { category: '学习', icon: '📚', items: ['催交作业', '叫起床', '陪学习', '提醒喝水'] },
+]
 
 // ============ AI 配置 ============
 const AI_MODEL = 'minimaxai/minimax-m2.5' // 快速模型用于聊天
@@ -1025,6 +1039,9 @@ export function useCompanion() {
       allowedTagIds?: string[]
       allowedFriendIds?: string[]
       strangerCommentsVisible?: boolean
+      tags?: string[]               // v13.1: 话题标签
+      region?: string               // v13.1: 地区
+      visibleTo?: string[]          // v13.1: visibility=partial 时的可见好友列表（allowedFriendIds 的别名）
     }
   ) {
     const m: Moment = {
@@ -1038,7 +1055,7 @@ export function useCompanion() {
       live_expires_at: options?.isLive ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
       visibility,
       allowed_tag_ids: options?.allowedTagIds,
-      allowed_friend_ids: options?.allowedFriendIds,
+      allowed_friend_ids: options?.allowedFriendIds || options?.visibleTo,
       show_in_plaza: showInPlaza,
       likes: [],
       comments: [],
@@ -1046,6 +1063,8 @@ export function useCompanion() {
       is_pinned: false,
       stranger_comments_visible: options?.strangerCommentsVisible ?? false,
       cover_style: options?.coverStyle,
+      tags: options?.tags,
+      region: options?.region,
       location: options?.location,
       share_chain: [],
       created_at: now(),
@@ -1672,6 +1691,115 @@ export function useCompanion() {
     return new Date(moment.live_expires_at).getTime() > Date.now()
   }
 
+  // ====== v13.1 补齐：Companion.vue 引用的助手 API ======
+
+  /** AI 正在输入时的提示文案（在多步推理/工具调用时切换显示） */
+  const aiTypingText = ref('')
+
+  /** 清空与某好友的私聊记录（包括本地缓存和未读数） */
+  function clearPrivateChat(friendId: string) {
+    const all = getPrivateChatStore()
+    delete all[friendId]
+    markPrivateChatDirty()
+    const f = friends.value.find(f => f.spark_id === friendId)
+    if (f) {
+      f.last_msg = ''
+      f.last_msg_time = ''
+      f.unread = 0
+      saveData(STORAGE_KEYS.friends, friends.value)
+    }
+  }
+
+  /** 重试最后一次发往伴侣 AI 的提问（直接重发上一条 user 消息） */
+  async function retryLastAI(): Promise<string> {
+    // 找最近一条 user 类型的消息
+    for (let i = aiChatHistory.value.length - 1; i >= 0; i--) {
+      const m = aiChatHistory.value[i]
+      if (m.sender_type === 'user') {
+        return await sendToAI(m.content)
+      }
+    }
+    return ''
+  }
+
+  /** 设置某群聊的本地备注（仅自己可见，不同步给群成员） */
+  function setGroupRemark(groupId: string, remark: string): boolean {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g) return false
+    g.group_remark = remark
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return true
+  }
+
+  /** 设置自己在某群里的群昵称（覆盖默认 nickname） */
+  function setMyGroupNickname(groupId: string, nickname: string): boolean {
+    const g = groups.value.find(g => g.id === groupId)
+    if (!g || !myProfile.value) return false
+    const me = g.members.find(m => m.spark_id === myProfile.value!.spark_id)
+    if (!me) return false
+    me.group_nickname = nickname || undefined
+    saveData(STORAGE_KEYS.groups, groups.value)
+    return true
+  }
+
+  /** 取群聊有效显示名（自己设置的备注 → 群名） */
+  function getGroupDisplayName(group: GroupChat | null | undefined): string {
+    if (!group) return ''
+    return group.group_remark || group.name
+  }
+
+  /** 强制把 friends 写盘（用于直接操作字段后） */
+  function persistFriends() {
+    saveData(STORAGE_KEYS.friends, friends.value)
+  }
+
+  /** 强制把 groups 写盘 */
+  function persistGroups() {
+    saveData(STORAGE_KEYS.groups, groups.value)
+  }
+
+  /**
+   * 根据 spark_id 解析出最新的 avatar / avatar_url / 显示名。
+   * 优先级：好友本地资料 → 群成员资料 → 自己 → 传入的 fallback
+   */
+  function resolveSenderInfo(
+    spark_id: string,
+    fallbackAvatar?: string,
+    fallbackAvatarUrl?: string,
+    fallbackName?: string,
+  ): { avatar: string; avatar_url?: string; name: string } {
+    if (myProfile.value && myProfile.value.spark_id === spark_id) {
+      return {
+        avatar: myProfile.value.avatar,
+        avatar_url: myProfile.value.avatar_url,
+        name: myProfile.value.nickname,
+      }
+    }
+    const friend = friends.value.find(f => f.spark_id === spark_id)
+    if (friend) {
+      return {
+        avatar: friend.avatar || fallbackAvatar || '👤',
+        avatar_url: friend.avatar_url || fallbackAvatarUrl,
+        name: friend.remark || friend.nickname || fallbackName || spark_id,
+      }
+    }
+    for (const g of groups.value) {
+      const m = g.members.find(m => m.spark_id === spark_id)
+      if (m) {
+        return {
+          avatar: m.avatar || fallbackAvatar || '👤',
+          avatar_url: m.avatar_url || fallbackAvatarUrl,
+          name: m.group_nickname || m.nickname || fallbackName || spark_id,
+        }
+      }
+    }
+    return {
+      avatar: fallbackAvatar || '👤',
+      avatar_url: fallbackAvatarUrl,
+      name: fallbackName || spark_id,
+    }
+  }
+
   init()
 
   void loadProfileFromSupabase
@@ -1680,7 +1808,7 @@ export function useCompanion() {
     // 数据
     myProfile, friends, friendRequests, groups, moments, favorites, aiChatHistory,
     friendTags, blacklist, friendPermissions,
-    loading, isAiTyping, totalUnreadMessages,
+    loading, isAiTyping, aiTypingText, totalUnreadMessages,
     // 档案
     updateProfile, changeSparkId, getQRData, loadProfileFromSupabase, syncProfileToSupabase,
     // 好友
@@ -1694,12 +1822,14 @@ export function useCompanion() {
     updateFriendPermissions, getFriendPermissions,
     // 私聊
     getPrivateChat, sendPrivateMsg, markMessagesAsRead, getUnreadCount,
+    clearPrivateChat,
     // 消息操作
-    recallMessage, sendPokeMessage,
+    recallMessage, sendPokeMessage, POKE_PRESETS_GROUPED,
     // 群聊
     createGroup, sendGroupMsg, sendGroupMsgWithMentions, fetchMomentComments,
     // 群管理
     getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
+    setGroupRemark, setMyGroupNickname, getGroupDisplayName,
     // 动态
     postMoment, toggleLike, commentMoment, deleteMoment, togglePinMoment,
     updateMomentFields, deleteMomentComment, shareMomentToChat, shareMomentToAI,
@@ -1708,7 +1838,9 @@ export function useCompanion() {
     // 收藏
     addFavorite, removeFavorite,
     // AI
-    sendToAI, clearAIChat,
+    sendToAI, clearAIChat, retryLastAI,
+    // v13.1 持久化与展示助手
+    persistFriends, persistGroups, resolveSenderInfo,
     // 工具
     formatTimeAgo,
   }

@@ -15,7 +15,7 @@
 import { computed } from 'vue'
 import type { Moment } from '../../composables/useCompanion'
 import MomentCover from './MomentCover.vue'
-import { generateCoverStyle } from '../../utils/momentCover'
+import { generateCoverStyle, parseCoverStyle, type CoverStyle } from '../../utils/momentCover'
 
 interface Props {
   moments: Moment[]
@@ -34,7 +34,9 @@ const cards = computed(() => {
   return props.moments.map((m) => {
     const hasMedia = (m.media_urls?.length || 0) > 0 || (m.video_urls?.length || 0) > 0
     const coverImg = m.media_urls?.[0] || ''
-    const coverStyle = hasMedia ? null : (m.cover_style || generateCoverStyle(m.content, false))
+    const coverStyle: CoverStyle | null = hasMedia
+      ? null
+      : (parseCoverStyle(m.cover_style) || generateCoverStyle(m.content, false))
     const snippet = (m.content || '').replace(/[\r\n]+/g, ' ').slice(0, 40)
     return {
       id: m.id,

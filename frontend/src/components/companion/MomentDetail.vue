@@ -27,7 +27,7 @@
 import { computed, ref, nextTick } from 'vue'
 import type { Moment } from '../../composables/useCompanion'
 import { formatTimeAgo } from '../../composables/useCompanion'
-import { generateCoverStyle } from '../../utils/momentCover'
+import { generateCoverStyle, parseCoverStyle, type CoverStyle } from '../../utils/momentCover'
 import MomentCover from './MomentCover.vue'
 
 interface Props {
@@ -49,9 +49,9 @@ const emit = defineEmits<{
 
 const isAuthor = computed(() => props.myId && props.moment.author_id === props.myId)
 const hasMedia = computed(() => (props.moment.media_urls?.length || 0) > 0 || (props.moment.video_urls?.length || 0) > 0)
-const coverStyle = computed(() => {
+const coverStyle = computed<CoverStyle | null>(() => {
   if (hasMedia.value) return null
-  return props.moment.cover_style || generateCoverStyle(props.moment.content, false)
+  return parseCoverStyle(props.moment.cover_style) || generateCoverStyle(props.moment.content, false)
 })
 
 const imageList = computed(() => props.moment.media_urls || [])
@@ -201,9 +201,9 @@ function copyLink() {
           <div class="md-chain-title">🔁 最近转发</div>
           <ul>
             <li v-for="(s, idx) in moment.share_chain" :key="idx" class="md-chain-item">
-              <span class="md-chain-name">{{ s.by_nickname }}</span>
+              <span class="md-chain-name">{{ s.user_name }}</span>
               <span v-if="s.note" class="md-chain-note">"{{ s.note }}"</span>
-              <span class="md-chain-time">· {{ formatTimeAgo(s.at) }}</span>
+              <span class="md-chain-time">· {{ formatTimeAgo(s.shared_at) }}</span>
             </li>
           </ul>
         </section>
