@@ -275,7 +275,7 @@ Write-Host ""
 Write-Host "下一步：" -ForegroundColor Cyan
 Write-Host "  1) 启动前端：cd frontend; npm run dev" -ForegroundColor Gray
 Write-Host "  2) 登录 -> 打开 /app/chat -> 发送一条测试消息" -ForegroundColor Gray
-Write-Host "  3) 切换顶栏 4 模式（均衡 / 深度思考 / 极速 / 标准-Gemma3）验证" -ForegroundColor Gray
+Write-Host "  3) 切换顶栏 4 模式（均衡 / 深度思考 / 极速 / 标准）验证" -ForegroundColor Gray
 Write-Host "  4) 查看 Supabase Dashboard -> Edge Functions -> Logs 确认无错误" -ForegroundColor Gray
 Write-Host ""
 Write-Host "安全提醒：" -ForegroundColor Yellow

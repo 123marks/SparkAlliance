@@ -5,6 +5,10 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
+    // v9: 固定端口 5173，被占用时直接报错而非自动切换，确保用户能察觉
+    port: 5173,
+    strictPort: true,
+    host: true,
     // 禁止浏览器缓存，确保每次加载最新代码
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -14,19 +18,9 @@ export default defineConfig({
     hmr: {
       overlay: true, // 错误弹窗
     },
-    proxy: {
-      // NVIDIA GLM5 API 代理（绕过 CORS）
-      '/api/nvidia': {
-        target: 'https://integrate.api.nvidia.com',
-        changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/nvidia/, '/v1'),
-      },
-      // 小米 MiMO API 代理
-      '/api/mimo': {
-        target: 'https://api.xiaomimimo.com',
-        changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/mimo/, '/v1'),
-      },
-    },
+    // 注意：AI 调用全部走 Supabase Edge Function（服务端 NVIDIA_API_KEY），
+    // 前端不再需要代理到 NVIDIA NIM 或其他任何模型 API。
+    // 以下 proxy 仅在极少数开发场景下才会用到；生产环境完全不依赖。
+    proxy: {},
   },
 })
