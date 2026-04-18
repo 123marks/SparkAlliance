@@ -717,7 +717,7 @@
           <div class="cp-ml-list">
             <h4 class="cp-ml-title">我的动态</h4>
             <p v-if="myPinnedCount" class="cp-pinned-hint">📌 {{ myPinnedCount }} 条已置顶（见星火域顶部）</p>
-            <div v-for="m in myMoments" :key="m.id" class="cp-feed-card">
+            <div v-for="m in myMoments" :key="m.id" class="cp-feed-card" @click="openMomentDetail(m)" style="cursor:pointer">
               <div class="cp-feed-head">
                 <span v-if="isMomentLive(m)" class="cp-live-badge"><span class="cp-live-dot-sm"></span>LIVE</span>
                 <small>{{ formatTimeAgo(m.created_at) }}</small>
@@ -732,17 +732,18 @@
               <p class="cp-feed-text">{{ m.content }}</p>
               <div v-if="m.media_urls?.length" class="cp-feed-media">
                 <template v-for="(url,idx) in m.media_urls.slice(0,4)" :key="idx">
-                  <img :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
+                  <div v-if="isMomentVideoUrl(url)" class="cp-feed-video-wrap" @click.stop="toggleFeedVideo($event)">
+                    <video :src="url" class="cp-feed-video" preload="metadata" playsinline :poster="url+'#t=0.5'"></video>
+                    <div class="cp-feed-video-play">▶</div>
+                  </div>
+                  <img v-else :src="url" class="cp-feed-img" @click.stop="openAvatarPreview(url,'','')">
                 </template>
               </div>
-              <div v-else-if="generateCoverStyle(m.content, false)" class="cp-feed-cover sm" :style="{background: coverStyleToCss(generateCoverStyle(m.content, false)!)}">
-                <span class="cp-feed-cover-emoji">{{ generateCoverStyle(m.content, false)!.emoji }}</span>
-              </div>
-              <div class="cp-feed-acts">
+              <div class="cp-feed-acts" @click.stop>
                 <button :class="{liked:m.likes.includes(myProfile?.spark_id||'')}" @click="toggleLike(m.id)">❤️ {{ m.likes.length||'' }}</button>
                 <button @click="expandedComments[m.id]=!expandedComments[m.id]">💬 {{ m.comments.length||'' }}</button>
               </div>
-              <div v-if="expandedComments[m.id]" class="cp-comments">
+              <div v-if="expandedComments[m.id]" class="cp-comments" @click.stop>
                 <div v-for="c in m.comments" :key="c.id" class="cp-cmt"><b>{{ c.author_name }}：</b>{{ c.content }}</div>
                 <div class="cp-cmt-input"><input v-model="commentInputs[m.id]" placeholder="评论..." @keydown.enter="handleComment(m.id)"><button @click="handleComment(m.id)">发</button></div>
               </div>
@@ -787,8 +788,12 @@
               <span class="cp-pinned-label-icon">📌</span>
               <span class="cp-pinned-label-text">置顶</span>
               <span class="cp-pinned-label-count">{{ pinnedMoments.length }}</span>
+              <button class="cp-pinned-expand-btn" @click="showPinnedVertical=!showPinnedVertical" :title="showPinnedVertical?'收起':'展开置顶列表'">
+                {{ showPinnedVertical ? '‹ 收起' : '展开 ›' }}
+              </button>
             </div>
-            <div class="cp-pinned-scroll-wrap">
+            <!-- 横向模式（默认） -->
+            <div v-if="!showPinnedVertical" class="cp-pinned-scroll-wrap">
               <button
                 v-show="pinnedHasPrev"
                 class="cp-pinned-arrow prev"
@@ -811,6 +816,7 @@
                 <div v-for="m in pinnedMoments" :key="'pin-'+m.id" class="cp-pinned-card" @click="openMomentDetail(m)">
                   <div class="cp-pinned-thumb-wrap">
                     <img v-if="m.media_urls?.[0] && !isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" draggable="false" />
+                    <video v-else-if="m.media_urls?.[0] && isMomentVideoUrl(m.media_urls[0])" :src="m.media_urls[0]" class="cp-pinned-thumb" preload="metadata" :poster="m.media_urls[0]+'#t=0.5'" muted draggable="false"></video>
                     <div v-else class="cp-pinned-thumb-placeholder">📌</div>
                     <SparkAvatar class="cp-pinned-avatar" :avatar="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar" :avatar-url="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).avatar_url" :name="resolveSenderInfo(m.author_id, m.author_avatar, undefined, m.author_name).name" size="xs" />
                   </div>
@@ -830,6 +836,22 @@
               <!-- 滑动进度条（只在有溢出内容时展示） -->
               <div v-if="pinnedHasMore || pinnedHasPrev" class="cp-pinned-progress">
                 <div class="cp-pinned-progress-bar" :style="{transform:`scaleX(${Math.max(0.08, pinnedProgress)})`}"></div>
+              </div>
+            </div>
+            <!-- 纵向列表模式（参考微信"我的置顶"） -->
+            <div v-else class="cp-pinned-vertical">
+              <div v-for="m in pinnedMoments" :key="'pinv-'+m.id" class="cp-pinned-vcard" @click="openMomentDetail(m)">
+                <div class="cp-pinned-vcard-date">
+                  <span class="cp-pinned-vcard-day">{{ new Date(m.created_at).getDate() }}</span>
+                  <span class="cp-pinned-vcard-month">{{ new Date(m.created_at).getMonth()+1 }}月</span>
+                </div>
+                <div v-if="m.media_urls?.length" class="cp-pinned-vcard-media">
+                  <template v-for="(url,idx) in m.media_urls.slice(0,3)" :key="idx">
+                    <video v-if="isMomentVideoUrl(url)" :src="url" class="cp-pinned-vcard-img" preload="metadata" :poster="url+'#t=0.5'" muted></video>
+                    <img v-else :src="url" class="cp-pinned-vcard-img" />
+                  </template>
+                </div>
+                <div class="cp-pinned-vcard-text">{{ m.content?.slice(0, 80) || '查看动态' }}</div>
               </div>
             </div>
           </div>
@@ -867,9 +889,6 @@
                 </div>
                 <img v-else :src="url" class="cp-feed-img" @click="openAvatarPreview(url,'','')">
               </template>
-            </div>
-            <div v-else-if="generateCoverStyle(m.content, false)" class="cp-feed-cover" :style="{background: coverStyleToCss(generateCoverStyle(m.content, false)!)}">
-              <span class="cp-feed-cover-emoji">{{ generateCoverStyle(m.content, false)!.emoji }}</span>
             </div>
             <div class="cp-feed-footer-info">
               <span v-if="m.region" class="cp-feed-region">📍{{ m.region }}</span>
@@ -1187,7 +1206,7 @@
               <option value="private">🔒 私密</option>
             </select>
           </div>
-          <!-- 部分可见好友选择（支持标签组批量） -->
+          <!-- 部分可见好友选择（支持标签组批量 + 搜索 + 首字母排序） -->
           <div v-if="publishVis==='partial'" class="cp-pub-partial">
             <div class="cp-pub-partial-header">
               <p class="cp-pub-partial-hint">选择可见的好友：</p>
@@ -1195,6 +1214,11 @@
                 <button type="button" class="cp-pub-partial-qbtn" @click="selectAllVisibleTo">全选</button>
                 <button type="button" class="cp-pub-partial-qbtn" @click="clearAllVisibleTo" :disabled="!publishVisibleTo.length">清空</button>
               </div>
+            </div>
+            <!-- 搜索 + 管理标签组入口 -->
+            <div class="cp-pub-partial-toolbar">
+              <input v-model="publishFriendSearch" class="cp-pub-partial-search" placeholder="🔍 搜索好友昵称/备注/ID..." />
+              <button type="button" class="cp-pub-partial-tag-mgr-btn" @click="showTagManager=true" title="管理标签组">🏷️ 管理</button>
             </div>
             <!-- 标签组快速批量 -->
             <div v-if="friendTags.length" class="cp-pub-tag-groups">
@@ -1210,14 +1234,16 @@
               </button>
             </div>
             <div class="cp-pub-partial-list">
-              <div v-for="f in friends" :key="f.spark_id" class="cp-pub-partial-item" :class="{selected:publishVisibleTo.includes(f.spark_id)}" @click="toggleVisibleTo(f.spark_id)">
+              <div v-for="f in publishSortedFriends" :key="f.spark_id" class="cp-pub-partial-item" :class="{selected:publishVisibleTo.includes(f.spark_id)}" @click="toggleVisibleTo(f.spark_id)">
                 <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url||f.profile?.avatar_url" :name="f.nickname" size="xs" />
                 <span class="cp-pub-partial-name">{{ f.remark||f.nickname }}</span>
+                <span class="cp-pub-partial-letter">{{ getFirstLetter(f.remark||f.nickname) }}</span>
                 <span v-if="getTagsForFriend(f.spark_id).length" class="cp-pub-partial-badges">
                   <span v-for="tg in getTagsForFriend(f.spark_id).slice(0,2)" :key="tg.id" class="cp-pub-partial-badge" :style="tg.color ? {background:tg.color+'22', color:tg.color} : undefined">{{ tg.name }}</span>
                 </span>
                 <span v-if="publishVisibleTo.includes(f.spark_id)" class="cp-pub-partial-check">✓</span>
               </div>
+              <p v-if="!publishSortedFriends.length && publishFriendSearch" class="cp-pub-partial-empty">未找到匹配的好友</p>
             </div>
             <p class="cp-pub-partial-count">已选 {{ publishVisibleTo.length }} / {{ friends.length }} 人</p>
           </div>
@@ -1393,7 +1419,7 @@ import { useEasterEggs, type EasterEgg } from '../../composables/useEasterEggs'
 import QRCode from 'qrcode'
 import { supabase } from '../../supabase'
 import { uploadMomentMediaBatch, uploadMomentMedia } from '../../composables/momentMediaUpload'
-import { generateCoverStyle, coverStyleToCss } from '../../utils/momentCover'
+// import { generateCoverStyle, coverStyleToCss } from '../../utils/momentCover' // 已移除渐变封面
 import { detectReadableLocation, searchPlaces, type LocationInfo } from '../../composables/geolocation'
 
 const {
@@ -1495,6 +1521,7 @@ const pinnedScrollRef = ref<HTMLElement | null>(null)
 const pinnedHasMore = ref(false)     // 是否可向右滚
 const pinnedHasPrev = ref(false)     // 是否可向左滚
 const pinnedProgress = ref(0)        // 滑动进度 0-1（用于微型进度条）
+const showPinnedVertical = ref(false) // 置顶纵向列表模式
 
 function handlePinnedScroll() {
   const el = pinnedScrollRef.value
@@ -1765,6 +1792,42 @@ function selectAllVisibleTo() {
 function clearAllVisibleTo() {
   publishVisibleTo.value = []
 }
+
+// 好友搜索与排序（部分可见选择器）
+const publishFriendSearch = ref('')
+const _pinyinRanges: [number,number,string][] = [[0x4e00,0x4e09,'y'],[0x4e07,0x4e07,'w'],[0x4e09,0x4e09,'s'],[0x4e0a,0x4e0a,'s'],[0x4e0b,0x4e0b,'x'],[0x4e2d,0x4e2d,'z'],[0x4eba,0x4eba,'r'],[0x4ee5,0x4ee5,'y'],[0x4ed6,0x4ed6,'t'],[0x5341,0x5341,'s'],[0x5927,0x5927,'d'],[0x5929,0x5929,'t'],[0x5973,0x5973,'n'],[0x5b66,0x5b66,'x'],[0x5bb6,0x5bb6,'j'],[0x5c0f,0x5c0f,'x'],[0x5f00,0x5f00,'k'],[0x6211,0x6211,'w'],[0x65b0,0x65b0,'x'],[0x660e,0x660e,'m'],[0x661f,0x661f,'x'],[0x6625,0x6625,'c'],[0x6765,0x6765,'l'],[0x6797,0x6797,'l'],[0x674e,0x674e,'l'],[0x6c34,0x6c34,'s'],[0x6d77,0x6d77,'h'],[0x738b,0x738b,'w'],[0x767d,0x767d,'b'],[0x82b1,0x82b1,'h'],[0x8d75,0x8d75,'z'],[0x9a6c,0x9a6c,'m'],[0x9ec4,0x9ec4,'h'],[0x5f20,0x5f20,'z'],[0x5218,0x5218,'l'],[0x9648,0x9648,'c'],[0x6768,0x6768,'y'],[0x5434,0x5434,'w'],[0x5468,0x5468,'z'],[0x9ad8,0x9ad8,'g']]
+function getFirstLetter(name: string): string {
+  if (!name) return '#'
+  const ch = name[0]
+  if (/[a-zA-Z]/.test(ch)) return ch.toUpperCase()
+  const code = ch.charCodeAt(0)
+  for (const [start, end, letter] of _pinyinRanges) {
+    if (code >= start && code <= end) return letter.toUpperCase()
+  }
+  // 简易区间判断
+  if (code >= 0xB0A1 && code <= 0xB0C4) return 'A'
+  if (code >= 0xB0C5 && code <= 0xB2C0) return 'B'
+  return '#'
+}
+const publishSortedFriends = computed(() => {
+  let list = [...friends.value]
+  // 搜索过滤
+  const q = publishFriendSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(f =>
+      (f.nickname||'').toLowerCase().includes(q) ||
+      (f.remark||'').toLowerCase().includes(q) ||
+      (f.spark_id||'').toLowerCase().includes(q)
+    )
+  }
+  // 首字母排序
+  list.sort((a, b) => {
+    const la = getFirstLetter(a.remark || a.nickname)
+    const lb = getFirstLetter(b.remark || b.nickname)
+    return la.localeCompare(lb)
+  })
+  return list
+})
 function tagGroupSelectedCount(tagId: string): number {
   const tag = friendTags.value.find(t => t.id === tagId)
   if (!tag) return 0
@@ -3054,7 +3117,7 @@ onMounted(async ()=>{
       }
       updateProfile({})
       // 异步加载完整档案（含 university/interests 等字段）并同步动态中的 author_name
-      loadProfileFromSupabase(data.user.id).catch(() => {})
+      await loadProfileFromSupabase(data.user.id).catch(() => {})
     }
   } catch { /* 离线模式忽略 */ }
 
@@ -3848,9 +3911,12 @@ async function handlePublish() {
       }
     }
 
+    // 将视频和图片合并为 media_urls，统一渲染（模板只检查 media_urls）
+    const allMediaUrls = [...finalImageUrls, ...finalVideoUrls]
+
     postMoment(
       publishContent.value.trim(),
-      finalImageUrls,
+      allMediaUrls,
       publishVis.value === 'partial' ? 'friends' : publishVis.value,
       true,
       {
@@ -4528,6 +4594,27 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-pub-partial-badge{font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(139,92,246,.08);color:rgba(139,92,246,.65);white-space:nowrap}
 .cp-pub-partial-check{margin-left:4px;color:rgba(139,92,246,.7);font-weight:700;flex-shrink:0}
 .cp-pub-partial-count{font-size:9px;color:rgba(139,92,246,.5);margin:6px 0 0;text-align:right}
+.cp-pub-partial-toolbar{display:flex;gap:6px;margin:6px 0}
+.cp-pub-partial-search{flex:1;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.7);font-size:11px;outline:none;transition:border-color .2s}
+.cp-pub-partial-search:focus{border-color:rgba(139,92,246,.3)}
+.cp-pub-partial-tag-mgr-btn{padding:6px 10px;border-radius:8px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.12);color:rgba(139,92,246,.7);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.cp-pub-partial-tag-mgr-btn:hover{background:rgba(139,92,246,.14)}
+.cp-pub-partial-letter{font-size:9px;color:rgba(255,255,255,.2);margin-left:auto;flex-shrink:0}
+.cp-pub-partial-empty{text-align:center;color:rgba(255,255,255,.25);font-size:11px;padding:16px 0}
+
+/* 置顶展开按钮 */
+.cp-pinned-expand-btn{margin-left:auto;padding:2px 10px;border-radius:6px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.12);color:rgba(139,92,246,.6);font-size:10px;cursor:pointer;transition:all .15s}
+.cp-pinned-expand-btn:hover{background:rgba(139,92,246,.15);color:rgba(139,92,246,.8)}
+/* 置顶纵向列表 */
+.cp-pinned-vertical{max-height:420px;overflow-y:auto;padding:8px 0}
+.cp-pinned-vcard{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s}
+.cp-pinned-vcard:hover{background:rgba(139,92,246,.04)}
+.cp-pinned-vcard-date{flex-shrink:0;text-align:center;min-width:48px}
+.cp-pinned-vcard-day{display:block;font-size:22px;font-weight:700;color:rgba(139,92,246,.8);line-height:1}
+.cp-pinned-vcard-month{display:block;font-size:10px;color:rgba(255,255,255,.35);margin-top:2px}
+.cp-pinned-vcard-media{display:flex;gap:4px;flex-shrink:0}
+.cp-pinned-vcard-img{width:80px;height:60px;object-fit:cover;border-radius:6px}
+.cp-pinned-vcard-text{flex:1;font-size:12px;color:rgba(255,255,255,.6);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 
 /* ====== 翻译结果样式 ====== */
 .cp-translate-result{margin-top:4px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.08)}

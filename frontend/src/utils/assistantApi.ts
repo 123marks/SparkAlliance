@@ -33,12 +33,26 @@ export async function requestAssistantChat(
     throw new Error('请先登录后再使用 AI 助手')
   }
 
+  // 路由策略：standard 模式走 spark-ai-general（Gemma4），其余走 assistant-chat（NVIDIA NIM）
+  const isStandard = request.mode === 'standard'
+  const functionName = isStandard ? 'spark-ai-general' : 'assistant-chat'
+
+  // spark-ai-general 的请求体格式不同
+  const requestBody = isStandard
+    ? {
+        module: 'general',
+        messages: request.messages,
+        temperature: 0.7,
+        max_tokens: 4096,
+      }
+    : (request as unknown as Record<string, unknown>)
+
   const { data } = await invokeEdgeFunction<{
     content?: string
     reasoning?: string
     model?: string
     assistant?: string
-  }>('assistant-chat', request as unknown as Record<string, unknown>, signal)
+  }>(functionName, requestBody, signal)
 
   return {
     content: typeof data?.content === 'string' ? data.content : '',

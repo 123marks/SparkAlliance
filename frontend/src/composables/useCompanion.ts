@@ -1386,7 +1386,7 @@ export function useCompanion() {
 
     const response = await requestAssistantChat({
       assistant: 'companion',
-      mode: 'fast',
+      mode: 'standard',
       messages: scopedMessages,
     })
     return response.content || '抱歉，我暂时无法回复 🤔'
