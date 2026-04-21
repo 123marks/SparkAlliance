@@ -1048,7 +1048,15 @@ export function useCompanion() {
       }
       g.messages.push(aiMsg)
       saveData(STORAGE_KEYS.groups, groups.value)
-    } catch { /* 静默 */ }
+    } catch (e) {
+      const errText = e instanceof Error ? e.message : '服务异常'
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: `抱歉，@星火 回复失败：${errText}`, type: 'text', is_read: true, created_at: now(),
+      }
+      g.messages.push(aiMsg)
+      saveData(STORAGE_KEYS.groups, groups.value)
+    }
     isAiTyping.value = false
   }
 
@@ -1392,6 +1400,54 @@ export function useCompanion() {
     return response.content || '抱歉，我暂时无法回复 🤔'
   }
 
+  function mapAiChatToApiHistory(): { role: 'user' | 'assistant'; content: string }[] {
+    return aiChatHistory.value.slice(-20).map(m => {
+      let text = m.content
+      if (m.type === 'voice' && m.voice_transcript) {
+        text = `[语音] ${m.voice_transcript}`
+      } else if (m.type === 'voice') {
+        text = m.content || '[语音消息]'
+      }
+      return {
+        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
+        content: text,
+      }
+    })
+  }
+
+  /** 将一条消息写入 AI 会话并持久化（用于语音等由页面组装的 ChatMsg） */
+  function appendAiChatMessage(msg: ChatMsg) {
+    aiChatHistory.value.push(msg)
+    saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+  }
+
+  /** 基于当前 aiChatHistory 请求一次 AI 回复（不发新的用户文本行） */
+  async function deliverCompanionAiReply(): Promise<string> {
+    isAiTyping.value = true
+    try {
+      const reply = await callAI(mapAiChatToApiHistory())
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
+      }
+      aiChatHistory.value.push(aiMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      gameEvent('companion_ai_chat').catch(() => { /* 静默 */ })
+      return reply
+    } catch (e) {
+      const errText = e instanceof Error ? e.message : String(e)
+      const aiMsg: ChatMsg = {
+        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
+        sender_type: 'ai', content: `抱歉，暂时无法连接 AI：${errText}`, type: 'text', is_read: true, created_at: now(),
+      }
+      aiChatHistory.value.push(aiMsg)
+      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
+      return aiMsg.content
+    } finally {
+      isAiTyping.value = false
+    }
+  }
+
   /** 发消息给AI伴侣（独立聊天，非群聊/私聊） */
   async function sendToAI(content: string): Promise<string> {
     aiChatHistory.value.push({
@@ -1400,24 +1456,7 @@ export function useCompanion() {
       content, type: 'text', is_read: true, created_at: now(),
     })
     saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
-
-    isAiTyping.value = true
-    try {
-      const history = aiChatHistory.value.slice(-20).map(m => ({
-        role: m.sender_type === 'ai' ? 'assistant' as const : 'user' as const,
-        content: m.content,
-      }))
-      const reply = await callAI(history)
-      const aiMsg: ChatMsg = {
-        id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟',
-        sender_type: 'ai', content: reply, type: 'text', is_read: true, created_at: now(),
-      }
-      aiChatHistory.value.push(aiMsg)
-      saveData(STORAGE_KEYS.aiChat, aiChatHistory.value)
-      // v13.1: 触发"AI 对话"成就
-      gameEvent('companion_ai_chat').catch(() => { /* 静默 */ })
-      return reply
-    } finally { isAiTyping.value = false }
+    return deliverCompanionAiReply()
   }
 
   function clearAIChat() {
@@ -1868,7 +1907,7 @@ export function useCompanion() {
     // 收藏
     addFavorite, removeFavorite,
     // AI
-    sendToAI, clearAIChat, retryLastAI,
+    sendToAI, appendAiChatMessage, deliverCompanionAiReply, clearAIChat, retryLastAI,
     // v13.1 持久化与展示助手
     persistFriends, persistGroups, resolveSenderInfo,
     // 工具

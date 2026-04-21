@@ -325,8 +325,8 @@
               <!-- 群成员列表 -->
               <div class="cs-members">
                 <div v-for="m in filteredGroupMembers" :key="m.spark_id" class="cs-member" @click="handleViewGroupMember(m)">
-                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="md" clickable />
-                  <span class="cs-mname">{{ m.group_nickname||m.nickname }}</span>
+                  <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="resolveGroupMemberName(m)" size="md" clickable />
+                  <span class="cs-mname">{{ resolveGroupMemberName(m) }}</span>
                   <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                   <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                 </div>
@@ -451,8 +451,8 @@
                       >
                         <span v-if="selectedMemberIds.includes(m.spark_id)">✓</span>
                       </div>
-                      <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="m.group_nickname||m.nickname" size="xs" />
-                      <span class="cs-member-name">{{ m.group_nickname||m.nickname }}</span>
+                      <SparkAvatar :avatar="m.avatar" :avatar-url="m.avatar_url" :name="resolveGroupMemberName(m)" size="xs" />
+                      <span class="cs-member-name">{{ resolveGroupMemberName(m) }}</span>
                       <span v-if="m.role==='owner'" class="cp-role-tag owner sm">群主</span>
                       <span v-else-if="m.role==='admin'" class="cp-role-tag admin sm">管理员</span>
                       <span v-else class="cp-role-tag member sm">成员</span>
@@ -1426,14 +1426,14 @@ const {
   myProfile, friends, groups, moments, isAiTyping, aiTypingText, getQRData,
   addFriend, addFriendByQR, removeFriend, getPrivateChat, clearPrivateChat, sendPrivateMsg,
   markMessagesAsRead, createGroup, sendGroupMsg, sendGroupMsgWithMentions, postMoment, toggleLike,
-  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, retryLastAI, aiChatHistory, searchUser, searchBySparkId,
+  commentMoment, deleteMoment, togglePinMoment, addFavorite, sendToAI, appendAiChatMessage, deliverCompanionAiReply, retryLastAI, aiChatHistory, searchUser, searchBySparkId,
   updateProfile, favorites, recallMessage, sendPokeMessage, POKE_PRESETS_GROUPED, setFriendRemark,
   getMemberRole, setGroupAdmin, kickGroupMember, disbandGroup, transferGroupOwner, setGroupAnnouncement, renameGroup,
   setGroupRemark, setMyGroupNickname, getGroupDisplayName,
   friendTags, getTagsForFriend, toggleStarFriend, blockFriend, unblockFriend, updateFriendPermissions, getFriendPermissions,
   momentVisibilitySettings, updateMomentVisibility, filterMomentsByVisibility, isMomentLive,
   persistFriends, persistGroups, resolveSenderInfo,
-  deleteMomentComment, shareMomentToChat, shareMomentToAI, updateMomentFields,
+  deleteMomentComment, shareMomentToChat, shareMomentToAI,
   loadProfileFromSupabase,
 } = useCompanion()
 
@@ -2587,6 +2587,7 @@ function confirmVoiceText() {
   // 作为普通文本消息发送
   if (activeChat.value.type === 'group') sendGroupMsg(activeChat.value.id, cleanText)
   else if (activeChat.value.type === 'private') sendPrivateMsg(activeChat.value.id, cleanText)
+  else if (activeChat.value.type === 'ai') void sendToAI(cleanText)
   resetVoiceState()
   showVoicePanel.value = false
   scrollChat()
@@ -2633,6 +2634,9 @@ function sendVoiceMessage(blob: Blob, duration: number) {
     } else if (activeChat.value.type === 'group') {
       const g = groups.value.find(g => g.id === activeChat.value!.id)
       if (g) g.messages.push(voiceMsg)
+    } else if (activeChat.value.type === 'ai') {
+      appendAiChatMessage(voiceMsg)
+      if (transcript.trim()) void deliverCompanionAiReply()
     }
   }
 }
@@ -3177,10 +3181,21 @@ function onChatInputForMention(e: Event) {
 }
 const filteredMentionMembers = computed(() => {
   if (!activeGroup.value) return []
-  const q = mentionSearch.value.toLowerCase()
-  return activeGroup.value.members
+  const q = mentionSearch.value.toLowerCase().trim()
+  const members = activeGroup.value.members
     .filter(m => m.spark_id !== myProfile.value?.spark_id)
     .filter(m => !q || m.nickname.toLowerCase().includes(q))
+  const aiPick =
+    activeGroup.value.ai_enabled &&
+    (!q || '星火'.includes(q))
+  const aiMember: GroupChat['members'][0] = {
+    spark_id: 'spark_ai_001',
+    nickname: '星火',
+    avatar: '🌟',
+    role: 'member',
+  }
+  const head = aiPick ? [aiMember] : []
+  return [...head, ...members]
 })
 function selectMention(member: GroupChat['members'][0]) {
   const ta = document.querySelector('.cp-input-row textarea') as HTMLTextAreaElement | null
@@ -3201,6 +3216,13 @@ function getGroupMsgRole(msg: ChatMsg): 'owner' | 'admin' | 'member' | null {
   if (!activeGroup.value) return null
   const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
   return m?.role || null
+}
+/** 群成员展示名：避免昵称为空时只显示「群主」标签 */
+function resolveGroupMemberName(m: GroupChat['members'][0]) {
+  const raw = (m.group_nickname || m.nickname || '').trim()
+  if (raw) return raw
+  if (m.spark_id === myProfile.value?.spark_id) return myProfile.value?.nickname || '我'
+  return m.spark_id || '成员'
 }
 // 群头像九宫格
 function getGroupAvatarGrid(g: GroupChat) {
