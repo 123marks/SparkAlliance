@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { supabase, invokeEdgeFunction } from '../supabase'
 
 export type { SparkAction } from '../utils/assistantProtocol'
@@ -480,7 +480,8 @@ export function useSparkAI() {
   const streamPhase = ref<StreamPhase>('idle')
   const error = ref<string | null>(null)
   const errorCode = ref<string | null>(null)
-  const abortController = ref<AbortController | null>(null)
+  /** 每个会话独立的中止控制器，支持多会话同时流式生成；停止按钮只中断当前会话 */
+  const abortByConversationId = ref<Record<string, AbortController>>({})
   const pendingActions = ref<SparkAction[]>([])
   const currentModel = ref<ModelMode>('default')
   const conversations = ref<Conversation[]>([])
@@ -493,12 +494,25 @@ export function useSparkAI() {
    */
   const summarizingConvId = ref<string | null>(null)
   /**
-   * v13 T9：正在流式输出的会话 ID。
-   * - 非 null 时表示 sendMessage 正在 pipe → 该 conversation 的最后一条 assistant 消息。
-   * - 用户切到其它会话也不会中断（UI 侧切走后仍在后台写入 messages[].content）。
-   * - 用户切回来后看到的就是已经 / 正在生成的结果。
+   * 正在流式生成中的会话 id 列表（支持多会话并行；stop 只 abort 当前会话）。
    */
-  const streamingConvId = ref<string | null>(null)
+  const streamingConvIds = ref<string[]>([])
+  /** 兼容旧逻辑：取最近一个进入流式的会话（仅调试用） */
+  const streamingConvId = computed(() =>
+    streamingConvIds.value.length ? streamingConvIds.value[streamingConvIds.value.length - 1]! : null,
+  )
+
+  function addStreamingConversation(id: string) {
+    if (!streamingConvIds.value.includes(id)) {
+      streamingConvIds.value = [...streamingConvIds.value, id]
+    }
+    isStreaming.value = streamingConvIds.value.length > 0
+  }
+  function removeStreamingConversation(id: string) {
+    streamingConvIds.value = streamingConvIds.value.filter((x) => x !== id)
+    isStreaming.value = streamingConvIds.value.length > 0
+    if (streamingConvIds.value.length === 0) streamPhase.value = 'idle'
+  }
 
   function loadConversations() {
     const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
@@ -893,10 +907,6 @@ export function useSparkAI() {
    */
   function pushUserMessageImmediately(content: string, attachments?: FileAttachment[]): string {
     const conversation = getCurrentConversation()
-    // 在其它会话仍在请求时发起新会话发送：先中止旧请求，避免全局 isStreaming 卡死新对话
-    if (streamingConvId.value && streamingConvId.value !== conversation.id && abortController.value) {
-      abortController.value.abort()
-    }
     const id = genId('m_')
     const now = new Date().toISOString()
     conversation.messages.push({
@@ -918,9 +928,8 @@ export function useSparkAI() {
     autoTitle(conversation)
     conversation.updatedAt = now
     saveConversations()
-    isStreaming.value = true
     streamPhase.value = 'thinking'
-    streamingConvId.value = conversation.id
+    addStreamingConversation(conversation.id)
     error.value = null
     errorCode.value = null
     return id
@@ -932,9 +941,8 @@ export function useSparkAI() {
    * 清理 pushUserMessageImmediately 抢先设的 isStreaming=true，避免状态泄漏导致 UI 永久转圈。
    */
   function resetStreamingState() {
-    isStreaming.value = false
-    streamPhase.value = 'idle'
-    streamingConvId.value = null
+    const cid = currentConversationId.value
+    if (cid) removeStreamingConversation(cid)
     // v13 T9：如果当前会话末尾还有一条空的 pending assistant（纯占位，没任何内容），
     //        清理掉它，防止 UI 永远显示"正在思考"的幽灵气泡。
     const conv = conversations.value.find((c) => c.id === currentConversationId.value)
@@ -1045,15 +1053,14 @@ export function useSparkAI() {
       })
     }
 
-    isStreaming.value = true
     streamPhase.value = 'thinking'
-    streamingConvId.value = conversation.id
+    addStreamingConversation(conversation.id)
     error.value = null
     errorCode.value = null
     pendingActions.value = []
-    abortController.value = new AbortController()
-    const thisAbortController = abortController.value
+    const thisAbortController = new AbortController()
     const streamOwnerConvId = conversation.id
+    abortByConversationId.value = { ...abortByConversationId.value, [streamOwnerConvId]: thisAbortController }
 
     // v13 T9：如果 pushUserMessageImmediately 已推入一条 pending assistant，就复用它；
     //         否则新建一条作为占位。流式 chunk 直接改写该消息的 content / reasoning。
@@ -1122,7 +1129,7 @@ export function useSparkAI() {
 
     const timeout = setTimeout(() => {
       console.warn('[SparkAI] 请求超时，模式:', currentModel.value)
-      abortController.value?.abort()
+      thisAbortController.abort()
       error.value = '响应超时，请稍后重试或切换模式'
       errorCode.value = 'TIMEOUT'
       onError?.(error.value)
@@ -1161,7 +1168,7 @@ export function useSparkAI() {
         const { data } = await invokeEdgeFunction<any>(
           functionName,
           requestBody,
-          abortController.value!.signal,
+          thisAbortController.signal,
         )
 
         // spark-ai-general 返回 JSON（非 SSE），包装成 Response 供下游统一处理
@@ -1199,7 +1206,7 @@ export function useSparkAI() {
             const { data } = await invokeEdgeFunction<any>(
               functionName,
               requestBody,
-              abortController.value!.signal,
+              thisAbortController.signal,
             )
             if (isStandard) {
               const content = typeof data?.content === 'string' ? data.content : ''
@@ -1380,20 +1387,17 @@ export function useSparkAI() {
         clearInterval(smoothTimer)
         smoothTimer = null
       }
-      // 若用户已在其它会话发起新流式任务，勿清掉新会话的全局状态（否则会误把 B 的转圈关掉）
-      if (streamingConvId.value === streamOwnerConvId) {
-        isStreaming.value = false
-        streamPhase.value = 'idle'
-        streamingConvId.value = null
-      }
-      if (abortController.value === thisAbortController) {
-        abortController.value = null
-      }
+      removeStreamingConversation(streamOwnerConvId)
+      const nextAbort = { ...abortByConversationId.value }
+      if (nextAbort[streamOwnerConvId] === thisAbortController)
+        delete nextAbort[streamOwnerConvId]
+      abortByConversationId.value = nextAbort
     }
   }
 
   function stopGenerating() {
-    abortController.value?.abort()
+    const cid = currentConversationId.value
+    if (cid) abortByConversationId.value[cid]?.abort()
   }
 
   loadConversations()
