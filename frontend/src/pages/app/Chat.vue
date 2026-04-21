@@ -1671,28 +1671,47 @@ function textBlobWithBom(text: string, mime: string): Blob {
 
 type ExportFormat = 'markdown' | 'json' | 'html' | 'pdf' | 'word' | 'txt'
 
+/** 导出用 HTML 标题转义，避免 & / < 破坏文档结构 */
+function escapeHtmlAttr(s: string) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 /** 把纯 Markdown 转成自带样式的完整 HTML 文档（用于 html / word / pdf 导出） */
 function mdToStandaloneHtml(title: string, md: string): string {
   let bodyHtml = ''
   try {
     // 不走 renderMd（它会引入 KaTeX/hljs DOM，离线打开样式就丢了），
     // 这里用 marked 直接把 md 渲染为 html，再内联最小样式。
-    bodyHtml = marked.parse(md, { async: false }) as string
+    bodyHtml = marked.parse(md, { async: false, gfm: true, breaks: true }) as string
   } catch {
     bodyHtml = `<pre>${md.replace(/</g, '&lt;')}</pre>`
   }
   const now = new Date().toLocaleString('zh-CN')
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>
-body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.75;color:#222;background:#fff;max-width:900px;margin:30px auto;padding:0 24px;}
-h1,h2,h3{margin:1.6em 0 .6em;color:#111;} h1{border-bottom:2px solid #8b5cf6;padding-bottom:8px;}
+  const safeTitle = escapeHtmlAttr(title)
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safeTitle}</title><style>
+*{box-sizing:border-box;}
+body{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif,"Segoe UI Emoji";line-height:1.75;color:#222;background:#fff;max-width:900px;margin:30px auto;padding:0 24px;word-wrap:break-word;overflow-wrap:anywhere;}
+p,li,blockquote,td,th{line-height:1.75;min-height:1.4em;}
+h1,h2,h3{margin:1.2em 0 .5em;color:#111;} h1{border-bottom:2px solid #8b5cf6;padding-bottom:8px;}
 code{background:#f3f0ff;color:#5b21b6;padding:1px 6px;border-radius:4px;font-size:.92em;}
-pre{background:#1e1b3a;color:#e8e9ff;padding:14px 18px;border-radius:8px;overflow:auto;font-size:13px;}
-pre code{background:transparent;color:inherit;padding:0;}
+pre{background:#1e1b3a;color:#e8e9ff;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:13px;white-space:pre-wrap;word-break:break-word;}
+pre code{background:transparent;color:inherit;padding:0;white-space:pre-wrap;}
 blockquote{border-left:4px solid #c4b5fd;background:#f8f6ff;margin:12px 0;padding:6px 14px;color:#4b3c82;}
-table{border-collapse:collapse;width:100%;margin:12px 0;} th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;} th{background:#f3f0ff;}
+table{border-collapse:collapse;width:100%;margin:12px 0;table-layout:fixed;} th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;word-break:break-word;} th{background:#f3f0ff;}
 hr{border:none;border-top:1px dashed #c4b5fd;margin:18px 0;}
 a{color:#7c3aed;}
-.export-footer{margin-top:40px;font-size:11px;color:#888;text-align:center;}
+details{display:block;margin:12px 0;padding:10px 14px;border:1px solid #e5e0ff;border-radius:8px;background:#faf9ff;}
+summary{cursor:pointer;font-weight:600;margin-bottom:8px;}
+.export-footer{margin-top:40px;font-size:11px;color:#888;text-align:center;clear:both;}
+@media print{
+body{margin:12pt;max-width:100%;padding:0 12pt;}
+pre{page-break-inside:avoid;overflow:visible!important;}
+h1,h2,h3{page-break-after:avoid;}
+}
 </style></head><body>${bodyHtml}<div class="export-footer">导出自 星火助手 · ${now}</div></body></html>`
 }
 
