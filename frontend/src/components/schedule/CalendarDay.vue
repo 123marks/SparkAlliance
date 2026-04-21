@@ -29,13 +29,14 @@
         v-for="layout in timedEventLayouts"
         :key="layout.event.id"
         class="cd-event-block"
+        :class="priorityClass(layout.event)"
         :style="blockStyle(layout)"
         @click.stop="$emit('clickEvent', layout.event)"
       >
         <div class="cd-event-inner">
           <span class="cd-event-icon">{{ EVENT_TYPES[layout.event.event_type]?.icon }}</span>
           <div class="cd-event-info">
-            <span class="cd-event-title">{{ layout.event.title }}</span>
+            <span class="cd-event-title">{{ priorityBadge(layout.event) }}{{ layout.event.title }}</span>
             <span class="cd-event-meta">
               {{ formatTime(layout.event.start_time) }} - {{ layout.event.end_time ? formatTime(layout.event.end_time) : '' }}
               <template v-if="layout.event.location"> · {{ layout.event.location }}</template>
@@ -119,14 +120,34 @@ const colorMap: Record<string, string> = {
 
 const getColor = (event: ScheduleEvent) => event.color || colorMap[event.event_type] || '#4f8ef7'
 
+const priorityBar = (e: ScheduleEvent) => {
+  if (e.priority >= 2) return 5
+  if (e.priority === 1) return 4
+  return 3
+}
+
+const priorityClass = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return 'cd-prio-urgent'
+  if (e.priority === 1) return 'cd-prio-high'
+  if (e.priority === -1) return 'cd-prio-low'
+  return ''
+}
+
+const priorityBadge = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return '🔥 '
+  if (e.priority === 1) return '⬆️ '
+  return ''
+}
+
 const blockStyle = (layout: TimedEventLayout<ScheduleEvent>) => {
   const color = getColor(layout.event)
+  const bw = priorityBar(layout.event)
   return {
     top: `${(layout.startMinutes / 60) * HOUR_H}px`,
     height: `${Math.max((layout.durationMinutes / 60) * HOUR_H, 28)}px`,
     left: `calc(68px + ${layout.columnIndex} * ((100% - 80px) / ${layout.columnCount}) + 2px)`,
     width: `calc(((100% - 80px) / ${layout.columnCount}) - 4px)`,
-    borderLeft: `3px solid ${color}`,
+    borderLeft: `${bw}px solid ${color}`,
     background: `${color}15`,
   }
 }
@@ -207,6 +228,13 @@ onUnmounted(() => clearInterval(timer))
   transition: filter 0.15s;
 }
 .cd-event-block:hover { filter: brightness(1.15); }
+.cd-event-block.cd-prio-urgent {
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 2px 10px rgba(239, 68, 68, 0.2);
+}
+.cd-event-block.cd-prio-high {
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3);
+}
+.cd-event-block.cd-prio-low { opacity: 0.72; }
 .cd-event-inner {
   display: flex; gap: 8px; align-items: flex-start;
   padding: 6px 10px; height: 100%;

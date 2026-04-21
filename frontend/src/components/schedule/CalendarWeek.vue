@@ -33,10 +33,11 @@
             v-for="layout in getEventLayoutsForDay(day)"
             :key="layout.event.id"
             class="cw-event-block"
+            :class="priorityClass(layout.event)"
             :style="eventBlockStyle(layout)"
             @click.stop="$emit('clickEvent', layout.event)"
           >
-            <span class="cw-event-title">{{ layout.event.title }}</span>
+            <span class="cw-event-title">{{ priorityBadge(layout.event) }}{{ layout.event.title }}</span>
             <span class="cw-event-time">{{ formatTime(layout.event.start_time) }}</span>
           </div>
         </div>
@@ -108,14 +109,35 @@ const formatTime = (iso: string) => {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+const priorityBar = (e: ScheduleEvent) => {
+  if (e.priority >= 2) return 5
+  if (e.priority === 1) return 4
+  return 3
+}
+
+const priorityClass = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return 'cw-prio-urgent'
+  if (e.priority === 1) return 'cw-prio-high'
+  if (e.priority === -1) return 'cw-prio-low'
+  return ''
+}
+
+const priorityBadge = (e: ScheduleEvent): string => {
+  if (e.priority >= 2) return '🔥 '
+  if (e.priority === 1) return '⬆️ '
+  return ''
+}
+
 const eventBlockStyle = (layout: TimedEventLayout<ScheduleEvent>) => {
   const color = layout.event.color || colorMap[layout.event.event_type] || '#4f8ef7'
+  const bw = priorityBar(layout.event)
   return {
     top: `${(layout.startMinutes / 60) * HOUR_H}px`,
     height: `${Math.max((layout.durationMinutes / 60) * HOUR_H, 20)}px`,
     left: `calc(${layout.columnIndex} * (100% / ${layout.columnCount}) + 2px)`,
     width: `calc((100% / ${layout.columnCount}) - 4px)`,
     background: color,
+    borderLeft: `${bw}px solid rgba(255,255,255,0.92)`,
   }
 }
 
@@ -198,6 +220,13 @@ onUnmounted(() => clearInterval(timer))
   z-index: 1;
 }
 .cw-event-block:hover { opacity: 1; }
+.cw-event-block.cw-prio-urgent {
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.45), 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+.cw-event-block.cw-prio-high {
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.35);
+}
+.cw-event-block.cw-prio-low { opacity: 0.72; }
 .cw-event-title {
   display: block; font-size: 11px; font-weight: 600;
   color: white; white-space: nowrap;
