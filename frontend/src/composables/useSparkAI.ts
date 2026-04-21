@@ -487,8 +487,11 @@ export function useSparkAI() {
   const currentConversationId = ref<string | null>(null)
   const favorites = ref<FavoriteMessage[]>([])
   const reactions = ref<Record<string, MessageReaction>>({})
-  /** v11: 记忆压缩中状态（UI 订阅展示"压缩中…"） */
-  const summarizing = ref(false)
+  /**
+   * 记忆压缩进行中：记录**正在**被压缩的会话 id（null 表示空闲）。
+   * 避免全局布尔导致「任一会话在压，所有界面都显示压缩中」的误判。
+   */
+  const summarizingConvId = ref<string | null>(null)
   /**
    * v13 T9：正在流式输出的会话 ID。
    * - 非 null 时表示 sendMessage 正在 pipe → 该 conversation 的最后一条 assistant 消息。
@@ -751,6 +754,15 @@ export function useSparkAI() {
       lines.push('---')
       lines.push('')
     }
+    lines.push('')
+    lines.push('---')
+    lines.push('')
+    lines.push('> 本文件为 **UTF-8** 编码。若用系统记事本打开乱码，请改用 VS Code / Typora / Notepad++ 并选择「UTF-8」。')
+    const mdJoined = lines.join('\n')
+    if (mdJoined.includes('```')) {
+      lines.push('')
+      lines.push('**说明**：上文含 Markdown 代码块（``` 围栏），请在支持 Markdown 的编辑器中查看以获得语法高亮。')
+    }
     return {
       filename: `spark-${safeTitle}-${stamp}.md`,
       content: lines.join('\n'),
@@ -788,7 +800,7 @@ export function useSparkAI() {
     }))
     if (toCompress.length === 0) return false
 
-    summarizing.value = true
+    summarizingConvId.value = conv.id
     try {
       const summary = await requestMemorySummary(toCompress)
       if (!summary) return false
@@ -816,7 +828,7 @@ export function useSparkAI() {
       console.warn('[SparkAI] 记忆压缩失败:', e)
       return false
     } finally {
-      summarizing.value = false
+      if (summarizingConvId.value === conv.id) summarizingConvId.value = null
     }
   }
 
@@ -840,7 +852,7 @@ export function useSparkAI() {
     const plain = src.messages.filter((m) => m.role !== 'system')
     if (plain.length === 0) return null
 
-    summarizing.value = true
+    summarizingConvId.value = src.id
     try {
       const toCompress = plain.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -868,7 +880,7 @@ export function useSparkAI() {
       saveConversations()
       return newConv
     } finally {
-      summarizing.value = false
+      if (summarizingConvId.value === src.id) summarizingConvId.value = null
     }
   }
 
@@ -881,6 +893,10 @@ export function useSparkAI() {
    */
   function pushUserMessageImmediately(content: string, attachments?: FileAttachment[]): string {
     const conversation = getCurrentConversation()
+    // 在其它会话仍在请求时发起新会话发送：先中止旧请求，避免全局 isStreaming 卡死新对话
+    if (streamingConvId.value && streamingConvId.value !== conversation.id && abortController.value) {
+      abortController.value.abort()
+    }
     const id = genId('m_')
     const now = new Date().toISOString()
     conversation.messages.push({
@@ -1036,6 +1052,8 @@ export function useSparkAI() {
     errorCode.value = null
     pendingActions.value = []
     abortController.value = new AbortController()
+    const thisAbortController = abortController.value
+    const streamOwnerConvId = conversation.id
 
     // v13 T9：如果 pushUserMessageImmediately 已推入一条 pending assistant，就复用它；
     //         否则新建一条作为占位。流式 chunk 直接改写该消息的 content / reasoning。
@@ -1311,7 +1329,7 @@ export function useSparkAI() {
 
       // v11: 回复完成后，若消息数超阈值则后台摘要（不阻塞 UI）
       const plainCount = conversation.messages.filter((m) => m.role !== 'system').length
-      if (plainCount >= AUTO_SUMMARIZE_THRESHOLD && !summarizing.value) {
+      if (plainCount >= AUTO_SUMMARIZE_THRESHOLD && !summarizingConvId.value) {
         void summarizeConversation(conversation).catch(() => { /* 静默失败 */ })
       }
     } catch (err: unknown) {
@@ -1362,10 +1380,15 @@ export function useSparkAI() {
         clearInterval(smoothTimer)
         smoothTimer = null
       }
-      isStreaming.value = false
-      streamPhase.value = 'idle'
-      streamingConvId.value = null
-      abortController.value = null
+      // 若用户已在其它会话发起新流式任务，勿清掉新会话的全局状态（否则会误把 B 的转圈关掉）
+      if (streamingConvId.value === streamOwnerConvId) {
+        isStreaming.value = false
+        streamPhase.value = 'idle'
+        streamingConvId.value = null
+      }
+      if (abortController.value === thisAbortController) {
+        abortController.value = null
+      }
     }
   }
 
@@ -1395,7 +1418,7 @@ export function useSparkAI() {
     pendingActions,
     favorites,
     reactions,
-    summarizing,
+    summarizingConvId,
     createConversation,
     getCurrentConversation,
     switchConversation,

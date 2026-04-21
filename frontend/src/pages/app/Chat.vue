@@ -86,7 +86,7 @@
                     <span class="mi-icon">🅦</span><span>导出 Word (.doc)</span>
                   </button>
                   <button class="sb-menu-item" @click="triggerExport(c.id, 'pdf')">
-                    <span class="mi-icon">🅿️</span><span>导出 PDF（打印对话框）</span>
+                    <span class="mi-icon">🅿️</span><span>导出 PDF（直接下载）</span>
                   </button>
                   <button class="sb-menu-item" @click="triggerExport(c.id, 'html')">
                     <span class="mi-icon">🌐</span><span>导出 HTML</span>
@@ -255,7 +255,7 @@
                   <div v-if="msgExportOpen === idx" class="msg-export-menu" @click.stop>
                     <button class="mx-item" @click="exportSingleMessage(idx, 'markdown'); msgExportOpen = -1">📝 Markdown (.md)</button>
                     <button class="mx-item" @click="exportSingleMessage(idx, 'word'); msgExportOpen = -1">🅦 Word (.doc)</button>
-                    <button class="mx-item" @click="exportSingleMessage(idx, 'pdf'); msgExportOpen = -1">🅿️ PDF (打印)</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'pdf'); msgExportOpen = -1">🅿️ PDF</button>
                     <button class="mx-item" @click="exportSingleMessage(idx, 'html'); msgExportOpen = -1">🌐 HTML</button>
                     <button class="mx-item" @click="exportSingleMessage(idx, 'txt'); msgExportOpen = -1">📄 TXT</button>
                     <button class="mx-item" @click="exportSingleMessage(idx, 'json'); msgExportOpen = -1">🧾 JSON</button>
@@ -352,7 +352,7 @@
           </div>
           <input ref="fileInput" type="file" multiple accept="*/*" @change="onFileInput" style="display:none">
           <textarea ref="inputRef" v-model="inputText" :placeholder="isOnline ? '输入你的问题...（Shift+Enter 换行 · Ctrl+/ 工作流 · Ctrl+K 搜索）' : '离线中，恢复网络后才能发送'" rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste" :disabled="!isOnline"></textarea>
-          <button v-if="isStreaming" class="send stop-mode" @click="stopGenerating" title="停止" aria-label="停止生成">
+          <button v-if="isStreaming && streamingInCurrentView" class="send stop-mode" @click="stopGenerating" title="停止" aria-label="停止生成">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
           </button>
           <button v-else class="send" :disabled="!isOnline || (!inputText.trim() && !pendingFiles.length)" @click="handleSend" title="发送（Enter）" aria-label="发送">
@@ -1041,7 +1041,8 @@ async function handleSend() {
   // v9: emoji 短码扩展
   const raw = inputText.value.trim()
   const text = expandShortcodes(raw)
-  if ((!text && !pendingFiles.value.length) || isStreaming.value) return
+  // 仅当「当前会话」正在流式生成时禁止再发；其它会话可独立发送（会中止旧会话请求）
+  if ((!text && !pendingFiles.value.length) || (isStreaming.value && streamingInCurrentView.value)) return
 
   // v9: 文件大小硬限制（单文件 5MB，附件总数 5 个）
   const OVERSIZE = pendingFiles.value.find((f) => f.size && /([0-9.]+)\s*MB/.test(f.size) && parseFloat(f.size) > 5)
@@ -1221,7 +1222,7 @@ function mapDisplayIdxToReal(displayIdx: number): number {
 
 /** 重新回答：点某条 assistant 消息 → 删除其对应 user 到末尾的所有消息 → 用 user 内容重新发送 */
 function retryFrom(displayIdx: number) {
-  if (isStreaming.value) return
+  if (isStreaming.value && streamingInCurrentView.value) return
   const conv = getCurrentConversation()
   const realIdx = mapDisplayIdxToReal(displayIdx)
   if (realIdx < 0 || conv.messages[realIdx]?.role !== 'assistant') return
@@ -1238,7 +1239,7 @@ function retryFrom(displayIdx: number) {
 
 /** 编辑用户消息：删除该消息及之后所有消息，把 user.content 放回输入框等待用户修改后发送 */
 function editMessage(displayIdx: number) {
-  if (isStreaming.value) return
+  if (isStreaming.value && streamingInCurrentView.value) return
   const conv = getCurrentConversation()
   const realIdx = mapDisplayIdxToReal(displayIdx)
   if (realIdx < 0 || conv.messages[realIdx]?.role !== 'user') return
@@ -1755,6 +1756,45 @@ async function exportPdfViaPrint(_title: string, html: string) {
   }
 }
 
+/** 使用 html2pdf.js 直接下载 PDF（失败则回退到系统打印） */
+async function exportPdfDownloadFile(html: string, filename: string) {
+  const blob = new Blob([new TextEncoder().encode(html)], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const frame = document.createElement('iframe')
+  frame.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;min-height:200px;border:0;visibility:hidden'
+  document.body.appendChild(frame)
+  const mod = await import('html2pdf.js')
+  const html2pdf = mod.default ?? mod
+  try {
+    await new Promise<void>((resolve, reject) => {
+      frame.addEventListener('load', () => resolve(), { once: true })
+      frame.addEventListener('error', () => reject(new Error('iframe load')), { once: true })
+      frame.src = url
+    })
+    const body = frame.contentDocument?.body
+    if (!body) throw new Error('no body')
+    await html2pdf()
+      .set({
+        margin: [10, 10, 10, 10],
+        filename,
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+      })
+      .from(body)
+      .save()
+    toast('✓ 已下载 PDF')
+  } catch (e) {
+    console.warn('[Export] html2pdf failed, fallback print', e)
+    toast('PDF 直出失败，改用打印对话框…')
+    await exportPdfViaPrint('', html)
+  } finally {
+    try { document.body.removeChild(frame) } catch { /* ignore */ }
+    URL.revokeObjectURL(url)
+  }
+}
+
 // v13: 导出会话 → 触发浏览器下载，支持 markdown/json/html/pdf/word/txt
 async function triggerExport(id: string, format: ExportFormat) {
   openMenuId.value = null
@@ -1796,7 +1836,7 @@ async function triggerExport(id: string, format: ExportFormat) {
   }
   if (format === 'pdf') {
     const html = mdToStandaloneHtml(`星火助手 · ${safeTitle}`, mdOut.content)
-    await exportPdfViaPrint(safeTitle, html)
+    await exportPdfDownloadFile(html, `spark-${safeTitle}-${stamp}.pdf`)
     return
   }
 }
@@ -1834,7 +1874,7 @@ async function exportSingleMessage(displayIdx: number, format: ExportFormat) {
   }
   if (format === 'html' || format === 'word' || format === 'pdf') {
     const html = mdToStandaloneHtml(`${role} · ${safeTitle}`, md)
-    if (format === 'pdf') { await exportPdfViaPrint(safeTitle, html); return }
+    if (format === 'pdf') { await exportPdfDownloadFile(html, `spark-msg-${safeTitle}-${stamp}.pdf`); return }
     const isWord = format === 'word'
     const mime = isWord ? 'application/msword' : 'text/html'
     const ext = isWord ? 'doc' : 'html'
@@ -1937,7 +1977,7 @@ async function handleSummarizeNow() {
 // v11: 新开对话并继承记忆（把当前会话摘要成 system 前缀，新会话"还记得之前"）
 async function handleInheritMemory() {
   if (summarizing.value) { toast('正在处理，请稍候…'); return }
-  if (isStreaming.value) { toast('请先等当前回复结束'); return }
+  if (isStreaming.value && streamingInCurrentView.value) { toast('请先等当前回复结束'); return }
   toast('🧠 正在把当前会话压缩成记忆摘要…')
   const newConv = await inheritMemoryToNewConversation()
   if (newConv) {
