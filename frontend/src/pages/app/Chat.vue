@@ -530,7 +530,7 @@ import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } 
 const router = useRouter()
 const {
   isStreaming, streamPhase, streamingConvId, error: aiError, currentModel,
-  conversations, currentConversationId, favorites, summarizing,
+  conversations, currentConversationId, favorites, summarizingConvId,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
@@ -542,6 +542,8 @@ const {
 
 // v13 T9：当前视图所在会话是否正是"流式进行中"的会话
 const streamingInCurrentView = computed(() => !!streamingConvId.value && streamingConvId.value === currentConversationId.value)
+/** 当前会话是否正在执行记忆压缩摘要 */
+const summarizing = computed(() => !!summarizingConvId.value && summarizingConvId.value === currentConversationId.value)
 const { createEvent } = useSchedule()
 const { createGoal } = usePlanner()
 
@@ -1656,9 +1658,15 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
+/** 显式 UTF-8 字节 + BOM，避免部分环境把 Blob 字符串按系统默认编码写入导致中文乱码 */
 function textBlobWithBom(text: string, mime: string): Blob {
+  const enc = new TextEncoder()
+  const body = enc.encode(text)
   const bom = new Uint8Array([0xef, 0xbb, 0xbf])
-  return new Blob([bom, text], { type: `${mime};charset=utf-8` })
+  const out = new Uint8Array(bom.length + body.length)
+  out.set(bom, 0)
+  out.set(body, bom.length)
+  return new Blob([out], { type: `${mime};charset=utf-8` })
 }
 
 type ExportFormat = 'markdown' | 'json' | 'html' | 'pdf' | 'word' | 'txt'
@@ -1689,7 +1697,9 @@ a{color:#7c3aed;}
 }
 
 async function exportPdfViaPrint(_title: string, html: string) {
-  // 离屏 iframe 加载 HTML，然后触发打印（用户保存为 PDF）
+  // 用 UTF-8 字节 + Blob URL 加载 iframe，避免 doc.write 在部分浏览器下错误解码中文 → 打印/PDF 乱码
+  const blob = new Blob([new TextEncoder().encode(html)], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
   const frame = document.createElement('iframe')
   frame.style.position = 'fixed'
   frame.style.right = '0'
@@ -1698,13 +1708,19 @@ async function exportPdfViaPrint(_title: string, html: string) {
   frame.style.height = '0'
   frame.style.border = '0'
   document.body.appendChild(frame)
-  const doc = frame.contentDocument || frame.contentWindow?.document
-  if (!doc) { toast('浏览器不支持 PDF 打印'); document.body.removeChild(frame); return }
-  doc.open()
-  doc.write(html)
-  doc.close()
-  // 等布局
-  await new Promise((r) => setTimeout(r, 350))
+  try {
+    await new Promise<void>((resolve, reject) => {
+      frame.addEventListener('load', () => resolve(), { once: true })
+      frame.addEventListener('error', () => reject(new Error('iframe load')), { once: true })
+      frame.src = url
+    })
+  } catch {
+    toast('浏览器不支持 PDF 打印')
+    URL.revokeObjectURL(url)
+    try { document.body.removeChild(frame) } catch { /* ignore */ }
+    return
+  }
+  await new Promise((r) => setTimeout(r, 280))
   try {
     frame.contentWindow?.focus()
     frame.contentWindow?.print()
@@ -1713,7 +1729,10 @@ async function exportPdfViaPrint(_title: string, html: string) {
     console.warn('[Export] PDF print failed:', e)
     toast('PDF 打印失败，请尝试 HTML / Word 格式')
   } finally {
-    setTimeout(() => { try { document.body.removeChild(frame) } catch { /* ignore */ } }, 3000)
+    setTimeout(() => {
+      try { document.body.removeChild(frame) } catch { /* ignore */ }
+      URL.revokeObjectURL(url)
+    }, 3000)
   }
 }
 
@@ -1725,7 +1744,7 @@ async function triggerExport(id: string, format: ExportFormat) {
     if (!out) { toast('导出失败'); return }
     const blob = format === 'markdown'
       ? textBlobWithBom(out.content, out.mime)
-      : new Blob([out.content], { type: `${out.mime};charset=utf-8` })
+      : new Blob([new TextEncoder().encode(out.content)], { type: `${out.mime};charset=utf-8` })
     triggerBlobDownload(blob, out.filename)
     toast(`✓ 已导出 ${format === 'markdown' ? 'Markdown' : 'JSON'}`)
     return
@@ -1790,7 +1809,7 @@ async function exportSingleMessage(displayIdx: number, format: ExportFormat) {
     return
   }
   if (format === 'json') {
-    triggerBlobDownload(new Blob([JSON.stringify(msg, null, 2)], { type: 'application/json;charset=utf-8' }), `spark-msg-${safeTitle}-${stamp}.json`)
+    triggerBlobDownload(new Blob([new TextEncoder().encode(JSON.stringify(msg, null, 2))], { type: 'application/json;charset=utf-8' }), `spark-msg-${safeTitle}-${stamp}.json`)
     toast('✓ 已导出本条为 JSON')
     return
   }
