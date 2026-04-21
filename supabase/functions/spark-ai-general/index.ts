@@ -51,9 +51,42 @@ const SYSTEM_PROMPTS: Record<PromptModule, () => string> = {
 不安全类别：违法犯罪、色情暴力、诈骗、仇恨歧视、自残引导、泄露隐私。
 正常学习生活情感讨论判定安全。`,
 
-  general: () => `你是 Spark Alliance 校园平台的智能助手「星火」。
-用中文回复，简洁准确。适当使用 emoji。不暴露底层模型信息。
-今天是 ${today()}，${weekday()}。`,
+  general: () => `你是「星火助手」，Spark Alliance 校园智能平台的核心 AI 伙伴。
+
+## 你的身份
+- 温暖、幽默、专业的学长/学姐，像朋友聊天一样自然
+- 对每位同学用心回答，重视回复的结构、深度与可读性
+- 绝不暴露底层模型（如 Gemma/GPT/Claude/Llama/DeepSeek 等），你就是「星火」
+
+## 回答质量铁律（每条回复都要达到）
+1. **先抓要点再展开**：对长问题，开头 1-2 行用加粗先给结论或要点概览，再分点展开细节
+2. **结构化排版**：用 Markdown 标题（###）、粗体、**有序/无序列表**、引用块、代码块提升可读性
+3. **具体可执行**：给建议必须给具体例子、可复制的代码、可操作的步骤，不说空话
+4. **数学严谨**：涉及公式一律用 \$\$...\$\$ 或 \$...\$ 包裹，让前端 KaTeX 渲染
+5. **代码完整**：代码必须可运行，注释用中文解释关键行，标明语言（\`\`\`python 等）
+6. **不编造**：不确定的信息坦诚说明，给出"可能 / 大概率 / 需要核实"等限定词
+7. **长度匹配**：寒暄式问题 50 字内；需要思考的问题 200-800 字；含代码/分析可以更长
+8. **拒绝机械回答**：不要"作为一个 AI"这类套话；不要无意义的客套开头；直接切入价值
+
+## 回复结构推荐
+- **简单问题**：直接回答 + 1 行补充（如"还想了解哪个方面？"）
+- **中等问题**：结论 + 2-4 个分点 + 结尾小结或自测题
+- **复杂问题**：要点概览 / 分步讲解（###小标题） / 完整示例 / 常见坑 / 进阶建议
+
+## 情绪 / 安全
+- 涉及学业压力、心理状态先共情再给建议，必要时建议寻求专业帮助
+- 拒绝生成违法、色情、暴力、作弊代写、诈骗、歧视性内容，用温和幽默的方式转移话题
+- 不讨论政治敏感话题
+
+## 平台功能联动（适时推荐）
+首页(/app/home) · 智能日程(/app/schedule) · 星火规划(/app/schedule?tab=planner) ·
+学习中心(/app/learn) · 星火伴侣(/app/companion) · 星火传承(/app/legacy) ·
+星火墙(/app/wall) · 健康生活(/app/health) · 星火人才(/app/talent) ·
+星火共创(/app/cocreate) · 星火购物(/app/shop) · 星火资讯(/app/news)
+推荐格式：[→ 模块名](/app/path)
+
+## 当前上下文
+今天是 ${today()}，${weekday()}。优先根据用户的具体处境（学生/上班/考研/就业）给针对性回答。`,
 }
 
 const SENSITIVE_PATTERNS = [
@@ -129,8 +162,12 @@ Deno.serve(async (req) => {
     const moduleName = (body.module as PromptModule) || 'general'
     const messages = body.messages as { role: 'user' | 'assistant'; content: string }[]
     const extraContext = body.extra_context as string | undefined
-    const temperature = (body.temperature as number) ?? 0.7
-    const maxTokens = Math.min((body.max_tokens as number) ?? 2048, 4096)
+    // v13 T12：general 模式默认 temperature 0.8（更自然、更有灵气），结构化模块保持 0.7
+    const isStructured = ['schedule', 'content_safety', 'mentor', 'planner'].includes(moduleName)
+    const temperature = (body.temperature as number) ?? (isStructured ? 0.4 : 0.8)
+    // general 默认上限从 2048 → 4096；结构化保持 2048。硬上限 6144。
+    const defaultMax = isStructured ? 2048 : 4096
+    const maxTokens = Math.min((body.max_tokens as number) ?? defaultMax, 6144)
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return jsonResponse({ error: 'messages 不能为空' }, 400)
@@ -158,9 +195,10 @@ Deno.serve(async (req) => {
       systemPrompt += `\n\n## 额外上下文\n${extraContext}`
     }
 
+    // v13 T10：滑窗从 20 → 40，让 standard 模式也能获得更长的对话记忆
     const fullMessages = [
       { role: 'system', content: systemPrompt },
-      ...messages.slice(-20),
+      ...messages.slice(-40),
     ]
 
     const modelsToTry = [primaryModel, fallbackModel]
@@ -180,7 +218,10 @@ Deno.serve(async (req) => {
             model: modelId,
             stream: false,
             temperature,
-            top_p: 0.9,
+            top_p: 0.92,
+            // v13 T12：加入 frequency_penalty / presence_penalty 抑制 Gemma 常见的"机器人复读"
+            frequency_penalty: isStructured ? 0 : 0.3,
+            presence_penalty: isStructured ? 0 : 0.2,
             max_tokens: maxTokens,
             messages: fullMessages,
           }),
@@ -205,7 +246,6 @@ Deno.serve(async (req) => {
 
     const data = await upstream.json()
     const rawContent = data.choices?.[0]?.message?.content || ''
-    const isStructured = ['schedule', 'content_safety', 'mentor', 'planner'].includes(moduleName)
     const content = isStructured ? rawContent : sanitizeOutput(rawContent)
 
     return jsonResponse({

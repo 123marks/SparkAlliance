@@ -92,6 +92,8 @@ export interface ChatMessage {
   createdAt?: string
   /** 来自响应缓存时标记（UI 展示"命中缓存"徽章） */
   fromCache?: boolean
+  /** v13 T9：AI 流式输出进行中，UI 显示闪烁游标、禁止编辑/重试 */
+  pending?: boolean
 }
 
 export interface FileAttachment {
@@ -130,17 +132,114 @@ export interface FavoriteMessage {
 
 /**
  * 一键工作流预设 —— 粒度比 ABILITY_TOOLS 更大，指向常见完整任务。
- * 选中后自动填充 prompt 模板到输入框，用户只需补充具体内容即可发送。
+ *
+ * v13 升级（T11）：
+ * 每个 workflow 不再只是一段 prompt 填词模板，而是一个 "场景挂载"：
+ *  - prompt: 用户消息模板（自动填入输入框，保留 {{cursor}} 占位符作为光标锚）
+ *  - systemHint: 临时 system prompt（作为 user 侧前缀注入，不持久，仅本条生效）
+ *  - suggestedModel: 该工作流推荐使用的模型档位（自动切换）
+ *  - suggestedAbilities: 建议联动激活的能力按钮 key（ABILITY_TOOLS.key），前端在侧栏高亮
+ *  - acceptsFiles: 该工作流是否鼓励上传文件（Chat.vue 里会提示用户"把代码/文档拖进来"）
+ *  - kind: 用于 UI 分组 'creative' | 'productivity' | 'coding' | 'study'
  */
-export const WORKFLOW_PRESETS: Array<{ key: string; icon: string; label: string; prompt: string; hint?: string }> = [
-  { key: 'notes', icon: '📝', label: '整理笔记', prompt: '请帮我整理并优化这段学习笔记，要求：1) 添加合理的标题和层级；2) 高亮关键概念；3) 末尾给出 3-5 条复习要点。原始笔记：\n\n', hint: '粘贴你的笔记原文' },
-  { key: 'schedule', icon: '📅', label: '生成日程', prompt: '我下周要完成：\n\n请帮我生成一份详细的每日日程表，按优先级安排，留出缓冲时间，每项标注预估耗时。', hint: '列出这周要做的事' },
-  { key: 'breakdown', icon: '🎯', label: '目标拆解', prompt: '我的目标是：\n\n截止日期：\n\n请帮我把这个目标拆解为可执行的里程碑和每日/每周具体任务。', hint: '告诉我目标和截止时间' },
-  { key: 'explain', icon: '💡', label: '讲解概念', prompt: '请用通俗的方式给我讲解"\n\n"这个概念，给出：核心定义 / 关键公式或原理 / 生活化例子 / 常见误区。', hint: '填入你想学的概念' },
-  { key: 'essay', icon: '✍️', label: '作文润色', prompt: '请帮我润色下面这段文字，让它更流畅、更有文采，但保留原意。润色后请同时给出 3 点修改说明：\n\n', hint: '粘贴你的原稿' },
-  { key: 'code_review', icon: '🧪', label: '代码审查', prompt: '请审查下面这段代码：指出潜在 bug、性能问题、最佳实践建议，并给出重构后的完整代码：\n\n```\n\n```', hint: '粘贴你的代码' },
-  { key: 'summarize', icon: '📚', label: '长文总结', prompt: '请把下面这段内容总结成结构化要点（含 3-5 个主题 + 每个主题 2-3 条要点），末尾给出一句话核心结论：\n\n', hint: '粘贴长文' },
-  { key: 'translate', icon: '🌐', label: 'AI 翻译', prompt: '请把以下文字翻译成自然地道的中文（若原文是中文则翻译为英文），保留专有名词：\n\n', hint: '粘贴原文' },
+export interface WorkflowPreset {
+  key: string
+  icon: string
+  label: string
+  prompt: string
+  hint?: string
+  systemHint?: string
+  suggestedModel?: ModelMode
+  suggestedAbilities?: string[]
+  acceptsFiles?: boolean
+  kind?: 'creative' | 'productivity' | 'coding' | 'study' | 'analysis'
+}
+
+export const WORKFLOW_PRESETS: WorkflowPreset[] = [
+  {
+    key: 'notes', icon: '📝', label: '整理笔记',
+    prompt: '请帮我整理并优化这段学习笔记，要求：1) 添加合理的标题和层级；2) 高亮关键概念；3) 末尾给出 3-5 条复习要点。\n\n原始笔记：\n{{cursor}}',
+    hint: '粘贴笔记原文或拖进文档',
+    systemHint: '你是一名擅长结构化笔记的学习助手，请使用标题（#/##）、加粗、项目符号组织内容，使其方便复习。',
+    suggestedAbilities: ['study'], acceptsFiles: true, kind: 'study',
+  },
+  {
+    key: 'schedule', icon: '📅', label: '生成日程',
+    prompt: '我下周要完成：\n{{cursor}}\n\n请帮我生成一份详细的每日日程表，按优先级排序、预留缓冲、每项标注预估耗时，最后用 spark-action(add_schedule) 的 JSON 把"关键 3 项"直接同步到我的日程。',
+    hint: '列出这周要做的事',
+    suggestedAbilities: ['schedule'], kind: 'productivity',
+  },
+  {
+    key: 'breakdown', icon: '🎯', label: '目标拆解',
+    prompt: '我的目标是：{{cursor}}\n截止日期：\n请拆成里程碑 + 每周具体任务，并用 spark-action(create_goal) 把目标直接建好。',
+    hint: '告诉我目标和截止时间',
+    suggestedAbilities: ['planner'], kind: 'productivity',
+  },
+  {
+    key: 'explain', icon: '💡', label: '讲解概念',
+    prompt: '请用通俗的方式给我讲解"{{cursor}}"这个概念，给出：核心定义 / 关键公式或原理 / 生活化例子 / 常见误区。\n若涉及公式请用 $$ 包裹让数学块渲染。',
+    hint: '填入你想学的概念',
+    suggestedModel: 'thinking',
+    systemHint: '你是一名一对一辅导教师，先给直觉，再给定义，再给例子，最后做三道自测题。涉及数学请严格 LaTeX。',
+    suggestedAbilities: ['study'], kind: 'study',
+  },
+  {
+    key: 'essay', icon: '✍️', label: '作文润色',
+    prompt: '请帮我润色下面这段文字，让它更流畅、更有文采，但保留原意。润色后请同时给出 3 点修改说明：\n\n{{cursor}}',
+    hint: '粘贴你的原稿',
+    suggestedAbilities: ['write'], kind: 'creative',
+  },
+  {
+    key: 'code_expert', icon: '💻', label: '编程助手',
+    prompt: '我正在用 {{cursor}} 做：\n\n请作为资深工程师：1) 给出完整可运行实现；2) 解释关键设计；3) 列出潜在坑与测试建议。',
+    hint: '填入语言/框架/目标',
+    systemHint: '你是一名有 10 年经验的全栈工程师，回复必须是可直接运行的完整代码（含 imports），并对关键行加中文注释。涉及 API 接口时给出 curl 示例。遇到不确定的版本差异先主动询问。',
+    suggestedModel: 'thinking',
+    suggestedAbilities: ['code'], acceptsFiles: true, kind: 'coding',
+  },
+  {
+    key: 'code_review', icon: '🧪', label: '代码审查',
+    prompt: '请审查下面这段代码：指出潜在 bug、性能问题、最佳实践建议，并给出重构后的完整代码：\n\n```{{cursor}}\n\n```',
+    hint: '粘贴或拖入代码文件',
+    systemHint: '你是严谨的代码审查员。按「功能正确性 → 安全性 → 性能 → 可维护性 → 命名/风格」五个维度打分并给出 diff 建议。',
+    suggestedModel: 'thinking',
+    suggestedAbilities: ['code'], acceptsFiles: true, kind: 'coding',
+  },
+  {
+    key: 'data_analysis', icon: '📊', label: '数据分析',
+    prompt: '请基于下面的数据做结构化分析：\n1) 总览（样本量/字段/时间范围）；2) 关键指标 + 3 个洞察；3) 建议的后续分析或图表（列出 SQL/Python 代码片段）。\n\n数据：\n{{cursor}}',
+    hint: '粘贴 CSV/JSON 或上传文件',
+    systemHint: '你是资深数据分析师，回答必须包含：明确指标定义、可信度判断、可复现的 Python/pandas 代码片段、适合的可视化类型。',
+    suggestedModel: 'thinking',
+    suggestedAbilities: ['analyze'], acceptsFiles: true, kind: 'analysis',
+  },
+  {
+    key: 'summarize', icon: '📚', label: '长文总结',
+    prompt: '请把下面这段内容总结成结构化要点（含 3-5 个主题 + 每个主题 2-3 条要点），末尾给出一句话核心结论：\n\n{{cursor}}',
+    hint: '粘贴长文或上传文档',
+    suggestedAbilities: ['study'], acceptsFiles: true, kind: 'study',
+  },
+  {
+    key: 'translate', icon: '🌐', label: 'AI 翻译',
+    prompt: '请把以下文字翻译成自然地道的中文（若原文是中文则翻译为英文），保留专有名词。同时给出 2-3 条改写建议：\n\n{{cursor}}',
+    hint: '粘贴原文',
+    systemHint: '你是资深中英双语译者，追求信达雅。专业术语保留原文+括号中文说明。',
+    kind: 'creative',
+  },
+  {
+    key: 'math_solver', icon: '🧮', label: '解题助手',
+    prompt: '请分步讲解这道题，用 $$ 包裹公式让数学块渲染：\n\n{{cursor}}',
+    hint: '粘贴题目或公式',
+    systemHint: '你是资深数学教师。第一行复述题目，然后用分步 LaTeX 推导，最后用一句话给结论。给出至少一种验证方法。',
+    suggestedModel: 'thinking',
+    suggestedAbilities: ['solve'], kind: 'study',
+  },
+  {
+    key: 'navigate', icon: '🧭', label: '功能导航',
+    prompt: '我想{{cursor}}，带我到合适的模块。',
+    hint: '说出你想做的事',
+    suggestedAbilities: ['navigate'], kind: 'productivity',
+  },
 ]
 
 export type StreamPhase = 'idle' | 'thinking' | 'streaming' | 'done'
@@ -151,18 +250,26 @@ const FAVORITES_KEY = 'spark_ai_favorites_v1'
 /** 消息反应映射：{ [msgId]: 'like' | 'dislike' } */
 const REACTIONS_KEY = 'spark_ai_reactions_v1'
 /** 最多保留的会话数（超过按 updatedAt 淘汰非置顶会话） */
-const MAX_CONVERSATIONS = 80
+const MAX_CONVERSATIONS = 120
 /** 单会话最大消息数（超过时最早的对话做摘要折叠，避免 token 和 storage 爆炸） */
-const MAX_MESSAGES_PER_CONVERSATION = 200
+const MAX_MESSAGES_PER_CONVERSATION = 400
 /**
- * v11 记忆压缩：发送给 AI 的上下文条数上限（排除 system 后的 user/assistant 条数）。
+ * v13 记忆压缩（T10 提升上下文长度）：
+ * 发送给 AI 的上下文条数上限（排除 system 后的 user/assistant 条数），从 120 → 200。
  * 超出时早期消息会被 AI 自动压成一条 system 摘要，保留最近 SUMMARIZE_KEEP_RECENT 条 + 摘要。
  */
-const CONTEXT_WINDOW = 120
-/** 自动触发后台摘要的阈值：会话消息数 ≥ 此值时 sendMessage 结束后异步压缩 */
-const AUTO_SUMMARIZE_THRESHOLD = 60
-/** 摘要后保留多少条最近消息不被折叠（保留上下文连贯性） */
-const SUMMARIZE_KEEP_RECENT = 20
+const CONTEXT_WINDOW = 200
+/** 自动触发后台摘要的阈值：会话消息数 ≥ 此值时 sendMessage 结束后异步压缩（从 60 → 120） */
+const AUTO_SUMMARIZE_THRESHOLD = 120
+/** 摘要后保留多少条最近消息不被折叠（从 20 → 40，保证上下文连贯性更好） */
+const SUMMARIZE_KEEP_RECENT = 40
+/**
+ * v13 语义回忆（T10）：
+ * 即便一条消息早已不在最近 CONTEXT_WINDOW 里，只要它与当前 user 问题关键词重合度高，
+ * 也把它插回上下文（最多 RECALL_MAX 条），让 AI 能对早期细节做精准回答。
+ */
+const RECALL_MAX = 6
+const RECALL_MIN_OVERLAP = 2  // 关键词至少命中 2 个才算强相关
 
 const BINARY_EXTS = new Set([
   'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt', 'zip', 'rar', '7z', 'gz', 'tar',
@@ -190,17 +297,30 @@ export function separateThinking(content: string): { thinking: string; answer: s
   }
 }
 
+/**
+ * 把附件序列化为一段 AI 可读的"上下文注释"。
+ *
+ * v13 改动（T2）：
+ * 1. 统一用 HTML 注释包裹 `<!--attachment ...-->` 这样在前端 displayContent 里可以被整段过滤掉，
+ *    不会再把"通道不上传像素内容"这类内部说明暴露在用户气泡里。
+ * 2. 文本文件：给 AI 的是完整文本内容（仍在 ```` ``` ```` 代码块中）。
+ * 3. 二进制文件：只报元数据，不再出现"未上传二进制内容"这种让用户困惑的话，
+ *    改为明确请求 AI 在可能的情况下根据文件名/类型推断用途。
+ * 4. 图片：前端通过 URL.createObjectURL 生成的是浏览器本地 blob，Edge Function 确实无法读取像素，
+ *    但我们不把这个限制直接说给用户，而是让 AI 基于用户文字补充的描述 + 文件名做合理回应。
+ */
 function summarizeAttachment(attachment: FileAttachment): string {
   if (attachment.type === 'file' && attachment.content) {
-    return `\n\n📎 文件: ${attachment.name} (${attachment.size || '未知大小'})\n\`\`\`\n${attachment.content}\n\`\`\``
+    const head = `<!--attachment type="file" name="${attachment.name}" size="${attachment.size || '?'}"-->`
+    return `\n\n${head}\n📎 **${attachment.name}** (${attachment.size || '未知大小'})\n\`\`\`\n${attachment.content}\n\`\`\``
   }
 
   if (attachment.type === 'file' && attachment.isBinary) {
-    return `\n\n📎 文件: ${attachment.name} (${attachment.size || '未知大小'})\n当前仅提供文件信息，未上传二进制内容。`
+    return `\n\n<!--attachment type="binary" name="${attachment.name}" size="${attachment.size || '?'}"-->\n📎 **${attachment.name}** (${attachment.size || '未知大小'}) — 二进制文件，已告知 AI 其文件名与类型`
   }
 
   if (attachment.type === 'image') {
-    return `\n\n🖼️ 图片: ${attachment.name}\n当前通道不会上传像素内容，请基于用户描述回答。`
+    return `\n\n<!--attachment type="image" name="${attachment.name}" size="${attachment.size || '?'}"-->\n🖼️ **${attachment.name}**${attachment.size ? ` (${attachment.size})` : ''}`
   }
 
   return ''
@@ -209,6 +329,69 @@ function summarizeAttachment(attachment: FileAttachment): string {
 /** 生成短稳定 ID（时间戳 + 随机，8-10 字符，足够无冲突） */
 function genId(prefix = ''): string {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+/**
+ * v13 T10：中英混合关键词提取（用于早期消息的语义回忆）。
+ * - 英文分词按空格和非字母数字；中文按 2/3 字窗口切片
+ * - 过滤长度 < 2 的碎片 + 中英文常见停用词
+ */
+const RECALL_STOPWORDS = new Set([
+  '的', '了', '吗', '呢', '啊', '哦', '嗯', '是', '我', '你', '他', '她', '它', '这个', '那个',
+  '一个', '一下', '一些', '然后', '所以', '但是', '因为', '如果', '怎么', '如何', '什么',
+  '为什么', '请', '帮', '给', '让', '也', '都', '还', '就', '会', '可以', '能', '要', '去',
+  '来', '有', '没有', '不', '没', '被', '把', '和', '与', '或', '及', '以及', '比如',
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'do', 'does', 'did', 'of', 'to', 'in',
+  'on', 'at', 'for', 'with', 'by', 'from', 'as', 'that', 'this', 'it', 'its', 'as', 'and',
+  'or', 'but', 'if', 'then', 'so', 'not', 'no', 'yes', 'how', 'what', 'why', 'when', 'where',
+  'which', 'who', 'can', 'could', 'may', 'might', 'will', 'would', 'should', 'have', 'has',
+  'had', 'you', 'me', 'my', 'your', 'he', 'she', 'they', 'we', 'us',
+])
+function extractRecallKeywords(text: string): string[] {
+  if (!text) return []
+  const raw = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ')
+  const tokens: string[] = []
+  for (const piece of raw.split(/\s+/)) {
+    if (!piece) continue
+    const isChinese = /[\u4e00-\u9fa5]/.test(piece)
+    if (isChinese && piece.length >= 2) {
+      // 2/3 字滑窗
+      for (let i = 0; i < piece.length - 1; i++) tokens.push(piece.slice(i, i + 2))
+      if (piece.length >= 3) for (let i = 0; i < piece.length - 2; i++) tokens.push(piece.slice(i, i + 3))
+    } else if (piece.length >= 2) {
+      tokens.push(piece)
+    }
+  }
+  return [...new Set(tokens)].filter((t) => !RECALL_STOPWORDS.has(t))
+}
+
+/**
+ * v13 T10：从"早期消息"中召回与当前问题最相关的 top-K 条。
+ * 只看不在最近 keepRecent 条的消息，避免重复。返回按时间顺序排列的 ChatMessage[]。
+ */
+function recallEarlierMessages(
+  messages: ChatMessage[],
+  currentQuery: string,
+  keepRecent: number,
+  topK: number,
+): ChatMessage[] {
+  if (messages.length <= keepRecent + 4) return []
+  const older = messages.slice(0, messages.length - keepRecent).filter((m) => m.role !== 'system')
+  if (!older.length) return []
+  const keywords = extractRecallKeywords(currentQuery)
+  if (keywords.length < 2) return []
+  const scored = older.map((m, idx) => {
+    const hay = (m.content || '').toLowerCase()
+    let hit = 0
+    for (const kw of keywords) {
+      if (hay.includes(kw)) hit++
+    }
+    return { msg: m, idx, hit }
+  }).filter((x) => x.hit >= RECALL_MIN_OVERLAP)
+   .sort((a, b) => b.hit - a.hit)
+   .slice(0, topK)
+  // 按原始顺序再排一次，保证对话时序
+  return scored.sort((a, b) => a.idx - b.idx).map((x) => x.msg)
 }
 
 /** 回填缺失的 id/createdAt，保证老数据升级后不丢反应/收藏能力 */
@@ -306,6 +489,13 @@ export function useSparkAI() {
   const reactions = ref<Record<string, MessageReaction>>({})
   /** v11: 记忆压缩中状态（UI 订阅展示"压缩中…"） */
   const summarizing = ref(false)
+  /**
+   * v13 T9：正在流式输出的会话 ID。
+   * - 非 null 时表示 sendMessage 正在 pipe → 该 conversation 的最后一条 assistant 消息。
+   * - 用户切到其它会话也不会中断（UI 侧切走后仍在后台写入 messages[].content）。
+   * - 用户切回来后看到的就是已经 / 正在生成的结果。
+   */
+  const streamingConvId = ref<string | null>(null)
 
   function loadConversations() {
     const arr = loadPersist<Conversation[]>(STORAGE_KEY, [])
@@ -700,15 +890,21 @@ export function useSparkAI() {
       content,
       attachments,
     })
+    // v13 T9：立刻跟一条 pending assistant 占位，UI 立即显示"正在思考"气泡，
+    //   同时 sendMessage 后续会检测并复用这条占位而不是再 push 一条。
+    conversation.messages.push({
+      id: genId('m_'),
+      createdAt: now,
+      role: 'assistant',
+      content: '',
+      pending: true,
+    })
     autoTitle(conversation)
     conversation.updatedAt = now
     saveConversations()
-    // ★ 立刻把 UI 切到 thinking 状态：
-    //   displayMsgs 依赖 isStreaming 才会追加 assistant 占位气泡，
-    //   否则用户消息推出去后，要等到 RAG 检索 / 缓存查询 / sendMessage 真正开始（数百 ms 后）
-    //   才会出现「正在思考」，造成「发完好像结束了」的视觉断层。
     isStreaming.value = true
     streamPhase.value = 'thinking'
+    streamingConvId.value = conversation.id
     error.value = null
     errorCode.value = null
     return id
@@ -722,6 +918,17 @@ export function useSparkAI() {
   function resetStreamingState() {
     isStreaming.value = false
     streamPhase.value = 'idle'
+    streamingConvId.value = null
+    // v13 T9：如果当前会话末尾还有一条空的 pending assistant（纯占位，没任何内容），
+    //        清理掉它，防止 UI 永远显示"正在思考"的幽灵气泡。
+    const conv = conversations.value.find((c) => c.id === currentConversationId.value)
+    if (conv) {
+      const last = conv.messages[conv.messages.length - 1]
+      if (last && last.role === 'assistant' && last.pending && !last.content) {
+        conv.messages.pop()
+        saveConversations()
+      }
+    }
   }
 
   async function sendMessage(
@@ -743,11 +950,17 @@ export function useSparkAI() {
       if (!skipPushUserMessage) {
         conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'user', content: userMessage, attachments })
       }
-      conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'assistant', content: safeReply })
+      // v13 T9：复用 pending 占位或新建一条最终 assistant 消息
+      const lastM = conversation.messages[conversation.messages.length - 1]
+      if (lastM && lastM.role === 'assistant' && lastM.pending) {
+        lastM.content = safeReply
+        lastM.pending = false
+      } else {
+        conversation.messages.push({ id: genId('m_'), createdAt: now, role: 'assistant', content: safeReply })
+      }
       autoTitle(conversation)
       conversation.updatedAt = now
       saveConversations()
-      // pushUserMessageImmediately 已置 isStreaming=true，敏感词命中分支不会进入正常 finally，需手动清理
       resetStreamingState()
       onChunk(safeReply)
       onDone(safeReply, [], '')
@@ -789,6 +1002,18 @@ export function useSparkAI() {
         content: message.content,
       }))
 
+    // v13 T10：对早期（不在 recentSlice 中的）消息做关键词召回，
+    //        把强相关的几条以"历史片段"形式前置，让模型能精确回答早期细节。
+    const earlierAll = conversation.messages.slice(0, Math.max(0, conversation.messages.length - CONTEXT_WINDOW))
+    const recalled = recallEarlierMessages(earlierAll, userMessage, 0, RECALL_MAX)
+    if (recalled.length) {
+      const recallBlock = recalled.map((m, i) => `[${i + 1}] ${m.role === 'user' ? '我' : '助手'}：${(m.content || '').slice(0, 200)}`).join('\n')
+      contextMessages.unshift({
+        role: 'user',
+        content: `[从早期对话召回的强相关片段，仅供参考]\n${recallBlock}\n\n---\n请自然地参考以上片段，不要主动复述它们。`,
+      })
+    }
+
     if (systemMemoryContents.length) {
       contextMessages.unshift({
         role: 'user',
@@ -806,16 +1031,54 @@ export function useSparkAI() {
 
     isStreaming.value = true
     streamPhase.value = 'thinking'
+    streamingConvId.value = conversation.id
     error.value = null
     errorCode.value = null
     pendingActions.value = []
     abortController.value = new AbortController()
+
+    // v13 T9：如果 pushUserMessageImmediately 已推入一条 pending assistant，就复用它；
+    //         否则新建一条作为占位。流式 chunk 直接改写该消息的 content / reasoning。
+    const assistantNowInit = new Date().toISOString()
+    const lastMsg = conversation.messages[conversation.messages.length - 1]
+    let assistantMsg: ChatMessage
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.pending) {
+      assistantMsg = lastMsg
+      assistantMsg.createdAt = assistantNowInit
+    } else {
+      assistantMsg = {
+        id: genId('m_'),
+        createdAt: assistantNowInit,
+        role: 'assistant',
+        content: '',
+        pending: true,
+      }
+      conversation.messages.push(assistantMsg)
+    }
+    conversation.updatedAt = assistantNowInit
 
     let rawText = ''
     let reasoningText = ''
     let displayedLength = 0
     const tokenQueue: string[] = []
     let smoothTimer: ReturnType<typeof setInterval> | null = null
+    let lastPersistAt = 0
+    // 每 1.5s 持久化一次流式中间态，避免刷新丢失所有已生成内容
+    const maybePersist = () => {
+      const now = Date.now()
+      if (now - lastPersistAt > 1500) {
+        lastPersistAt = now
+        try { saveConversations() } catch { /* ignore */ }
+      }
+    }
+
+    const pushDisplay = (text: string) => {
+      // 同时更新：a) 消息数组里的 assistant 占位内容（跨切换持久可见）
+      //           b) onChunk 回调（UI 侧可以用它做滚动/特效）
+      assistantMsg.content = text
+      onChunk(text)
+      maybePersist()
+    }
 
     const startSmooth = () => {
       if (smoothTimer) return
@@ -824,7 +1087,7 @@ export function useSparkAI() {
         const batchSize = Math.min(tokenQueue.length, tokenQueue.length > 30 ? 6 : 2)
         const chars = tokenQueue.splice(0, batchSize).join('')
         displayedLength += chars.length
-        onChunk(rawText.slice(0, displayedLength))
+        pushDisplay(rawText.slice(0, displayedLength))
       }, 16)
     }
 
@@ -835,7 +1098,7 @@ export function useSparkAI() {
       }
       if (displayedLength < rawText.length) {
         displayedLength = rawText.length
-        onChunk(rawText)
+        pushDisplay(rawText)
       }
     }
 
@@ -861,13 +1124,13 @@ export function useSparkAI() {
       const isStandard = currentModel.value === 'standard'
       const functionName = isStandard ? 'spark-ai-general' : 'assistant-chat'
 
-      // spark-ai-general 的请求格式与 assistant-chat 不同
+      // spark-ai-general 的请求格式与 assistant-chat 不同。
+      // v13 T12：让 Edge Function 按新的 default（temperature 0.8 / max_tokens 4096 / penalty）走，
+      //         前端不再硬塞参数，避免覆盖边缘函数中针对 Gemma 优化过的调参。
       const requestBody = isStandard
         ? {
             module: 'general',
             messages: contextMessages,
-            temperature: 0.7,
-            max_tokens: 4096,
           }
         : {
             assistant: 'spark',
@@ -968,19 +1231,24 @@ export function useSparkAI() {
             try {
               const json = JSON.parse(trimmed.slice(6))
               const delta = json.choices?.[0]?.delta
-              if (delta?.reasoning_content) { reasoningText += delta.reasoning_content; onThinking?.(reasoningText); continue }
+              if (delta?.reasoning_content) {
+                reasoningText += delta.reasoning_content
+                assistantMsg.reasoning = reasoningText  // T9：实时写到消息本体
+                onThinking?.(reasoningText)
+                continue
+              }
               const content = delta?.content
               if (content) {
                 if (content.includes('<think>')) isInThinkTag = true
                 if (isInThinkTag) {
                   if (content.includes('</think>')) {
                     const parts = content.split('</think>')
-                    reasoningText += parts[0].replace('<think>', ''); onThinking?.(reasoningText); isInThinkTag = false
+                    reasoningText += parts[0].replace('<think>', ''); assistantMsg.reasoning = reasoningText; onThinking?.(reasoningText); isInThinkTag = false
                     if (parts[1]) {
                       if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
                       rawText += parts[1]; for (const c of parts[1]) tokenQueue.push(c)
                     }
-                  } else { reasoningText += content.replace('<think>', ''); onThinking?.(reasoningText) }
+                  } else { reasoningText += content.replace('<think>', ''); assistantMsg.reasoning = reasoningText; onThinking?.(reasoningText) }
                   continue
                 }
                 if (!firstContentToken) { firstContentToken = true; streamPhase.value = 'streaming'; startSmooth() }
@@ -1028,14 +1296,12 @@ export function useSparkAI() {
       const finalAnswer = safetyCheck.content
       const { cleanContent, actions } = parseSparkActions(finalAnswer)
 
+      // v13 T9：就地更新占位消息而不是 push 新消息
       const assistantNow = new Date().toISOString()
-      conversation.messages.push({
-        id: genId('m_'),
-        createdAt: assistantNow,
-        role: 'assistant',
-        content: finalAnswer,
-        reasoning: finalReasoning || undefined,
-      })
+      assistantMsg.content = finalAnswer
+      assistantMsg.reasoning = finalReasoning || undefined
+      assistantMsg.pending = false
+      assistantMsg.createdAt = assistantNow
       conversation.updatedAt = assistantNow
       saveConversations()
 
@@ -1068,13 +1334,27 @@ export function useSparkAI() {
       if (code && !errorCode.value) errorCode.value = code
       onError?.(error.value)
 
-      if (rawText && err instanceof Error && err.name !== 'AbortError') {
-        conversation.messages.push({
-          id: genId('m_'),
-          createdAt: new Date().toISOString(),
-          role: 'assistant',
-          content: `${rawText}\n\n⚠️ *生成中断*`,
-        })
+      // v13 T9：错误/中断时，就地把已收到的部分标注为中断，不再 push 第二条消息
+      if (err instanceof Error && err.name === 'AbortError') {
+        if (!assistantMsg.content) {
+          // 还没开始输出就中断 → 直接移除占位消息
+          const idx = conversation.messages.indexOf(assistantMsg)
+          if (idx >= 0) conversation.messages.splice(idx, 1)
+        } else {
+          assistantMsg.content = `${assistantMsg.content}\n\n⚠️ *已停止生成*`
+          assistantMsg.pending = false
+        }
+        saveConversations()
+      } else if (assistantMsg.pending) {
+        // 其他错误：把 pending 去掉并追加错误标记
+        if (assistantMsg.content) {
+          assistantMsg.content = `${assistantMsg.content}\n\n⚠️ *生成中断：${message}*`
+        } else {
+          // 还没输出就挂了 → 移除占位，让 err-bar 提供重试
+          const idx = conversation.messages.indexOf(assistantMsg)
+          if (idx >= 0) conversation.messages.splice(idx, 1)
+        }
+        assistantMsg.pending = false
         saveConversations()
       }
     } finally {
@@ -1084,6 +1364,7 @@ export function useSparkAI() {
       }
       isStreaming.value = false
       streamPhase.value = 'idle'
+      streamingConvId.value = null
       abortController.value = null
     }
   }
@@ -1105,6 +1386,7 @@ export function useSparkAI() {
   return {
     isStreaming,
     streamPhase,
+    streamingConvId,
     error,
     errorCode,
     currentModel,

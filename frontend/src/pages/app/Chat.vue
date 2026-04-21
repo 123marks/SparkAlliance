@@ -80,10 +80,22 @@
                   </button>
                   <div class="sb-menu-div"></div>
                   <button class="sb-menu-item" @click="triggerExport(c.id, 'markdown')">
-                    <span class="mi-icon">📥</span><span>导出 Markdown</span>
+                    <span class="mi-icon">📝</span><span>导出 Markdown</span>
+                  </button>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'word')">
+                    <span class="mi-icon">🅦</span><span>导出 Word (.doc)</span>
+                  </button>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'pdf')">
+                    <span class="mi-icon">🅿️</span><span>导出 PDF（打印对话框）</span>
+                  </button>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'html')">
+                    <span class="mi-icon">🌐</span><span>导出 HTML</span>
+                  </button>
+                  <button class="sb-menu-item" @click="triggerExport(c.id, 'txt')">
+                    <span class="mi-icon">📄</span><span>导出 TXT</span>
                   </button>
                   <button class="sb-menu-item" @click="triggerExport(c.id, 'json')">
-                    <span class="mi-icon">📥</span><span>导出 JSON</span>
+                    <span class="mi-icon">🧾</span><span>导出 JSON</span>
                   </button>
                   <div class="sb-menu-div"></div>
                   <button class="sb-menu-item sb-menu-item-danger" @click="openMenuId = null; handleDelete(c.id)">
@@ -169,33 +181,42 @@
             <div v-if="msg.role === 'assistant'" class="av">⚡</div>
             <div class="msg-content">
               <div v-if="msg.attachments?.length" class="file-cards">
-                <div v-for="(a, i) in msg.attachments" :key="i" class="file-card"><div class="fc-icon">{{ a.type === 'image' ? '🖼️' : '📄' }}</div><div class="fc-info"><div class="fc-name">{{ a.name }}</div><div class="fc-size">{{ a.size }}</div></div></div>
+                <div v-for="(a, i) in msg.attachments" :key="i" class="file-card" :class="{ 'file-card-img': a.type === 'image' }" @click="openPreview(a)" :title="a.type === 'image' ? '点击查看大图' : '点击预览内容'">
+                  <img v-if="a.type === 'image' && a.url" :src="a.url" class="fc-thumb" :alt="a.name">
+                  <div v-else class="fc-icon">📄</div>
+                  <div class="fc-info"><div class="fc-name">{{ a.name }}</div><div class="fc-size">{{ a.size }}</div></div>
+                </div>
               </div>
               <div v-if="msg.role === 'user'" class="user-bubble"><div class="u-text">{{ msg.displayContent || msg.content }}</div></div>
-              <div v-if="msg.role === 'user' && !isStreaming" class="msg-acts user-acts">
+              <div v-if="msg.role === 'user' && (!isStreaming || !streamingInCurrentView)" class="msg-acts user-acts">
                 <button @click="copyText(msg.content)" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
                 <button @click="editMessage(idx)" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
               </div>
               <!-- 思考过程 -->
-              <div v-if="msg.role === 'assistant' && (msg.reasoning || (isStreaming && idx === displayMsgs.length - 1 && thinkingText))" class="think-block">
+              <div v-if="msg.role === 'assistant' && msg.reasoning" class="think-block">
                 <button class="think-toggle" @click="collapsedThinking[idx] = !collapsedThinking[idx]">
-                  <span class="think-status" :class="{ spinning: isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' }">💭</span>
-                  <span>{{ isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' ? '正在思考...' : '思考过程' }}</span>
+                  <span class="think-status" :class="{ spinning: msg.pending && streamingInCurrentView && streamPhase === 'thinking' }">💭</span>
+                  <span>{{ msg.pending && streamingInCurrentView && streamPhase === 'thinking' ? '正在思考...' : '思考过程' }}</span>
                   <svg class="think-chevron" :class="{ collapsed: collapsedThinking[idx] }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-                <div v-show="!collapsedThinking[idx]" class="think-body md-body" v-html="renderMd(msg.reasoning || thinkingText)"></div>
+                <div v-show="!collapsedThinking[idx]" class="think-body md-body" v-html="renderMd(msg.reasoning)"></div>
               </div>
-              <div v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'thinking' && !msg.content && !msg.reasoning && !thinkingText" class="think-block think-block-loading">
+              <!-- v13 T9：pending 占位且无内容 → 显示"正在思考"加载态 -->
+              <div v-if="msg.role === 'assistant' && msg.pending && streamingInCurrentView && !msg.content && !msg.reasoning" class="think-block think-block-loading">
                 <div class="think-toggle"><span class="think-status spinning">💭</span><span>{{ thinkingHint }}</span></div>
                 <div class="think-dots"><span></span><span></span><span></span></div>
                 <div class="think-sub-hint">{{ thinkingSubHint }}</div>
+              </div>
+              <!-- v13 T9：其它会话正在生成，本视图看到 pending 占位消息时的静态提示 -->
+              <div v-if="msg.role === 'assistant' && msg.pending && !streamingInCurrentView && !msg.content" class="bg-streaming-hint">
+                <span class="bg-dot"></span>正在后台生成中（你切回来时会自动显示最新进度）
               </div>
               <!-- AI 回复（含导航链接渲染） -->
               <div v-if="msg.role === 'assistant' && msg.content" class="md-body" v-html="renderMd(msg.content)" @click="handleMdClick"></div>
               <!-- v9: 命中缓存徽章 -->
               <span v-if="msg.role === 'assistant' && msg.fromCache" class="cache-badge" title="此回复来自本地响应缓存，内容与最新请求一致">⚡ 来自缓存</span>
-              <span v-if="msg.role === 'assistant' && isStreaming && idx === displayMsgs.length - 1 && streamPhase === 'streaming'" class="cursor"></span>
-              <div v-if="msg.role === 'assistant' && !isStreaming && msg.content" class="msg-acts">
+              <span v-if="msg.role === 'assistant' && msg.pending && streamingInCurrentView && streamPhase === 'streaming' && msg.content" class="cursor"></span>
+              <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="msg-acts">
                 <button @click="copyText(msg.content)" title="复制" aria-label="复制回复">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                 </button>
@@ -226,6 +247,20 @@
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 14V2M9 18.12L10 14H4.17a2 2 0 01-1.92-2.56l2.33-8A2 2 0 016.5 2H20a2 2 0 012 2v8a2 2 0 01-2 2h-2.76a2 2 0 00-1.79 1.11L12 22a3.13 3.13 0 01-3-3.88z"/></svg>
                 </button>
+                <!-- v13: 单条导出菜单 -->
+                <div class="msg-export">
+                  <button class="msg-export-btn" :class="{ active: msgExportOpen === idx }" title="导出本条" aria-label="导出本条回复" @click.stop="msgExportOpen = msgExportOpen === idx ? -1 : idx">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </button>
+                  <div v-if="msgExportOpen === idx" class="msg-export-menu" @click.stop>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'markdown'); msgExportOpen = -1">📝 Markdown (.md)</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'word'); msgExportOpen = -1">🅦 Word (.doc)</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'pdf'); msgExportOpen = -1">🅿️ PDF (打印)</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'html'); msgExportOpen = -1">🌐 HTML</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'txt'); msgExportOpen = -1">📄 TXT</button>
+                    <button class="mx-item" @click="exportSingleMessage(idx, 'json'); msgExportOpen = -1">🧾 JSON</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -247,20 +282,61 @@
       <!-- 输入区 -->
       <div class="input-area">
         <div v-if="pendingFiles.length" class="pf-list">
-          <div v-for="(f, i) in pendingFiles" :key="i" class="pf-chip">
-            <img v-if="f.type === 'image' && f.url" :src="f.url" class="pf-thumb"><span v-else class="pf-ficon">📄</span>
-            <span class="pf-name">{{ f.name }}</span><button class="pf-x" @click="pendingFiles.splice(i,1)">×</button>
+          <div v-for="(f, i) in pendingFiles" :key="i" class="pf-chip" :class="{ 'pf-chip-img': f.type === 'image' }" @click="openPreview(f)" :title="f.type === 'image' ? '点击查看大图' : '点击预览内容'">
+            <img v-if="f.type === 'image' && f.url" :src="f.url" class="pf-thumb" :alt="f.name">
+            <span v-else class="pf-ficon">📄</span>
+            <span class="pf-name">{{ f.name }}</span>
+            <span class="pf-size">{{ f.size }}</span>
+            <button class="pf-x" aria-label="移除" @click.stop="pendingFiles.splice(i,1)">×</button>
           </div>
+          <div class="pf-meta">已选 {{ pendingFiles.length }}/5 · 单文件 ≤ 5 MB · 文本内容 ≤ 10 KB 可读</div>
         </div>
+        <!-- v13: 语音录制条 —— 左侧实时转写预览，右侧波形+计时，支持边说边看 -->
         <div v-if="isRec" class="voice-rec-bar">
-          <button class="voice-cancel" @click="cancelVoice" title="取消">✕</button>
+          <button class="voice-cancel" @click="cancelVoice" title="取消录音">✕</button>
+          <div class="voice-live">
+            <div class="voice-live-label">
+              <span class="voice-live-dot"></span>
+              实时识别{{ voiceInterim ? '…' : '（开始说话）' }}
+            </div>
+            <div class="voice-live-text">
+              <span class="voice-final">{{ voiceFinalized }}</span><span class="voice-interim">{{ voiceInterim }}</span>
+            </div>
+          </div>
           <div class="voice-wave-wrap" ref="waveWrapRef">
             <canvas ref="waveCanvas" class="voice-wave" height="32"></canvas>
             <span class="voice-dur">{{ recDuration }}s</span>
           </div>
-          <button class="voice-done" @click="finishVoice" title="完成">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <button class="voice-done" @click="finishVoice" title="停止并预览（手动发送）">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
           </button>
+        </div>
+
+        <!-- v13: 语音识别结果预览条 —— 发送前可编辑 / 重录 / 取消 -->
+        <div v-if="voicePreviewActive" class="voice-preview">
+          <div class="vp-head">
+            <span class="vp-icon">🎤</span>
+            <span class="vp-title">语音识别结果 · 可编辑后发送</span>
+            <span class="vp-meta" v-if="voicePreviewMeta">{{ voicePreviewMeta }}</span>
+          </div>
+          <textarea
+            v-model="voicePreviewText"
+            class="vp-text"
+            rows="2"
+            placeholder="识别为空，请重新录入"
+            @input="onVoicePreviewInput"
+            @keydown.ctrl.enter.prevent="confirmVoicePreview"
+            @keydown.meta.enter.prevent="confirmVoicePreview"
+          ></textarea>
+          <div class="vp-acts">
+            <button class="vp-btn" @click="voicePreviewActive = false" title="放弃这次识别">✕ 取消</button>
+            <button class="vp-btn" @click="restartVoice" title="重新录入">↻ 重新录制</button>
+            <button class="vp-btn" @click="polishVoicePreview" title="智能断句：按标点/停顿自动补标点" :disabled="!voicePreviewText.trim()">✨ 智能断句</button>
+            <button class="vp-btn" @click="copyVoicePreview" title="复制文本" :disabled="!voicePreviewText.trim()">📋 复制</button>
+            <button class="vp-btn vp-btn-primary" @click="confirmVoicePreview" :disabled="!voicePreviewText.trim()">
+              发送 <span class="vp-kbd">Ctrl+Enter</span>
+            </button>
+          </div>
         </div>
         <div v-else class="ibox" :class="{ focus: iFocus }">
           <div class="itools">
@@ -316,7 +392,12 @@
             <button class="ab-tool workflow-btn" :class="{ active: showWorkflow }" @click="showWorkflow = !showWorkflow" title="一键工作流（Ctrl+/）">
               <span>🚀</span><span>工作流</span>
             </button>
-            <button v-for="t in ABILITY_TOOLS" :key="t.key" class="ab-tool" @click="activateAbility(t)">
+            <!-- v13: 当前激活的工作流徽章 -->
+            <div v-if="activeWorkflow" class="ab-workflow-chip" :title="activeWorkflow.systemHint || activeWorkflow.hint">
+              {{ activeWorkflow.icon }} {{ activeWorkflow.label }}
+              <button class="ab-wf-clear" aria-label="清除激活的工作流" title="清除" @click.stop="activeWorkflow = null">×</button>
+            </div>
+            <button v-for="t in ABILITY_TOOLS" :key="t.key" class="ab-tool" :class="{ 'ab-tool-active': activeWorkflow?.suggestedAbilities?.includes(t.key) }" @click="activateAbility(t)">
               <span>{{ t.icon }}</span><span>{{ t.label }}</span>
             </button>
           </div>
@@ -330,10 +411,14 @@
               <button class="wf-close" aria-label="关闭" @click="showWorkflow = false">×</button>
             </div>
             <div class="wf-grid">
-              <button v-for="w in WORKFLOW_PRESETS" :key="w.key" class="wf-card" @click="applyWorkflow(w)">
+              <button v-for="w in WORKFLOW_PRESETS" :key="w.key" class="wf-card" :class="'wf-kind-' + (w.kind || 'productivity')" @click="applyWorkflow(w)">
                 <div class="wf-card-icon">{{ w.icon }}</div>
                 <div class="wf-card-main">
-                  <div class="wf-card-label">{{ w.label }}</div>
+                  <div class="wf-card-label">
+                    {{ w.label }}
+                    <span v-if="w.suggestedModel" class="wf-tag wf-tag-model">{{ MODEL_OPTIONS[w.suggestedModel].icon }} {{ MODEL_OPTIONS[w.suggestedModel].label }}</span>
+                    <span v-if="w.acceptsFiles" class="wf-tag wf-tag-file">📎</span>
+                  </div>
                   <div v-if="w.hint" class="wf-card-hint">{{ w.hint }}</div>
                 </div>
               </button>
@@ -342,6 +427,53 @@
         </Transition>
       </div>
     </main>
+
+    <!-- v13: 附件预览 Lightbox（图片放大 / 文本预览） -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="previewAttachment" class="att-lightbox" @click.self="closePreview" @keydown.esc="closePreview">
+          <button class="att-close" aria-label="关闭预览" @click="closePreview">×</button>
+          <div class="att-body" @click.stop>
+            <div class="att-head">
+              <span class="att-title">
+                <span class="att-icon">{{ previewAttachment.type === 'image' ? '🖼️' : '📄' }}</span>
+                {{ previewAttachment.name }}
+              </span>
+              <span class="att-size" v-if="previewAttachment.size">{{ previewAttachment.size }}</span>
+            </div>
+            <div class="att-main">
+              <img v-if="previewAttachment.type === 'image' && previewAttachment.url" :src="previewAttachment.url" class="att-img" :alt="previewAttachment.name">
+              <pre v-else-if="previewAttachment.content" class="att-text"><code>{{ previewAttachment.content }}</code></pre>
+              <div v-else class="att-empty">⚠️ 二进制文件，无法预览全部内容</div>
+            </div>
+            <div class="att-foot">
+              <button v-if="previewAttachment.content" class="att-btn" @click="copyText(previewAttachment.content)">📋 复制全文</button>
+              <button v-if="previewAttachment.url" class="att-btn" @click="downloadAttachment(previewAttachment)">⬇️ 下载原始文件</button>
+              <button class="att-btn att-btn-primary" @click="closePreview">关闭</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- v13: 通用确认 Modal（替换原生 confirm） -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="confirmDialog" class="confirm-overlay" @click.self="cancelConfirm">
+          <div class="confirm-box" :class="confirmDialog.kind || 'info'">
+            <div class="confirm-icon">{{ confirmDialog.kind === 'danger' ? '⚠️' : '💡' }}</div>
+            <div class="confirm-title">{{ confirmDialog.title }}</div>
+            <div v-if="confirmDialog.desc" class="confirm-desc">{{ confirmDialog.desc }}</div>
+            <div class="confirm-acts">
+              <button class="cf-cancel" @click="cancelConfirm">{{ confirmDialog.cancelText || '取消' }}</button>
+              <button class="cf-ok" :class="{ 'cf-ok-danger': confirmDialog.kind === 'danger' }" @click="resolveConfirm">
+                {{ confirmDialog.okText || '确认' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- v9: 收藏夹面板 -->
     <Teleport to="body">
@@ -397,7 +529,7 @@ import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } 
 
 const router = useRouter()
 const {
-  isStreaming, streamPhase, error: aiError, currentModel,
+  isStreaming, streamPhase, streamingConvId, error: aiError, currentModel,
   conversations, currentConversationId, favorites, summarizing,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
@@ -407,6 +539,9 @@ const {
   summarizeCurrentConversation,
   inheritMemoryToNewConversation,
 } = useSparkAI()
+
+// v13 T9：当前视图所在会话是否正是"流式进行中"的会话
+const streamingInCurrentView = computed(() => !!streamingConvId.value && streamingConvId.value === currentConversationId.value)
 const { createEvent } = useSchedule()
 const { createGoal } = usePlanner()
 
@@ -508,6 +643,49 @@ function pickEmoji(e: string) {
 // v9: 收藏夹面板
 const showFavorites = ref(false)
 
+// v13: 单条导出菜单当前展开的消息索引（-1 表示关闭）
+const msgExportOpen = ref(-1)
+
+// v13: 附件预览 Lightbox
+const previewAttachment = ref<FileAttachment | null>(null)
+function openPreview(a: FileAttachment) {
+  previewAttachment.value = a
+}
+function closePreview() { previewAttachment.value = null }
+function downloadAttachment(a: FileAttachment) {
+  try {
+    if (a.content) {
+      const blob = new Blob([a.content], { type: 'text/plain;charset=utf-8' })
+      triggerBlobDownload(blob, a.name)
+      return
+    }
+    if (a.url) {
+      const el = document.createElement('a')
+      el.href = a.url
+      el.download = a.name
+      document.body.appendChild(el)
+      el.click()
+      document.body.removeChild(el)
+      return
+    }
+    toast('该附件无法下载')
+  } catch (e) {
+    console.warn('[Attachment] download failed:', e)
+    toast('下载失败')
+  }
+}
+
+// v13: 通用确认 Modal —— 替换原生 confirm，返回 Promise<boolean>
+interface ConfirmDialogOpts { title: string; desc?: string; kind?: 'danger' | 'info'; okText?: string; cancelText?: string }
+const confirmDialog = ref<ConfirmDialogOpts | null>(null)
+let _confirmResolver: ((v: boolean) => void) | null = null
+function askConfirm(opts: ConfirmDialogOpts): Promise<boolean> {
+  confirmDialog.value = opts
+  return new Promise((resolve) => { _confirmResolver = resolve })
+}
+function resolveConfirm() { _confirmResolver?.(true); _confirmResolver = null; confirmDialog.value = null }
+function cancelConfirm() { _confirmResolver?.(false); _confirmResolver = null; confirmDialog.value = null }
+
 // v9: 网络状态
 const isOnline = ref(typeof navigator !== 'undefined' ? navigator.onLine : true)
 function handleOnline() { isOnline.value = true; toast('网络已恢复') }
@@ -569,7 +747,9 @@ mdRenderer.code = function({ text, lang }: { text:string; lang?:string }) {
     `<span class="cb-ember e1"></span><span class="cb-ember e2"></span><span class="cb-ember e3"></span>` +
     `<span class="cb-ember e4"></span>` +
   `</span>`
-  return `<div class="codeblock">${decorationLayer}<div class="cb-head"><span class="cb-lang">${language}</span><button class="cb-copy" data-copy-text="${encoded}">复制</button></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
+  // v13: 代码块右上角"下载为源文件"按钮（语言→扩展名映射在 JS 侧处理）
+  const downloadBtn = `<button class="cb-dl" data-download-lang="${language}" data-download-text="${encoded}" title="下载为源码文件">⬇</button>`
+  return `<div class="codeblock">${decorationLayer}<div class="cb-head"><span class="cb-lang">${language}</span><span class="cb-actions">${downloadBtn}<button class="cb-copy" data-copy-text="${encoded}">复制</button></span></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
 }
 // 导航链接渲染为可点击按钮
 mdRenderer.link = function({ href, text }: { href: string; text: string }) {
@@ -692,9 +872,51 @@ function renderMd(content: string): string {
   } catch { return DOMPurify.sanitize(content.replace(/\n/g, '<br>')) }
 }
 
+// v13: 代码语言 → 文件扩展名映射（主流语言全覆盖，非主流回落到 .txt）
+const CODE_LANG_EXT: Record<string, string> = {
+  python: 'py', py: 'py',
+  javascript: 'js', js: 'js', jsx: 'jsx',
+  typescript: 'ts', ts: 'ts', tsx: 'tsx',
+  java: 'java', kotlin: 'kt', kt: 'kt', scala: 'scala',
+  c: 'c', cpp: 'cpp', 'c++': 'cpp', cxx: 'cpp', objectivec: 'm', 'objective-c': 'm',
+  csharp: 'cs', cs: 'cs',
+  go: 'go', rust: 'rs', rs: 'rs',
+  php: 'php', ruby: 'rb', rb: 'rb', perl: 'pl',
+  swift: 'swift', dart: 'dart',
+  html: 'html', xml: 'xml', svg: 'svg', yaml: 'yaml', yml: 'yml', toml: 'toml', ini: 'ini',
+  css: 'css', scss: 'scss', less: 'less', stylus: 'styl',
+  vue: 'vue', svelte: 'svelte',
+  sql: 'sql', shell: 'sh', bash: 'sh', sh: 'sh', zsh: 'sh', ps1: 'ps1', powershell: 'ps1',
+  json: 'json', markdown: 'md', md: 'md', tex: 'tex',
+  dockerfile: 'Dockerfile', makefile: 'Makefile', cmake: 'cmake',
+  r: 'R', matlab: 'm', julia: 'jl', lua: 'lua',
+  'plaintext': 'txt', text: 'txt',
+}
+function langToExt(lang: string): string {
+  const l = (lang || '').toLowerCase()
+  return CODE_LANG_EXT[l] || 'txt'
+}
+function handleCodeDownload(lang: string, text: string) {
+  const ext = langToExt(lang)
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const base = ext === 'Dockerfile' || ext === 'Makefile' ? ext : `spark-snippet-${stamp}.${ext}`
+  // 源码文件不加 BOM，避免污染可执行文件（Java/Python 编译器会报错）。
+  // .md/.txt/.json 这类纯文本通过上面的 textBlobWithBom 单独处理，这里只管源码。
+  triggerBlobDownload(new Blob([text], { type: 'text/plain;charset=utf-8' }), base)
+  toast(`✓ 已下载 .${ext === 'Dockerfile' || ext === 'Makefile' ? ext : ext} 文件`)
+}
+
 // 点击导航链接
 function handleMdClick(e: Event) {
   const element = e.target as HTMLElement
+  // v13: 代码块下载按钮
+  const dlBtn = element.closest('.cb-dl') as HTMLElement | null
+  if (dlBtn?.dataset?.downloadText) {
+    e.preventDefault()
+    const lang = dlBtn.dataset.downloadLang || 'plaintext'
+    handleCodeDownload(lang, decodeURIComponent(dlBtn.dataset.downloadText))
+    return
+  }
   const copyButton = element.closest('.cb-copy') as HTMLElement | null
   if (copyButton?.dataset?.copyText) {
     navigator.clipboard.writeText(decodeURIComponent(copyButton.dataset.copyText))
@@ -749,16 +971,27 @@ function getActionCardMeta(action: SparkAction): { icon: string; label: string; 
 
 void getActionCardMeta
 
+// v13: 统一在这里把附件注释（<!--attachment ...-->）+ 紧随其后的文件信息段 + 文本代码块过滤掉，
+// 让用户自己的气泡只显示"我说的话"，附件信息通过 file-cards 单独渲染。
+function stripAttachmentBlocks(text: string): string {
+  if (!text) return text
+  return text
+    // 1) 文本文件：<!--attachment--> + 说明行 + 代码块，整段删除
+    .replace(/\n\n<!--attachment[^>]*-->[\s\S]*?```\s*\n?/g, '\n\n')
+    // 2) 图片 / 二进制文件：<!--attachment--> + 说明行（到下一个空行或末尾），整段删除
+    .replace(/\n\n<!--attachment[^>]*-->\s*\n.*?(?=\n\n|$)/g, '')
+    // 3) 老版本消息兼容（回填前的旧格式 📎/🖼️/📄）
+    .replace(/\n\n(📄|📎|🖼️)\s*(?:\*\*)?[^\n]+?(?:\*\*)?\n(?:[^\n]*\n)?(?:```[\s\S]*?```)?/g, '')
+    .trim()
+}
+
 const displayMsgs = computed(() => {
+  // v13 T9：occupying assistant 消息已由 sendMessage 直接 push 到 conversation.messages，
+  //        不再需要在这里手动追加临时气泡，所有内容都从 conversation 里读。
   const conv = conversations.value.find(c => c.id === currentConversationId.value)
-  const msgs = (conv?.messages.filter(m => m.role !== 'system') || []).map(m => ({
-    ...m, displayContent: m.content.replace(/\n\n(📄|🖼️) \*\*.*?\*\*/g, '').replace(/```[\s\S]*?```/g, '').trim() || m.content,
+  return (conv?.messages.filter(m => m.role !== 'system') || []).map(m => ({
+    ...m, displayContent: stripAttachmentBlocks(m.content) || m.content,
   }))
-  // v7.3: 在 streaming 阶段总是追加 assistant 占位气泡（即使 streamingContent 为空，也能显示"正在思考"）
-  if (isStreaming.value) {
-    return [...msgs, { role: 'assistant' as const, content: streamingContent.value, reasoning: thinkingText.value || undefined, attachments: undefined, displayContent: streamingContent.value }]
-  }
-  return msgs
 })
 const showArchived = ref(false)
 const groupedConvs = computed(() => {
@@ -790,12 +1023,12 @@ const groupedConvs = computed(() => {
 // 归档组里有内容但默认折叠时的计数（供顶部按钮显示）
 const archivedCount = computed(() => conversations.value.filter((c) => c.isArchived).length)
 
-// 上下文窗口使用率（v11: 与 useSparkAI 中 slice(-80) 对齐；超过 50 触发后台摘要）
+// 上下文窗口使用率（v13: 与 useSparkAI.CONTEXT_WINDOW=200 对齐；超过 120 触发后台摘要）
 const contextUsage = computed(() => {
   const conv = conversations.value.find((c) => c.id === currentConversationId.value)
-  if (!conv) return { used: 0, limit: 80, ratio: 0 }
+  if (!conv) return { used: 0, limit: 200, ratio: 0 }
   const used = conv.messages.filter((m) => m.role !== 'system').length
-  const limit = 80
+  const limit = 200
   return { used, limit, ratio: Math.min(1, used / limit) }
 })
 
@@ -834,6 +1067,13 @@ async function handleSend() {
       console.warn('[SparkKnowledge] 检索失败，继续无上下文回答:', err instanceof Error ? err.message : err)
     }
   }
+  // v13: 工作流 systemHint —— 一次性附加到本条消息的 extraContext 头部，不持久
+  if (activeWorkflow.value?.systemHint) {
+    const wfHint = `## 工作流上下文：${activeWorkflow.value.label}\n${activeWorkflow.value.systemHint}`
+    extraContext = extraContext ? `${wfHint}\n\n${extraContext}` : wfHint
+    // 发送后清空，避免下一轮继续带着这段 hint
+    setTimeout(() => { activeWorkflow.value = null }, 50)
+  }
 
   // v9: 响应缓存命中（仅对无附件、无 extraContext 的短提问生效）
   const canCache = !atts.length && !extraContext && text.length >= 4 && text.length <= 400
@@ -844,24 +1084,27 @@ async function handleSend() {
     const key = makeCacheKey(text, currentModel.value, fp)
     const hit = readCache(key)
     if (hit) {
-      // 注意：用户消息已在上方 pushUserMessageImmediately 中推入并落盘，
-      // 这里不再重复 push，避免出现"我说了两遍"的视觉 bug。
       cacheHitCount.value++
-      // 用 replayCachedStream 让体感与流式一致
-      await replayCachedStream(hit, (chunk) => { streamingContent.value = chunk; scrollBot() }, {
-        onThinking: (t) => { thinkingText.value = t },
-      })
-      // 写入 assistant 消息并打 fromCache 标记
-      conv.messages.push({
-        id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      // v13 T9：先 push 一条 pending assistant 占位，再用 replayCachedStream 流式更新它的 content
+      const placeholderId = 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+      const placeholder = {
+        id: placeholderId,
         createdAt: new Date().toISOString(),
-        role: 'assistant',
-        content: hit.content,
+        role: 'assistant' as const,
+        content: '',
         reasoning: hit.reasoning,
+        pending: true,
         fromCache: true,
-      })
+      }
+      conv.messages.push(placeholder)
+      conv.updatedAt = placeholder.createdAt
+      await replayCachedStream(hit, (chunk) => {
+        placeholder.content = chunk
+        scrollBot()
+      }, { onThinking: (t) => { placeholder.reasoning = t } })
+      placeholder.content = hit.content
+      placeholder.pending = false
       conv.updatedAt = new Date().toISOString()
-      streamingContent.value = ''
       // pushUserMessageImmediately 已置 isStreaming=true，缓存命中分支不会进入 sendMessage 的 finally，需手动清理
       resetStreamingState()
       toast(`✨ 命中缓存（已节省 ${cacheHitCount.value} 次 API 调用）`)
@@ -872,27 +1115,30 @@ async function handleSend() {
   // 记录本次请求用于命中后写缓存
   let rawAnswerForCache = ''
   let rawReasoningForCache = ''
+  const convAtSend = currentConversationId.value
   await sendMessage(text,
-    (t) => { streamingContent.value=t; scrollBot() },
+    (_t) => {
+      // v13 T9：消息已直接写入 conversation.messages，无需用 streamingContent。
+      // 只在用户仍停留在本会话时触发滚动，切走了就不要打扰。
+      if (currentConversationId.value === convAtSend) scrollBot()
+    },
     (ct, acts, reasoning) => {
-      streamingContent.value=''
       rawAnswerForCache = ct
       rawReasoningForCache = reasoning
       if (acts.length) actionCards.value = acts.map(a => ({ icon: a.action==='add_schedule'?'📅':a.action==='create_goal'?'🎯':'🔗', label: a.action==='add_schedule'?'同步日程':a.action==='create_goal'?'创建规划':'跳转', desc: String(a.data.title||a.data.label||a.data.path||''), action:a, done:false }))
-      scrollBot()
-      // v9: 成功完成后写入响应缓存
+      if (currentConversationId.value === convAtSend) scrollBot()
       if (canCache && rawAnswerForCache) {
         const conv = getCurrentConversation()
         const recent = conv.messages.slice(-7).filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
-        const fp = fingerprintContext(recent.slice(0, -1)) // 写缓存时不包含最后这条 assistant
+        const fp = fingerprintContext(recent.slice(0, -1))
         writeCache({ prompt: text, mode: currentModel.value, content: rawAnswerForCache, reasoning: rawReasoningForCache, contextFingerprint: fp })
       }
     },
-    () => { streamingContent.value='' },
-    (t) => { thinkingText.value=t; scrollBot() },
+    () => { /* error 已通过 aiError 暴露 */ },
+    (_t) => { if (currentConversationId.value === convAtSend) scrollBot() },
     atts.length ? atts : undefined,
     extraContext || undefined,
-    true, // skipPushUserMessage: 用户消息已在上方预推入
+    true,
   )
 }
 
@@ -1022,6 +1268,13 @@ function onPaste(e:ClipboardEvent) {
 const waveCanvas = ref<HTMLCanvasElement|null>(null)
 const waveWrapRef = ref<HTMLElement|null>(null)
 const recDuration = ref('0.0')
+// v13: 录音期 "已最终化文本 + 当前临时转写" 分离展示
+const voiceFinalized = ref('')
+const voiceInterim = ref('')
+// v13: 停止后的可编辑预览条
+const voicePreviewActive = ref(false)
+const voicePreviewText = ref('')
+const voicePreviewMeta = ref('')
 let recognition: any = null
 let audioCtx: AudioContext | null = null
 let analyser: AnalyserNode | null = null
@@ -1029,6 +1282,65 @@ let mediaStream: MediaStream | null = null
 let waveAnimId = 0
 let recStartTime = 0
 let recTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * v13: 智能断句 / 标点补齐。
+ * - 按停顿（连续相同音、语气词、长句截断）在合适位置插入中文逗号/句号。
+ * - 对常见语气词（吧/吗/呢/啊/哈）后补问号或句号。
+ * - 不引入任何 NLP 依赖，纯规则，性能与可控性优先。
+ */
+function polishTranscript(text: string): string {
+  if (!text) return text
+  let out = text.trim()
+    // 统一空格
+    .replace(/\s+/g, ' ')
+    // 英文标点 → 中文
+    .replace(/,/g, '，').replace(/;/g, '；').replace(/\?/g, '？').replace(/!/g, '！')
+  // 去掉已有句末标点再统一加
+  const tail = /[。？！,，！？]\s*$/
+  // 常见语气词转问号
+  out = out.replace(/(吗|呢|吧|哈)(?=[^？！。]*$)/g, '$1？')
+  // 在 "然后/接着/另外/所以/但是/不过/因此/而且/还有" 前补中文逗号
+  out = out.replace(/([^，。；！？\s])(然后|接着|另外|所以|但是|不过|因此|而且|还有|首先|其次|最后)/g, '$1，$2')
+  // 长句（>25 中文字符无标点）每 ~20 字在语气顿点处补逗号
+  out = out.replace(/([\u4e00-\u9fa5]{18,30})(的|是|了|吧|啊|呀)([\u4e00-\u9fa5])/g, '$1$2，$3')
+  // 结尾加句号
+  if (!tail.test(out)) {
+    // 疑问词扫尾 → 问号
+    if (/(什么|为什么|怎么|如何|哪|是否|吗|呢)[^。？！]*$/.test(out)) out += '？'
+    else out += '。'
+  }
+  // 合并多余逗号
+  out = out.replace(/，+/g, '，').replace(/，([。？！])/g, '$1')
+  return out
+}
+
+function onVoicePreviewInput() {
+  voicePreviewMeta.value = `字数 ${voicePreviewText.value.length}`
+}
+function copyVoicePreview() {
+  if (!voicePreviewText.value.trim()) return
+  navigator.clipboard.writeText(voicePreviewText.value)
+  toast('已复制识别文本')
+}
+function polishVoicePreview() {
+  voicePreviewText.value = polishTranscript(voicePreviewText.value)
+  voicePreviewMeta.value = `字数 ${voicePreviewText.value.length} · 已智能断句`
+}
+function confirmVoicePreview() {
+  const t = voicePreviewText.value.trim()
+  voicePreviewActive.value = false
+  if (!t) return
+  inputText.value = t
+  nextTick(() => handleSend())
+}
+async function restartVoice() {
+  voicePreviewActive.value = false
+  voicePreviewText.value = ''
+  voicePreviewMeta.value = ''
+  await nextTick()
+  toggleVoice()
+}
 
 function drawWaveform() {
   if (!analyser) return
@@ -1128,20 +1440,26 @@ async function toggleVoice() {
   recognition.interimResults = true
   recognition.maxAlternatives = 5
 
-  let finalizedText = ''
+  voiceFinalized.value = ''
+  voiceInterim.value = ''
+  // 关闭预览条（如果存在），开启新一轮录音
+  voicePreviewActive.value = false
+
   recognition.onresult = (e: any) => {
-    let newFinal = ''
+    // v13: 与 "voiceFinalized + voiceInterim" 分开维护，
+    //      让 UI 同时展示已定稿文本 + 正在识别的灰色浮动段，
+    //      用户能实时看到引擎的思考，不用等"完成"才揭晓。
+    let finals = ''
     let interim = ''
     for (let i = 0; i < e.results.length; i++) {
       const result = e.results[i]
-      if (result.isFinal) {
-        newFinal += result[0].transcript
-      } else {
-        interim += result[0].transcript
-      }
+      if (result.isFinal) finals += result[0].transcript
+      else interim += result[0].transcript
     }
-    if (newFinal) finalizedText = newFinal
-    inputText.value = (finalizedText + interim).trim()
+    // 累加 finals 到历史（引擎每 start 后 e.results 都是从 0 开始的，
+    // continuous 模式下引擎内部会缓存，这里直接替换为当前累计即可）
+    voiceFinalized.value = finals
+    voiceInterim.value = interim
   }
 
   recognition.onerror = (ev: any) => {
@@ -1157,6 +1475,7 @@ async function toggleVoice() {
 
   recognition.onend = () => {
     if (isRec.value) {
+      // 如果用户还在录音，引擎自动关掉也要重启
       try { recognition.start() } catch { cleanupVoice() }
     }
   }
@@ -1168,7 +1487,6 @@ async function toggleVoice() {
   }
 
   isRec.value = true
-  finalizedText = ''
   recStartTime = Date.now()
   recDuration.value = '0.0'
   recTimer = setInterval(() => {
@@ -1178,24 +1496,48 @@ async function toggleVoice() {
   nextTick(() => { drawWaveform() })
 }
 
+/**
+ * v13: 语音录制结束
+ * - 不再直接把识别结果丢给 handleSend
+ * - 把最终文本 + interim 合并，智能断句后放进 voicePreviewText
+ * - 弹出预览条，由用户确认后再发送
+ */
 function finishVoice() {
   if (!recognition) { cleanupVoice(); return }
   let handled = false
+  const duration = recDuration.value
   const onFinalEnd = () => {
     if (handled) return
     handled = true
+    const combined = (voiceFinalized.value + voiceInterim.value).trim()
     cleanupVoice()
-    if (inputText.value.trim()) handleSend()
+    if (!combined) {
+      toast('没识别到语音内容，请重试')
+      return
+    }
+    voicePreviewText.value = polishTranscript(combined)
+    voicePreviewMeta.value = `录音 ${duration}s · 字数 ${voicePreviewText.value.length} · 已智能断句`
+    voicePreviewActive.value = true
+    nextTick(() => {
+      // 自动聚焦并把光标放到末尾，方便立刻修改
+      const ta = document.querySelector<HTMLTextAreaElement>('.vp-text')
+      ta?.focus()
+      try { ta?.setSelectionRange(voicePreviewText.value.length, voicePreviewText.value.length) } catch { /* ignore */ }
+    })
   }
   recognition.onend = onFinalEnd
-  recognition.stop()
+  try { recognition.stop() } catch { /* ignore */ }
   setTimeout(onFinalEnd, 500)
 }
 
+/** v13: 完全取消录音 —— 不生成预览条，直接回到输入状态 */
 function cancelVoice() {
-  recognition?.stop()
+  try { recognition?.stop() } catch { /* ignore */ }
   cleanupVoice()
-  inputText.value = ''
+  voiceFinalized.value = ''
+  voiceInterim.value = ''
+  voicePreviewActive.value = false
+  voicePreviewText.value = ''
 }
 
 function cleanupVoice() {
@@ -1210,29 +1552,35 @@ function cleanupVoice() {
 
 function handleQuick(t: string) { inputText.value=t; handleSend() }
 function handleNewChat() {
-  if (isStreaming.value) stopGenerating()
+  // v13 T9：新建对话不再中断已有流式。原会话继续后台输出。
   createConversation()
   sidebarOpen.value = false
-  streamingContent.value = ''
-  thinkingText.value = ''
   actionCards.value = []
   nextTick(() => { inputRef.value?.focus() })
 }
 function handleSwitch(id: string) {
-  // v9: 正在生成时先终止，避免流式内容错乱到新会话
-  if (isStreaming.value) stopGenerating()
+  // v13 T9：切换到其它会话时 **不再** 中断正在进行的流式输出。
+  //   原正在生成的会话继续在后台写入 conversation.messages，用户切回时会看到最新内容。
+  //   只有当用户切换到"正在流式的那个会话自身"时，才正常显示 pending 气泡的 UI 效果。
   switchConversation(id)
-  streamingContent.value = ''
-  thinkingText.value = ''
   actionCards.value = []
   sidebarOpen.value = false
   openMenuId.value = null
   nextTick(scrollBot)
 }
-function handleDelete(id: string) {
-  if (!confirm('确定删除这条会话？不可恢复')) return
-  deleteConversation(id)
+async function handleDelete(id: string) {
   openMenuId.value = null
+  const conv = conversations.value.find((c) => c.id === id)
+  const ok = await askConfirm({
+    title: '删除这条会话？',
+    desc: conv ? `"${conv.title}" 将被永久移除，该会话中的 ${conv.messages.filter(m => m.role !== 'system').length} 条消息不可恢复。` : '该会话不可恢复。',
+    kind: 'danger',
+    okText: '删除',
+    cancelText: '保留',
+  })
+  if (!ok) return
+  deleteConversation(id)
+  toast('✓ 已删除')
 }
 function onKey(e: KeyboardEvent) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend()} }
 function autoResize() { const el=inputRef.value; if(!el) return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,180)+'px' }
@@ -1270,6 +1618,7 @@ function onGlobalClick(e: MouseEvent) {
   if (openMenuId.value && !el.closest('.sb-menu') && !el.closest('.sb-more')) openMenuId.value = null
   if (showEmoji.value && !el.closest('.emoji-panel') && !el.closest('.itool-emoji')) showEmoji.value = false
   if (showWorkflow.value && !el.closest('.workflow-panel') && !el.closest('.workflow-btn')) showWorkflow.value = false
+  if (msgExportOpen.value !== -1 && !el.closest('.msg-export-menu') && !el.closest('.msg-export-btn')) msgExportOpen.value = -1
 }
 
 onMounted(() => {
@@ -1291,21 +1640,172 @@ onBeforeUnmount(() => {
 })
 watch(currentConversationId, () => nextTick(scrollBot))
 
-// v9: 导出会话 → 触发浏览器下载
-function triggerExport(id: string, format: 'markdown' | 'json') {
-  const out = exportConversation(id, format)
-  if (!out) { toast('导出失败'); return }
-  const blob = new Blob([out.content], { type: out.mime })
+/**
+ * v13: 通用二进制文件下载辅助。
+ * - 文本类型默认加 UTF-8 BOM（0xEF 0xBB 0xBF），修复 Windows 记事本 / Typora 早期版本
+ *   打开中文 Markdown 乱码 + "导出文件损坏"错觉。
+ * - 二进制类型（blob already typed）原样写入。
+ */
+function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = out.filename
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  toast(`✓ 已导出 ${format.toUpperCase()}`)
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
+}
+function textBlobWithBom(text: string, mime: string): Blob {
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf])
+  return new Blob([bom, text], { type: `${mime};charset=utf-8` })
+}
+
+type ExportFormat = 'markdown' | 'json' | 'html' | 'pdf' | 'word' | 'txt'
+
+/** 把纯 Markdown 转成自带样式的完整 HTML 文档（用于 html / word / pdf 导出） */
+function mdToStandaloneHtml(title: string, md: string): string {
+  let bodyHtml = ''
+  try {
+    // 不走 renderMd（它会引入 KaTeX/hljs DOM，离线打开样式就丢了），
+    // 这里用 marked 直接把 md 渲染为 html，再内联最小样式。
+    bodyHtml = marked.parse(md, { async: false }) as string
+  } catch {
+    bodyHtml = `<pre>${md.replace(/</g, '&lt;')}</pre>`
+  }
+  const now = new Date().toLocaleString('zh-CN')
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>
+body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.75;color:#222;background:#fff;max-width:900px;margin:30px auto;padding:0 24px;}
+h1,h2,h3{margin:1.6em 0 .6em;color:#111;} h1{border-bottom:2px solid #8b5cf6;padding-bottom:8px;}
+code{background:#f3f0ff;color:#5b21b6;padding:1px 6px;border-radius:4px;font-size:.92em;}
+pre{background:#1e1b3a;color:#e8e9ff;padding:14px 18px;border-radius:8px;overflow:auto;font-size:13px;}
+pre code{background:transparent;color:inherit;padding:0;}
+blockquote{border-left:4px solid #c4b5fd;background:#f8f6ff;margin:12px 0;padding:6px 14px;color:#4b3c82;}
+table{border-collapse:collapse;width:100%;margin:12px 0;} th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;} th{background:#f3f0ff;}
+hr{border:none;border-top:1px dashed #c4b5fd;margin:18px 0;}
+a{color:#7c3aed;}
+.export-footer{margin-top:40px;font-size:11px;color:#888;text-align:center;}
+</style></head><body>${bodyHtml}<div class="export-footer">导出自 星火助手 · ${now}</div></body></html>`
+}
+
+async function exportPdfViaPrint(_title: string, html: string) {
+  // 离屏 iframe 加载 HTML，然后触发打印（用户保存为 PDF）
+  const frame = document.createElement('iframe')
+  frame.style.position = 'fixed'
+  frame.style.right = '0'
+  frame.style.bottom = '0'
+  frame.style.width = '0'
+  frame.style.height = '0'
+  frame.style.border = '0'
+  document.body.appendChild(frame)
+  const doc = frame.contentDocument || frame.contentWindow?.document
+  if (!doc) { toast('浏览器不支持 PDF 打印'); document.body.removeChild(frame); return }
+  doc.open()
+  doc.write(html)
+  doc.close()
+  // 等布局
+  await new Promise((r) => setTimeout(r, 350))
+  try {
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    toast('已唤起系统打印 → 选择"另存为 PDF"')
+  } catch (e) {
+    console.warn('[Export] PDF print failed:', e)
+    toast('PDF 打印失败，请尝试 HTML / Word 格式')
+  } finally {
+    setTimeout(() => { try { document.body.removeChild(frame) } catch { /* ignore */ } }, 3000)
+  }
+}
+
+// v13: 导出会话 → 触发浏览器下载，支持 markdown/json/html/pdf/word/txt
+async function triggerExport(id: string, format: ExportFormat) {
   openMenuId.value = null
+  if (format === 'markdown' || format === 'json') {
+    const out = exportConversation(id, format)
+    if (!out) { toast('导出失败'); return }
+    const blob = format === 'markdown'
+      ? textBlobWithBom(out.content, out.mime)
+      : new Blob([out.content], { type: `${out.mime};charset=utf-8` })
+    triggerBlobDownload(blob, out.filename)
+    toast(`✓ 已导出 ${format === 'markdown' ? 'Markdown' : 'JSON'}`)
+    return
+  }
+
+  const mdOut = exportConversation(id, 'markdown')
+  if (!mdOut) { toast('导出失败'); return }
+  const conv = conversations.value.find((c) => c.id === id)
+  const safeTitle = (conv?.title || 'conversation').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
+  const stamp = new Date().toISOString().slice(0, 10)
+
+  if (format === 'txt') {
+    triggerBlobDownload(textBlobWithBom(mdOut.content, 'text/plain'), `spark-${safeTitle}-${stamp}.txt`)
+    toast('✓ 已导出 TXT')
+    return
+  }
+  if (format === 'html') {
+    const html = mdToStandaloneHtml(`星火助手 · ${safeTitle}`, mdOut.content)
+    triggerBlobDownload(textBlobWithBom(html, 'text/html'), `spark-${safeTitle}-${stamp}.html`)
+    toast('✓ 已导出 HTML')
+    return
+  }
+  if (format === 'word') {
+    // Word 兼容的 HTML 文档（保存为 .doc 后 Word / WPS / LibreOffice 可直接打开）
+    const html = mdToStandaloneHtml(`星火助手 · ${safeTitle}`, mdOut.content)
+    const wordWrap = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">${html.replace(/<\/?html[^>]*>/gi, '').replace(/<\/?body[^>]*>/gi, '')}</html>`
+    triggerBlobDownload(textBlobWithBom(wordWrap, 'application/msword'), `spark-${safeTitle}-${stamp}.doc`)
+    toast('✓ 已导出 Word（.doc）')
+    return
+  }
+  if (format === 'pdf') {
+    const html = mdToStandaloneHtml(`星火助手 · ${safeTitle}`, mdOut.content)
+    await exportPdfViaPrint(safeTitle, html)
+    return
+  }
+}
+
+// v13: 单条消息导出（仅 assistant/user 可用）
+async function exportSingleMessage(displayIdx: number, format: ExportFormat) {
+  const conv = getCurrentConversation()
+  const realIdx = mapDisplayIdxToReal(displayIdx)
+  if (realIdx < 0) { toast('消息不存在'); return }
+  const msg = conv.messages[realIdx]
+  if (!msg) return
+  const role = msg.role === 'user' ? '我' : '星火助手'
+  const head = `# ${role}：${msg.content.slice(0, 24).replace(/\n/g, ' ')}\n\n> 导出自「${conv.title}」· ${new Date(msg.createdAt || conv.updatedAt).toLocaleString('zh-CN')}\n\n`
+  const body = msg.reasoning
+    ? `<details><summary>💭 思考过程</summary>\n\n${msg.reasoning}\n\n</details>\n\n${msg.content}`
+    : msg.content
+  const md = head + body
+  const safeTitle = (msg.content.slice(0, 24) || 'message').replace(/[\\/:*?"<>|]/g, '_')
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+
+  if (format === 'markdown') {
+    triggerBlobDownload(textBlobWithBom(md, 'text/markdown'), `spark-msg-${safeTitle}-${stamp}.md`)
+    toast('✓ 已导出本条为 Markdown')
+    return
+  }
+  if (format === 'txt') {
+    triggerBlobDownload(textBlobWithBom(md, 'text/plain'), `spark-msg-${safeTitle}-${stamp}.txt`)
+    toast('✓ 已导出本条为 TXT')
+    return
+  }
+  if (format === 'json') {
+    triggerBlobDownload(new Blob([JSON.stringify(msg, null, 2)], { type: 'application/json;charset=utf-8' }), `spark-msg-${safeTitle}-${stamp}.json`)
+    toast('✓ 已导出本条为 JSON')
+    return
+  }
+  if (format === 'html' || format === 'word' || format === 'pdf') {
+    const html = mdToStandaloneHtml(`${role} · ${safeTitle}`, md)
+    if (format === 'pdf') { await exportPdfViaPrint(safeTitle, html); return }
+    const isWord = format === 'word'
+    const mime = isWord ? 'application/msword' : 'text/html'
+    const ext = isWord ? 'doc' : 'html'
+    const wrap = isWord
+      ? `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">${html.replace(/<\/?html[^>]*>/gi, '').replace(/<\/?body[^>]*>/gi, '')}</html>`
+      : html
+    triggerBlobDownload(textBlobWithBom(wrap, mime), `spark-msg-${safeTitle}-${stamp}.${ext}`)
+    toast(`✓ 已导出本条为 ${isWord ? 'Word（.doc）' : 'HTML'}`)
+  }
 }
 
 // v9: 收藏消息切换
@@ -1330,19 +1830,42 @@ function handleReact(displayIdx: number, r: 'like' | 'dislike') {
   setMessageReaction(msg.id, current === r ? null : r)
 }
 
-// v9: 工作流点击 → 填充 prompt + 光标定位到 \n\n 位置（用户补充空白）
+// v13: 当前激活的工作流（影响下一次发送的 systemHint / 推荐模型 / 能力高亮）
+const activeWorkflow = ref<(typeof WORKFLOW_PRESETS)[number] | null>(null)
+
+// v13: 工作流点击 → 填充 prompt + 切模型 + 高亮能力 + 挂载 systemHint
 function applyWorkflow(preset: (typeof WORKFLOW_PRESETS)[number]) {
-  const tpl = preset.prompt
+  // 1) 替换 {{cursor}} 占位符为空字符串，记录光标位置
+  const rawTpl = preset.prompt
+  const cursorMarker = '{{cursor}}'
+  const cursorAt = rawTpl.indexOf(cursorMarker)
+  const tpl = cursorAt >= 0 ? rawTpl.replace(cursorMarker, '') : rawTpl
   inputText.value = tpl
   showWorkflow.value = false
+
+  // 2) 推荐模型自动切换（如与当前不同）
+  if (preset.suggestedModel && currentModel.value !== preset.suggestedModel) {
+    switchModel(preset.suggestedModel as ModelMode)
+  }
+
+  // 3) 记录激活的 workflow（发送时会把 systemHint 注入到 extraContext）
+  activeWorkflow.value = preset
+  const abilityHint = preset.suggestedAbilities?.length
+    ? `已联动：${preset.suggestedAbilities.map(k => ABILITY_TOOLS.find(a => a.key === k)?.label || k).join(' · ')}`
+    : ''
+  toast(`🚀 ${preset.label} · 模式 ${MODEL_OPTIONS[currentModel.value].label}${abilityHint ? ' · ' + abilityHint : ''}`)
+  if (preset.acceptsFiles) {
+    // 提示性 toast 延迟触发，不遮挡主提示
+    setTimeout(() => toast('📎 可直接把文件拖进输入框一起发送'), 1700)
+  }
+
   nextTick(() => {
     const el = inputRef.value
     if (!el) return
     el.focus()
     autoResize()
-    // 光标放到第一个 \n\n 之后（即用户补充空白位置）
-    const insertPos = tpl.indexOf('\n\n')
-    const pos = insertPos >= 0 ? insertPos + 2 : tpl.length
+    const fallback = tpl.indexOf('\n\n')
+    const pos = cursorAt >= 0 ? cursorAt : (fallback >= 0 ? fallback + 2 : tpl.length)
     el.setSelectionRange(pos, pos)
     el.scrollTop = el.scrollHeight
   })
@@ -1993,4 +2516,142 @@ async function handleInheritMemory() {
 @media(max-width:768px) {
   .top-inherit { padding:4px 8px; font-size:10.5px; }
 }
+
+/* ============ v13: 附件卡片（可点击预览）+ pending 文件区 ============ */
+.file-card { cursor:pointer; transition:all .15s; }
+.file-card:hover { background:rgba(139,92,246,.06); border-color:rgba(139,92,246,.18); transform:translateY(-1px); }
+.file-card-img { padding:3px; background:rgba(139,92,246,.04); }
+.fc-thumb { width:54px; height:54px; object-fit:cover; border-radius:6px; flex-shrink:0; }
+.file-card-img .fc-info { padding:0 6px 0 4px; }
+.pf-chip { cursor:pointer; transition:all .15s; }
+.pf-chip-img { padding:2px 6px 2px 2px; }
+.pf-chip:hover { background:rgba(139,92,246,.06); border-color:rgba(139,92,246,.2); }
+.pf-size { font-size:9px; color:rgba(255,255,255,.28); margin-left:2px; }
+.pf-meta { width:100%; flex-basis:100%; font-size:10px; color:rgba(255,255,255,.32); padding:2px 0 0 2px; letter-spacing:.2px; }
+
+/* ============ v13: 附件 Lightbox 预览 ============ */
+.att-lightbox { position:fixed; inset:0; background:rgba(4,4,12,.86); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; z-index:1100; padding:24px; }
+.att-close { position:absolute; top:18px; right:20px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.85); width:36px; height:36px; border-radius:50%; font-size:18px; cursor:pointer; transition:all .15s; }
+.att-close:hover { background:rgba(239,68,68,.2); border-color:rgba(239,68,68,.4); transform:rotate(90deg); }
+.att-body { width:100%; max-width:920px; max-height:90vh; display:flex; flex-direction:column; background:linear-gradient(180deg, rgba(18,14,32,.98), rgba(12,10,24,.98)); border:1px solid rgba(139,92,246,.25); border-radius:16px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.att-head { display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1px solid rgba(139,92,246,.15); }
+.att-title { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:white; word-break:break-all; }
+.att-icon { font-size:18px; }
+.att-size { margin-left:auto; font-size:11px; color:rgba(255,255,255,.4); font-variant-numeric:tabular-nums; }
+.att-main { flex:1; overflow:auto; display:flex; align-items:center; justify-content:center; padding:16px; background:radial-gradient(ellipse at center, rgba(139,92,246,.05), transparent 70%); }
+.att-img { max-width:100%; max-height:72vh; object-fit:contain; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+.att-text { flex:1; width:100%; max-height:70vh; overflow:auto; padding:14px; background:rgba(0,0,0,.25); border-radius:10px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12.5px; line-height:1.7; color:#e8e9ff; white-space:pre-wrap; word-break:break-word; }
+.att-empty { padding:40px; color:rgba(255,255,255,.45); font-size:13px; }
+.att-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 20px; border-top:1px solid rgba(139,92,246,.12); background:rgba(0,0,0,.15); }
+.att-btn { padding:7px 16px; border-radius:8px; border:1px solid rgba(139,92,246,.22); background:rgba(139,92,246,.08); color:rgba(196,181,253,.95); font-size:12px; font-weight:600; cursor:pointer; transition:all .15s; }
+.att-btn:hover { background:rgba(139,92,246,.18); border-color:rgba(139,92,246,.4); color:white; transform:translateY(-1px); }
+.att-btn-primary { background:linear-gradient(135deg,#8b5cf6,#6d28d9); border-color:transparent; color:white; }
+.att-btn-primary:hover { box-shadow:0 4px 14px rgba(139,92,246,.4); }
+
+/* ============ v13: 自定义确认 Modal（替代原生 confirm） ============ */
+.confirm-overlay { position:fixed; inset:0; background:rgba(4,4,12,.7); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:1200; padding:20px; }
+.confirm-box { width:100%; max-width:400px; padding:24px; background:linear-gradient(180deg, rgba(22,16,38,.98), rgba(12,10,24,.98)); border:1px solid rgba(139,92,246,.25); border-radius:16px; text-align:center; box-shadow:0 24px 60px rgba(0,0,0,.5); animation:confirmIn .22s cubic-bezier(.2,.9,.2,1); }
+.confirm-box.danger { border-color:rgba(239,68,68,.3); box-shadow:0 24px 60px rgba(239,68,68,.18); }
+@keyframes confirmIn { from{opacity:0;transform:translateY(12px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+.confirm-icon { font-size:32px; margin-bottom:10px; }
+.confirm-title { font-size:16px; font-weight:700; color:white; margin-bottom:6px; }
+.confirm-desc { font-size:12.5px; color:rgba(255,255,255,.6); line-height:1.6; margin-bottom:20px; }
+.confirm-acts { display:flex; gap:10px; justify-content:center; }
+.cf-cancel,.cf-ok { padding:9px 22px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .15s; min-width:90px; }
+.cf-cancel { background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.08); color:rgba(255,255,255,.7); }
+.cf-cancel:hover { background:rgba(255,255,255,.08); color:white; }
+.cf-ok { background:linear-gradient(135deg,#8b5cf6,#6d28d9); color:white; }
+.cf-ok:hover { box-shadow:0 6px 20px rgba(139,92,246,.4); transform:translateY(-1px); }
+.cf-ok-danger { background:linear-gradient(135deg,#ef4444,#b91c1c); }
+.cf-ok-danger:hover { box-shadow:0 6px 20px rgba(239,68,68,.45); }
+
+/* ============ v13: 代码块右上角 "复制 / 下载" 按钮组 ============ */
+.md-body :deep(.cb-actions) { display:inline-flex; gap:6px; align-items:center; }
+.md-body :deep(.cb-dl) { background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.28); color:rgba(147,197,253,.95); border-radius:6px; width:28px; height:26px; padding:0; font-size:14px; cursor:pointer; font-weight:700; line-height:1; transition:all .15s; display:inline-flex; align-items:center; justify-content:center; }
+.md-body :deep(.cb-dl:hover) { background:rgba(59,130,246,.28); color:#fff; border-color:rgba(59,130,246,.55); transform:translateY(-1px); box-shadow:0 3px 10px rgba(59,130,246,.35); }
+
+/* ============ v13: 公式块 —— 宇宙深空主题（与代码块呼应） ============ */
+.md-body :deep(.katex-display) {
+  position:relative;
+  background:
+    radial-gradient(ellipse at 18% 20%, rgba(139,92,246,.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 82% 80%, rgba(59,130,246,.05) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(8,6,20,.9), rgba(6,4,14,.9));
+  border:1px solid rgba(139,92,246,.18);
+  box-shadow:0 4px 16px rgba(0,0,0,.35), inset 0 0 20px rgba(139,92,246,.04);
+  overflow:visible;
+}
+.md-body :deep(.katex-display)::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,.35), transparent 2px),
+    radial-gradient(1px 1px at 78% 72%, rgba(196,181,253,.3), transparent 2px),
+    radial-gradient(1px 1px at 45% 55%, rgba(255,255,255,.25), transparent 2px);
+  pointer-events:none;
+  border-radius:inherit;
+  animation:katex-twinkle 3.5s ease-in-out infinite alternate;
+}
+@keyframes katex-twinkle { from { opacity:.45; } to { opacity:.85; } }
+
+/* ============ v13: 单条消息导出菜单 ============ */
+.msg-export { position:relative; }
+.msg-export-btn { width:28px; height:28px; border-radius:6px; border:none; background:rgba(255,255,255,.015); color:rgba(255,255,255,.25); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+.msg-export-btn:hover,.msg-export-btn.active { background:rgba(34,197,94,.08); color:rgba(134,239,172,.95); }
+.msg-export-menu { position:absolute; top:calc(100% + 4px); right:0; min-width:180px; padding:4px; background:rgba(12,10,24,.98); backdrop-filter:blur(18px); border:1px solid rgba(139,92,246,.25); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.45); z-index:50; }
+.mx-item { width:100%; padding:7px 10px; border:none; border-radius:6px; background:none; color:rgba(255,255,255,.75); font-size:12px; text-align:left; cursor:pointer; display:block; transition:all .12s; }
+.mx-item:hover { background:rgba(139,92,246,.14); color:white; }
+
+/* ============ v13: 语音录制条 实时转写 ============ */
+.voice-rec-bar { flex-wrap:wrap; }
+.voice-live { flex:1 1 100%; padding:6px 10px; background:rgba(139,92,246,.035); border:1px solid rgba(139,92,246,.1); border-radius:10px; margin-bottom:4px; min-width:0; }
+.voice-live-label { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:700; color:rgba(196,181,253,.85); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+.voice-live-dot { width:8px; height:8px; border-radius:50%; background:#ef4444; box-shadow:0 0 0 0 rgba(239,68,68,.5); animation:recDotPulse 1.3s ease-out infinite; }
+@keyframes recDotPulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.5)} 70%{box-shadow:0 0 0 8px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
+.voice-live-text { font-size:13px; line-height:1.55; color:rgba(255,255,255,.85); word-break:break-word; min-height:18px; max-height:110px; overflow-y:auto; }
+.voice-live-text .voice-final { color:rgba(255,255,255,.95); }
+.voice-live-text .voice-interim { color:rgba(196,181,253,.6); font-style:italic; }
+
+/* ============ v13: 语音预览条（停止后可编辑） ============ */
+.voice-preview { margin-top:6px; padding:10px 12px; background:linear-gradient(135deg, rgba(139,92,246,.06), rgba(59,130,246,.04)); border:1px solid rgba(139,92,246,.2); border-radius:14px; animation:vpIn .22s cubic-bezier(.2,.8,.2,1); }
+@keyframes vpIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.vp-head { display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:700; color:rgba(196,181,253,.9); margin-bottom:6px; }
+.vp-icon { font-size:14px; }
+.vp-title { flex:1; }
+.vp-meta { font-size:10px; color:rgba(255,255,255,.35); font-weight:500; }
+.vp-text { width:100%; min-height:52px; max-height:180px; padding:8px 10px; background:rgba(4,3,12,.5); border:1px solid rgba(139,92,246,.14); border-radius:10px; color:white; font-size:13px; line-height:1.65; resize:vertical; outline:none; font-family:inherit; }
+.vp-text:focus { border-color:rgba(139,92,246,.45); box-shadow:0 0 0 3px rgba(139,92,246,.1); }
+.vp-acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.vp-btn { padding:6px 12px; border-radius:8px; border:1px solid rgba(139,92,246,.18); background:rgba(139,92,246,.05); color:rgba(196,181,253,.85); font-size:11.5px; font-weight:600; cursor:pointer; transition:all .15s; display:inline-flex; align-items:center; gap:4px; }
+.vp-btn:hover:not(:disabled) { background:rgba(139,92,246,.15); color:white; border-color:rgba(139,92,246,.4); transform:translateY(-1px); }
+.vp-btn:disabled { opacity:.35; cursor:not-allowed; }
+.vp-btn-primary { background:linear-gradient(135deg,#8b5cf6,#6d28d9); color:white; border-color:transparent; margin-left:auto; }
+.vp-btn-primary:hover:not(:disabled) { box-shadow:0 4px 14px rgba(139,92,246,.4); }
+.vp-kbd { margin-left:4px; font-size:9.5px; padding:1px 6px; border-radius:4px; background:rgba(0,0,0,.25); color:rgba(255,255,255,.55); font-family:monospace; }
+
+/* ============ v13: emoji 面板升级 —— 分类栏/网格更大可滚动 ============ */
+.emoji-panel { width:360px; max-width:92vw; }
+.emoji-grid { max-height:260px; grid-template-columns:repeat(9, 1fr); }
+@media(max-width:768px) { .emoji-panel { width:auto; } .emoji-grid { grid-template-columns:repeat(8, 1fr); max-height:44vh; } }
+
+/* ============ v13 T9: 后台流式中提示（切到其它会话时，原会话占位消息的静态提示） ============ */
+.bg-streaming-hint { display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:10px; background:linear-gradient(135deg, rgba(139,92,246,.06), rgba(59,130,246,.04)); border:1px dashed rgba(139,92,246,.22); color:rgba(196,181,253,.72); font-size:11.5px; }
+.bg-dot { width:8px; height:8px; border-radius:50%; background:rgba(139,92,246,.85); box-shadow:0 0 0 0 rgba(139,92,246,.6); animation:bgDotPulse 1.6s ease-out infinite; }
+@keyframes bgDotPulse { 0%{box-shadow:0 0 0 0 rgba(139,92,246,.6)} 70%{box-shadow:0 0 0 10px rgba(139,92,246,0)} 100%{box-shadow:0 0 0 0 rgba(139,92,246,0)} }
+
+/* ============ v13: 工作流升级标签 + 激活态 ============ */
+.wf-tag { display:inline-flex; align-items:center; gap:2px; margin-left:6px; padding:1px 6px; border-radius:10px; font-size:9.5px; font-weight:700; letter-spacing:.2px; vertical-align:middle; }
+.wf-tag-model { background:rgba(139,92,246,.15); color:rgba(196,181,253,.95); border:1px solid rgba(139,92,246,.3); }
+.wf-tag-file { background:rgba(59,130,246,.15); color:rgba(147,197,253,.95); border:1px solid rgba(59,130,246,.3); }
+.wf-kind-coding { border-color:rgba(59,130,246,.2); }
+.wf-kind-study { border-color:rgba(34,197,94,.18); }
+.wf-kind-creative { border-color:rgba(236,72,153,.18); }
+.wf-kind-productivity { border-color:rgba(251,191,36,.18); }
+.wf-kind-analysis { border-color:rgba(20,184,166,.2); }
+
+.ab-workflow-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:14px; background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1)); border:1px solid rgba(139,92,246,.35); color:rgba(196,181,253,.95); font-size:11px; font-weight:700; animation:wfChipIn .22s ease-out; }
+@keyframes wfChipIn { from{opacity:0;transform:translateY(3px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+.ab-wf-clear { background:rgba(0,0,0,.2); border:none; color:rgba(255,255,255,.85); width:16px; height:16px; border-radius:50%; cursor:pointer; font-size:12px; line-height:1; padding:0; }
+.ab-wf-clear:hover { background:rgba(239,68,68,.4); }
+.ab-tool-active { background:rgba(139,92,246,.12) !important; color:rgba(196,181,253,.95) !important; border-color:rgba(139,92,246,.3) !important; box-shadow:0 0 0 1px rgba(139,92,246,.2) inset; }
 </style>
