@@ -157,7 +157,7 @@
 
       <!-- 消息区 -->
       <div class="msgs" ref="scrollRef" @click="handleMsgAreaClick">
-        <div v-if="displayMsgs.length === 0 && !isStreaming" class="empty">
+        <div v-if="displayMsgs.length === 0 && !streamingInCurrentView" class="empty">
           <div class="empty-icon">⚡</div>
           <h2>你好，我是星火助手</h2>
           <p>我深度理解 Spark Alliance 每个功能模块，能帮你管理日程、制定规划、辅导学习、解题答疑</p>
@@ -188,15 +188,15 @@
                 </div>
               </div>
               <div v-if="msg.role === 'user'" class="user-bubble"><div class="u-text">{{ msg.displayContent || msg.content }}</div></div>
-              <div v-if="msg.role === 'user' && (!isStreaming || !streamingInCurrentView)" class="msg-acts user-acts">
+              <div v-if="msg.role === 'user' && !streamingInCurrentView" class="msg-acts user-acts">
                 <button @click="copyText(msg.content)" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
                 <button @click="editMessage(idx)" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
               </div>
               <!-- 思考过程 -->
               <div v-if="msg.role === 'assistant' && msg.reasoning" class="think-block">
                 <button class="think-toggle" @click="collapsedThinking[idx] = !collapsedThinking[idx]">
-                  <span class="think-status" :class="{ spinning: msg.pending && streamingInCurrentView && streamPhase === 'thinking' }">💭</span>
-                  <span>{{ msg.pending && streamingInCurrentView && streamPhase === 'thinking' ? '正在思考...' : '思考过程' }}</span>
+                  <span class="think-status" :class="{ spinning: msg.pending && streamingInCurrentView && !(msg.content && msg.content.trim()) }">💭</span>
+                  <span>{{ msg.pending && streamingInCurrentView && !(msg.content && msg.content.trim()) ? '正在思考...' : '思考过程' }}</span>
                   <svg class="think-chevron" :class="{ collapsed: collapsedThinking[idx] }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
                 <div v-show="!collapsedThinking[idx]" class="think-body md-body" v-html="renderMd(msg.reasoning)"></div>
@@ -215,7 +215,7 @@
               <div v-if="msg.role === 'assistant' && msg.content" class="md-body" v-html="renderMd(msg.content)" @click="handleMdClick"></div>
               <!-- v9: 命中缓存徽章 -->
               <span v-if="msg.role === 'assistant' && msg.fromCache" class="cache-badge" title="此回复来自本地响应缓存，内容与最新请求一致">⚡ 来自缓存</span>
-              <span v-if="msg.role === 'assistant' && msg.pending && streamingInCurrentView && streamPhase === 'streaming' && msg.content" class="cursor"></span>
+              <span v-if="msg.role === 'assistant' && msg.pending && streamingInCurrentView && !!(msg.content && msg.content.trim())" class="cursor"></span>
               <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="msg-acts">
                 <button @click="copyText(msg.content)" title="复制" aria-label="复制回复">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
@@ -352,7 +352,7 @@
           </div>
           <input ref="fileInput" type="file" multiple accept="*/*" @change="onFileInput" style="display:none">
           <textarea ref="inputRef" v-model="inputText" :placeholder="isOnline ? '输入你的问题...（Shift+Enter 换行 · Ctrl+/ 工作流 · Ctrl+K 搜索）' : '离线中，恢复网络后才能发送'" rows="1" @keydown="onKey" @focus="iFocus=true" @blur="iFocus=false" @input="autoResize" @paste="onPaste" :disabled="!isOnline"></textarea>
-          <button v-if="isStreaming && streamingInCurrentView" class="send stop-mode" @click="stopGenerating" title="停止" aria-label="停止生成">
+          <button v-if="streamingInCurrentView" class="send stop-mode" @click="stopGenerating" title="停止" aria-label="停止生成">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
           </button>
           <button v-else class="send" :disabled="!isOnline || (!inputText.trim() && !pendingFiles.length)" @click="handleSend" title="发送（Enter）" aria-label="发送">
@@ -529,8 +529,9 @@ import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } 
 
 const router = useRouter()
 const {
-  isStreaming, streamPhase, streamingConvId, error: aiError, currentModel,
+  error: aiError, currentModel,
   conversations, currentConversationId, favorites, summarizingConvId,
+  streamingConvIds,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
   duplicateConversation, searchConversations, exportConversation,
@@ -540,8 +541,15 @@ const {
   inheritMemoryToNewConversation,
 } = useSparkAI()
 
-// v13 T9：当前视图所在会话是否正是"流式进行中"的会话
-const streamingInCurrentView = computed(() => !!streamingConvId.value && streamingConvId.value === currentConversationId.value)
+// v13 T9：当前会话是否正在生成 = 末条 assistant 为 pending 且该会话仍在全局流式列表中（避免误把幽灵 pending 当思考中）
+const streamingInCurrentView = computed(() => {
+  const id = currentConversationId.value
+  if (!id) return false
+  if (!streamingConvIds.value.includes(id)) return false
+  const conv = conversations.value.find((c) => c.id === id)
+  const last = conv?.messages[conv?.messages.length - 1]
+  return !!(last?.role === 'assistant' && last.pending)
+})
 /** 当前会话是否正在执行记忆压缩摘要 */
 const summarizing = computed(() => !!summarizingConvId.value && summarizingConvId.value === currentConversationId.value)
 const { createEvent } = useSchedule()
@@ -583,7 +591,7 @@ function startThinkingHintRotation() {
 function stopThinkingHintRotation() {
   if (thinkingHintTimer) { clearInterval(thinkingHintTimer); thinkingHintTimer = null }
 }
-watch(() => isStreaming.value, (v) => {
+watch(() => streamingInCurrentView.value, (v) => {
   if (v) startThinkingHintRotation()
   else stopThinkingHintRotation()
 })
@@ -1041,8 +1049,8 @@ async function handleSend() {
   // v9: emoji 短码扩展
   const raw = inputText.value.trim()
   const text = expandShortcodes(raw)
-  // 仅当「当前会话」正在流式生成时禁止再发；其它会话可独立发送（会中止旧会话请求）
-  if ((!text && !pendingFiles.value.length) || (isStreaming.value && streamingInCurrentView.value)) return
+  // 仅当「当前会话」正在流式生成时禁止再发；其它会话可并行请求，互不中止
+  if ((!text && !pendingFiles.value.length) || streamingInCurrentView.value) return
 
   // v9: 文件大小硬限制（单文件 5MB，附件总数 5 个）
   const OVERSIZE = pendingFiles.value.find((f) => f.size && /([0-9.]+)\s*MB/.test(f.size) && parseFloat(f.size) > 5)
@@ -1222,7 +1230,7 @@ function mapDisplayIdxToReal(displayIdx: number): number {
 
 /** 重新回答：点某条 assistant 消息 → 删除其对应 user 到末尾的所有消息 → 用 user 内容重新发送 */
 function retryFrom(displayIdx: number) {
-  if (isStreaming.value && streamingInCurrentView.value) return
+  if (streamingInCurrentView.value) return
   const conv = getCurrentConversation()
   const realIdx = mapDisplayIdxToReal(displayIdx)
   if (realIdx < 0 || conv.messages[realIdx]?.role !== 'assistant') return
@@ -1239,7 +1247,7 @@ function retryFrom(displayIdx: number) {
 
 /** 编辑用户消息：删除该消息及之后所有消息，把 user.content 放回输入框等待用户修改后发送 */
 function editMessage(displayIdx: number) {
-  if (isStreaming.value && streamingInCurrentView.value) return
+  if (streamingInCurrentView.value) return
   const conv = getCurrentConversation()
   const realIdx = mapDisplayIdxToReal(displayIdx)
   if (realIdx < 0 || conv.messages[realIdx]?.role !== 'user') return
@@ -1977,7 +1985,7 @@ async function handleSummarizeNow() {
 // v11: 新开对话并继承记忆（把当前会话摘要成 system 前缀，新会话"还记得之前"）
 async function handleInheritMemory() {
   if (summarizing.value) { toast('正在处理，请稍候…'); return }
-  if (isStreaming.value && streamingInCurrentView.value) { toast('请先等当前回复结束'); return }
+  if (streamingInCurrentView.value) { toast('请先等当前回复结束'); return }
   toast('🧠 正在把当前会话压缩成记忆摘要…')
   const newConv = await inheritMemoryToNewConversation()
   if (newConv) {

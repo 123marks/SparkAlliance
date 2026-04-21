@@ -478,14 +478,31 @@ async function requestMemorySummary(older: Array<{ role: 'user' | 'assistant'; c
 export function useSparkAI() {
   const isStreaming = ref(false)
   const streamPhase = ref<StreamPhase>('idle')
-  const error = ref<string | null>(null)
-  const errorCode = ref<string | null>(null)
+  /** 按会话隔离错误文案，避免「停掉 A」却全局出现重试条 */
+  const errorByConversationId = ref<Record<string, string>>({})
+
+  function setConversationError(convId: string, msg: string | null) {
+    if (!msg) {
+      if (!errorByConversationId.value[convId]) return
+      const next = { ...errorByConversationId.value }
+      delete next[convId]
+      errorByConversationId.value = next
+    } else {
+      errorByConversationId.value = { ...errorByConversationId.value, [convId]: msg }
+    }
+  }
   /** 每个会话独立的中止控制器，支持多会话同时流式生成；停止按钮只中断当前会话 */
   const abortByConversationId = ref<Record<string, AbortController>>({})
   const pendingActions = ref<SparkAction[]>([])
   const currentModel = ref<ModelMode>('default')
   const conversations = ref<Conversation[]>([])
   const currentConversationId = ref<string | null>(null)
+  const error = computed(() => {
+    const id = currentConversationId.value
+    if (!id) return null
+    return errorByConversationId.value[id] ?? null
+  })
+  const errorCode = ref<string | null>(null)
   const favorites = ref<FavoriteMessage[]>([])
   const reactions = ref<Record<string, MessageReaction>>({})
   /**
@@ -930,7 +947,7 @@ export function useSparkAI() {
     saveConversations()
     streamPhase.value = 'thinking'
     addStreamingConversation(conversation.id)
-    error.value = null
+    setConversationError(conversation.id, null)
     errorCode.value = null
     return id
   }
@@ -1055,7 +1072,7 @@ export function useSparkAI() {
 
     streamPhase.value = 'thinking'
     addStreamingConversation(conversation.id)
-    error.value = null
+    setConversationError(conversation.id, null)
     errorCode.value = null
     pendingActions.value = []
     const thisAbortController = new AbortController()
@@ -1130,9 +1147,10 @@ export function useSparkAI() {
     const timeout = setTimeout(() => {
       console.warn('[SparkAI] 请求超时，模式:', currentModel.value)
       thisAbortController.abort()
-      error.value = '响应超时，请稍后重试或切换模式'
+      const msg = '响应超时，请稍后重试或切换模式'
+      setConversationError(streamOwnerConvId, msg)
       errorCode.value = 'TIMEOUT'
-      onError?.(error.value)
+      onError?.(msg)
     }, 120000)
 
     /**
@@ -1332,6 +1350,7 @@ export function useSparkAI() {
 
       pendingActions.value = actions
       streamPhase.value = 'done'
+      setConversationError(streamOwnerConvId, null)
       onDone(cleanContent, actions, finalReasoning)
 
       // v11: 回复完成后，若消息数超阈值则后台摘要（不阻塞 UI）
@@ -1347,7 +1366,7 @@ export function useSparkAI() {
       let code: string | null = null
       if (err instanceof Error) {
         code = (err as Error & { code?: string }).code ?? null
-        if (err.name === 'AbortError') message = error.value || '已停止生成'
+        if (err.name === 'AbortError') message = '已停止生成'
         else if (err instanceof TypeError && err.message.includes('fetch')) message = '网络连接失败，请检查网络后重试'
         else message = err.message
       } else {
@@ -1355,9 +1374,13 @@ export function useSparkAI() {
       }
       console.error('[SparkAI] 错误:', message, 'code=', code, err)
 
-      if (!error.value) error.value = message
+      if (err instanceof Error && err.name === 'AbortError') {
+        setConversationError(streamOwnerConvId, null)
+      } else {
+        setConversationError(streamOwnerConvId, message)
+      }
       if (code && !errorCode.value) errorCode.value = code
-      onError?.(error.value)
+      onError?.(message)
 
       // v13 T9：错误/中断时，就地把已收到的部分标注为中断，不再 push 第二条消息
       if (err instanceof Error && err.name === 'AbortError') {
@@ -1414,6 +1437,7 @@ export function useSparkAI() {
     isStreaming,
     streamPhase,
     streamingConvId,
+    streamingConvIds,
     error,
     errorCode,
     currentModel,
