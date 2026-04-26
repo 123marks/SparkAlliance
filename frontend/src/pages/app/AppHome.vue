@@ -1,13 +1,13 @@
 <template>
   <div class="app-home">
     <section class="hero">
-      <div>
+      <div class="hero-content">
         <h1>{{ greeting }}，{{ userName }} ✦</h1>
         <p class="hero-date">{{ currentDate }}</p>
-        <p class="hero-insight">AI 洞察：{{ heroSubtitle }}</p>
+        <p class="hero-insight">AI 洞察：{{ aiInsight }}</p>
       </div>
       <div class="hero-actions">
-        <button class="btn ghost" type="button" @click="loadDashboard">🔄 刷新主控台</button>
+        <button class="btn ghost" type="button" @click="loadDashboard">刷新主控台</button>
         <router-link to="/app/schedule?module=planner" class="btn primary">去完成规划 →</router-link>
       </div>
     </section>
@@ -16,7 +16,7 @@
     <section class="stats-strip">
       <div v-for="stat in miniStats.slice(0, 4)" :key="stat.label" class="stat-chip">
         <div class="stat-icon" :style="{ color: stat.color, background: stat.color + '18' }" v-html="stat.svg"></div>
-        <div>
+        <div class="stat-text">
           <strong>{{ stat.value }}</strong>
           <span>{{ stat.label }}</span>
         </div>
@@ -27,8 +27,8 @@
     <section class="row-2col">
       <div class="card">
         <div class="card-head">
-          <h3>闭环行动</h3>
-          <span class="card-sub">把主控台变成下一步行动入口</span>
+          <h3>今日优先处理</h3>
+          <router-link to="/app/schedule?module=planner" class="more-link">查看全部 →</router-link>
         </div>
         <router-link v-for="action in dashboardActions" :key="action.id" :to="action.to" class="action-card" :class="`tone-${action.emphasis}`">
           <span class="action-icon">{{ action.icon }}</span>
@@ -36,8 +36,9 @@
             <strong>{{ action.title }}</strong>
             <span>{{ action.description }}</span>
           </div>
-          <span class="action-cta">{{ action.cta }}</span>
+          <span class="action-cta">去处理</span>
         </router-link>
+        <p v-if="dashboardActions.length === 0" class="empty">今天暂无紧急事项，专注你最重要的目标吧。</p>
       </div>
       <div class="card">
         <div class="card-head">
@@ -133,6 +134,7 @@
           <h3>每日灵感</h3>
           <button class="more-link plain-btn" type="button" @click="refreshQuote">换一条</button>
         </div>
+        <span class="quote-tag">{{ currentQuote.tag }}</span>
         <blockquote>{{ currentQuote.text }}</blockquote>
         <cite>— {{ currentQuote.author }}</cite>
       </div>
@@ -308,6 +310,15 @@ const ringOffset = computed(() => {
 })
 const heroSubtitle = computed(() => {
   return dashboardActions.value[0]?.description || '主控台已经接入真实的规划、交易、日程和社区摘要。'
+})
+
+const aiInsight = computed(() => {
+  const s = dashboardSnapshot.value
+  if (s.overdueTasks > 0) return `你有 ${s.overdueTasks} 个任务已逾期，优先清理能直接提升执行闭环。`
+  if (s.todayTasks > 3) return `今日待办较多（${s.todayTasks}项），建议先完成最重要的2件事。`
+  if (s.streakDays >= 7) return `连续执行${s.streakDays}天，你的节奏很棒，继续保持高效节奏！`
+  if (s.weeklyCompletedTasks > 0) return `本周已完成${s.weeklyCompletedTasks}项任务，${s.weeklyTotalTasks > 0 ? '较上周+' + Math.round((s.weeklyCompletedTasks / s.weeklyTotalTasks) * 100) + '%' : '继续加油'}。`
+  return '主控台已同步最新状态，开始今天的高效旅程吧。'
 })
 
 const quotes = [
@@ -1073,8 +1084,19 @@ watch(
 .badge-name { font-size: 10px; color: var(--color-text-muted); }
 
 .quote-card {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(79, 142, 247, 0.04));
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(79, 142, 247, 0.03)), rgba(12, 10, 24, 0.65);
   border-color: rgba(139, 92, 246, 0.1);
+}
+
+.quote-tag {
+  display: inline-flex;
+  margin-bottom: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.12);
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .quote-card blockquote {
