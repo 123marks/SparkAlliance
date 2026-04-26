@@ -108,6 +108,12 @@
         </div>
         <div class="ring-wrap">
           <svg viewBox="0 0 120 120" class="ring">
+            <defs>
+              <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8b5cf6" />
+                <stop offset="100%" stop-color="#3b82f6" />
+              </linearGradient>
+            </defs>
             <circle class="ring-bg" cx="60" cy="60" r="50" />
             <circle class="ring-fg" cx="60" cy="60" r="50" :stroke-dashoffset="ringOffset" />
           </svg>
@@ -586,11 +592,20 @@ watch(
 .stat-chip,
 .shortcut-card,
 .action-card,
-.signal,
-.campus-item {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+.signal {
+  background: rgba(12, 10, 24, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.06);
+  border-color: rgba(139, 92, 246, 0.12);
 }
 
 .hero {
@@ -604,23 +619,29 @@ watch(
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 85% 20%, rgba(139,92,246,0.2) 0%, transparent 50%),
-    radial-gradient(ellipse at 15% 80%, rgba(59,130,246,0.12) 0%, transparent 45%),
-    radial-gradient(ellipse at 50% 50%, rgba(245,158,11,0.05) 0%, transparent 60%),
-    linear-gradient(160deg, rgba(12,8,30,0.9), rgba(15,10,35,0.95));
-  border: 1px solid rgba(139,92,246,0.1);
+    radial-gradient(ellipse at 80% 15%, rgba(139,92,246,0.15) 0%, transparent 45%),
+    radial-gradient(ellipse at 20% 85%, rgba(59,130,246,0.08) 0%, transparent 40%),
+    rgba(12, 10, 24, 0.75);
+  border: 1px solid rgba(139,92,246,0.08);
+  box-shadow: 0 4px 30px rgba(139, 92, 246, 0.06);
 }
 
 .hero::before {
   content: '';
   position: absolute;
-  top: -40px;
-  right: -20px;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%);
+  top: -30px;
+  right: -10px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 65%);
   pointer-events: none;
-  filter: blur(30px);
+  filter: blur(25px);
+  animation: heroGlow 8s ease-in-out infinite alternate;
+}
+
+@keyframes heroGlow {
+  from { opacity: 0.6; transform: translate(0, 0); }
+  to { opacity: 1; transform: translate(-10px, 10px); }
 }
 
 .hero h1 {
@@ -659,14 +680,24 @@ watch(
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, #4f8ef7, #8b5cf6);
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
   color: #fff;
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.2);
+}
+
+.btn.primary:hover {
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
 }
 
 .btn.ghost {
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.5);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.btn.ghost:hover {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.8);
 }
 
 .btn:disabled {
@@ -685,30 +716,42 @@ watch(
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   border-radius: 16px;
-  transition: transform 0.2s, border-color 0.2s;
 }
 
 .stat-chip:hover {
   transform: translateY(-2px);
   border-color: rgba(139,92,246,0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-.stat-chip strong,
-.shop-stats strong {
+.stat-chip strong {
   display: block;
-  color: var(--color-text-primary);
-  font-size: 24px;
+  color: rgba(255,255,255,0.95);
+  font-size: 26px;
   font-weight: 800;
   line-height: 1;
 }
 
-.stat-chip span,
-.shop-stats span {
+.shop-stats strong {
+  display: block;
+  color: rgba(255,255,255,0.95);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.stat-chip span {
   display: block;
   margin-top: 4px;
-  color: var(--color-text-muted);
+  color: rgba(255,255,255,0.3);
+  font-size: 11px;
+}
+
+.shop-stats span {
+  display: block;
+  margin-top: 2px;
+  color: rgba(255,255,255,0.3);
   font-size: 11px;
 }
 
@@ -734,18 +777,25 @@ watch(
 
 .card-head h3 {
   margin: 0;
-  color: var(--color-text-primary);
-  font-size: 16px;
+  color: rgba(255,255,255,0.9);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .card-head span,
 .more-link {
-  color: var(--color-text-muted);
+  color: rgba(255,255,255,0.3);
   font-size: 12px;
 }
 
 .more-link {
   text-decoration: none;
+  color: rgba(196,181,253,0.6);
+  transition: color 0.2s;
+}
+
+.more-link:hover {
+  color: #c4b5fd;
 }
 
 .plain-btn {
@@ -891,7 +941,7 @@ watch(
 }
 
 .note-card {
-  background: linear-gradient(135deg, rgba(79, 142, 247, 0.06), rgba(16, 185, 129, 0.04));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.04), rgba(16, 185, 129, 0.03)), rgba(12, 10, 24, 0.65);
 }
 
 .saved {
@@ -947,13 +997,13 @@ watch(
 
 .ring-bg {
   fill: none;
-  stroke: var(--color-border);
+  stroke: rgba(255,255,255,0.06);
   stroke-width: 8;
 }
 
 .ring-fg {
   fill: none;
-  stroke: #8b5cf6;
+  stroke: url(#ringGradient);
   stroke-width: 8;
   stroke-linecap: round;
   stroke-dasharray: 314.16;
