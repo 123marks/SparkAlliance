@@ -697,35 +697,42 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  padding: 28px 32px;
-  margin-bottom: 24px;
+  gap: 24px;
+  padding: 32px 36px;
+  margin-bottom: 20px;
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
   background:
-    radial-gradient(circle at top right, rgba(245, 158, 11, 0.12), transparent 28%),
-    linear-gradient(135deg, rgba(79, 142, 247, 0.08), rgba(139, 92, 246, 0.04));
+    radial-gradient(ellipse at 85% 20%, rgba(139,92,246,0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at 15% 80%, rgba(59,130,246,0.12) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 50%, rgba(245,158,11,0.05) 0%, transparent 60%),
+    linear-gradient(160deg, rgba(12,8,30,0.9), rgba(15,10,35,0.95));
+  border: 1px solid rgba(139,92,246,0.1);
 }
 
-.hero-kicker {
-  display: inline-flex;
-  margin-bottom: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--color-bg-card-hover);
-  color: var(--color-text-muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -20px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%);
+  pointer-events: none;
+  filter: blur(30px);
 }
 
 .hero h1 {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: var(--color-text-primary);
   font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 1px;
 }
 
 .hero p {
   margin: 0;
-  color: var(--color-text-muted);
   line-height: 1.6;
   max-width: 620px;
 }
@@ -777,21 +784,30 @@ watch(
 .stat-chip {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.stat-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(139,92,246,0.12);
 }
 
 .stat-chip strong,
 .shop-stats strong {
   display: block;
   color: var(--color-text-primary);
-  font-size: 20px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .stat-chip span,
 .shop-stats span {
   display: block;
-  margin-top: 2px;
+  margin-top: 4px;
   color: var(--color-text-muted);
   font-size: 11px;
 }
@@ -1207,6 +1223,14 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.stat-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(139,92,246,0.1);
+  flex-shrink: 0;
 }
 
 .shortcut-icon {
