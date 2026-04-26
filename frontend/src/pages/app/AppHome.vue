@@ -796,8 +796,9 @@ watch(
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 18px 20px;
+  padding: 18px 18px;
   border-radius: 16px;
+  min-height: 76px;
 }
 
 .stat-chip:hover {
@@ -809,7 +810,7 @@ watch(
 .stat-chip strong {
   display: block;
   color: rgba(255,255,255,0.95);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
   line-height: 1;
 }
@@ -1339,11 +1340,18 @@ watch(
 }
 
 .stat-icon {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  background: rgba(139,92,246,0.1);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.08);
+}
+
+.stat-text {
+  min-width: 0;
 }
 
 .shortcut-icon {
