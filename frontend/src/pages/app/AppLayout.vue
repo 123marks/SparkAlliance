@@ -117,8 +117,9 @@
       <!-- 侧边栏 — 唯一导航源，可折叠 -->
       <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
         <nav class="sidebar-nav">
-          <!-- 核心功能 -->
+          <!-- 核心功能（4项） -->
           <div class="nav-group">
+            <span class="nav-group-label" v-show="!sidebarCollapsed">核心功能</span>
             <router-link to="/app/home" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
               <span class="nav-label">主控台</span>
@@ -126,33 +127,63 @@
             </router-link>
             <router-link to="/app/chat" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>
-              <span class="nav-label">AI 助手</span>
+              <span class="nav-label">星火助手</span>
               <span class="nav-tooltip">AI 智能对话</span>
             </router-link>
-            <router-link to="/app/wall" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              <span class="nav-label">星火墙</span>
-              <span class="nav-tooltip">校园动态墙</span>
+            <router-link to="/app/companion" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+              <span class="nav-label">星火伴侣</span>
+              <span class="nav-tooltip">好友 · 动态 · 广场</span>
             </router-link>
             <router-link to="/app/schedule" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
               <span class="nav-label">智能日程</span>
               <span class="nav-tooltip">日历 · 规划 · 灵感</span>
             </router-link>
-            <router-link to="/app/schedule?module=planner" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-              <span class="nav-label">星火规划</span>
-              <span class="nav-tooltip">目标拆分与激励</span>
+          </div>
+
+          <!-- 校园生活（3项） -->
+          <div class="nav-group">
+            <span class="nav-group-label" v-show="!sidebarCollapsed">校园生活</span>
+            <router-link to="/app/wall" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              <span class="nav-label">星火墙</span>
+              <span class="nav-tooltip">校园动态墙</span>
             </router-link>
             <router-link to="/app/shop" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
               <span class="nav-label">星火购物</span>
               <span class="nav-tooltip">校园二手交易</span>
             </router-link>
+            <router-link to="/app/health" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+              <span class="nav-label">健康生活</span>
+              <span class="nav-tooltip">运动健康追踪</span>
+            </router-link>
+          </div>
+
+          <!-- 学习成长（5项） -->
+          <div class="nav-group">
+            <span class="nav-group-label" v-show="!sidebarCollapsed">学习成长</span>
             <router-link to="/app/learn" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
-              <span class="nav-label">学习资源</span>
+              <span class="nav-label">学习中心</span>
               <span class="nav-tooltip">自习室 · 学习资源</span>
+            </router-link>
+            <router-link to="/app/legacy" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              <span class="nav-label">星火传承</span>
+              <span class="nav-tooltip">经验分享 · 寄语留言</span>
+            </router-link>
+            <router-link to="/app/talent" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 7V5a4 4 0 0 0-8 0v2"></path></svg>
+              <span class="nav-label">星火人才</span>
+              <span class="nav-tooltip">人才市场</span>
+            </router-link>
+            <router-link to="/app/news" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 10h2"></path><rect x="17" y="4" width="4" height="16" rx="1"></rect></svg>
+              <span class="nav-label">星火资讯</span>
+              <span class="nav-tooltip">校园资讯</span>
             </router-link>
             <router-link to="/app/cocreate" class="nav-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
@@ -203,8 +234,13 @@
         <div class="sidebar-bottom">
           <router-link to="/app/settings" class="nav-link">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            <span class="nav-label">设置中心</span>
+            <span class="nav-label">设置</span>
             <span class="nav-tooltip">个人设置</span>
+          </router-link>
+          <router-link to="/app/feedback" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            <span class="nav-label">反馈</span>
+            <span class="nav-tooltip">用户反馈</span>
           </router-link>
         </div>
       </aside>
@@ -673,7 +709,16 @@ const handleLogout = async () => {
 }
 
 /* 导航分组 */
-.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group { margin-bottom: 16px; }
+.nav-group-label {
+  display: block;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--color-text-muted);
+  padding: 8px 12px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
 
 /* 导航链接 */
 .nav-link {
@@ -702,6 +747,7 @@ const handleLogout = async () => {
   opacity: 1; transition: opacity 0.2s;
 }
 .collapsed .nav-label { opacity: 0; width: 0; }
+.collapsed .nav-group-label { opacity: 0; height: 0; padding: 0; margin: 0; }
 
 /* 收起时 tooltip */
 .nav-tooltip {
