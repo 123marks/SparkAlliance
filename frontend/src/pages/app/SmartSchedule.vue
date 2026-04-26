@@ -39,15 +39,14 @@
       </button>
       <button
         class="ss-aux-btn tarot-btn"
-        :class="{ active: showPanel && panelKey === 'tarot' }"
-        title="每日灵感"
-        @click="togglePanel('tarot')"
+        title="星火卡罗牌"
+        @click="router.push('/app/tarot')"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10" />
           <path d="M12 16v-4" /><path d="M12 8h.01" />
         </svg>
-        <span class="ss-aux-label">灵感</span>
+        <span class="ss-aux-label">卡罗牌</span>
       </button>
     </div>
   </div>

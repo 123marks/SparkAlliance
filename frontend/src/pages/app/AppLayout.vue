@@ -148,6 +148,11 @@
               <span class="nav-label">健康生活</span>
               <span class="nav-tooltip">运动健康追踪</span>
             </router-link>
+            <router-link to="/app/tarot" class="nav-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8l-2 4h4l-2 4"></path></svg>
+              <span class="nav-label">星火卡罗牌</span>
+              <span class="nav-tooltip">卡罗牌 · 选择指引</span>
+            </router-link>
           </div>
 
           <!-- 学习成长（5项） -->
