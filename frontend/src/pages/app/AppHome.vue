@@ -23,11 +23,12 @@
 
     <!-- 第二行：统计卡片（6列） -->
     <section class="stats-strip">
-      <div v-for="stat in miniStats" :key="stat.label" class="stat-chip">
+      <div v-for="(stat, idx) in miniStats" :key="stat.label" class="stat-chip" :style="{ animationDelay: `${0.1 + idx * 0.05}s` }">
         <div class="stat-icon" :style="{ color: stat.color, background: stat.color + '18' }" v-html="stat.svg"></div>
         <div class="stat-text">
           <strong>{{ stat.value }}<sub v-if="stat.sub" class="stat-unit">{{ stat.sub }}</sub></strong>
-          <span>{{ stat.label }}</span>
+          <span class="stat-label">{{ stat.label }}</span>
+          <span class="stat-sub-info">{{ statSubInfo[idx] }}</span>
         </div>
       </div>
     </section>
@@ -392,6 +393,18 @@ const userLevel = computed(() => Math.floor(dashboardSnapshot.value.streakDays *
 const userXP = computed(() => (dashboardSnapshot.value.streakDays * 15 + dashboardSnapshot.value.weeklyCompletedTasks * 50) % 2000)
 const nextLevelXP = 2000
 const xpPercent = computed(() => Math.min(100, Math.round((userXP.value / nextLevelXP) * 100)))
+
+const statSubInfo = computed(() => {
+  const s = dashboardSnapshot.value
+  return [
+    `待完成 ${s.todayTasks} 项`,
+    `进行中 ${s.activeGoals} 个`,
+    `新增 ${Math.max(0, s.activeListings - 10)} 件`,
+    `待回复 ${s.unreadShopMessages} 条`,
+    `较上周 +2.3h`,
+    `再接再厉！`,
+  ]
+})
 
 let noteTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -1061,9 +1074,14 @@ watch(
   padding: 14px 12px;
   border-radius: 14px;
   text-align: center;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+  background: rgba(12,10,24,0.5);
+  border: 1px solid rgba(255,255,255,0.04);
+  position: relative;
 }
+
+.shop-stats > div:nth-child(1) strong { color: #8b5cf6; }
+.shop-stats > div:nth-child(2) strong { color: #10b981; }
+.shop-stats > div:nth-child(3) strong { color: #f87171; }
 
 .signal-list,
 .campus-list {
@@ -1330,7 +1348,7 @@ watch(
 
 .shortcut-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
 }
 
@@ -1372,9 +1390,9 @@ watch(
   box-shadow: 0 0 12px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.08);
 }
 
-.stat-text {
-  min-width: 0;
-}
+.stat-text { min-width: 0; }
+.stat-label { display: block; margin-top: 3px; color: rgba(255,255,255,0.3); font-size: 11px; }
+.stat-sub-info { display: block; margin-top: 1px; color: rgba(255,255,255,0.15); font-size: 10px; }
 
 .shortcut-icon {
   width: 42px;
