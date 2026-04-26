@@ -14,7 +14,7 @@
       <div class="hero-nebula-outer"></div>
       <!-- 星点 -->
       <div class="hero-stars">
-        <span v-for="i in 35" :key="'hs'+i" class="h-star" :style="{ left: `${((i * 7.3 + 13) % 95) + 2}%`, top: `${((i * 11.1 + 5) % 90) + 3}%`, animationDelay: `${i * 0.35}s`, animationDuration: `${2 + (i % 5) * 0.6}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px` }"></span>
+        <span v-for="i in 45" :key="'hs'+i" class="h-star" :class="{ 'h-star-bright': i % 7 === 0 }" :style="{ left: `${((i * 7.3 + 13) % 95) + 2}%`, top: `${((i * 11.1 + 5) % 90) + 3}%`, animationDelay: `${i * 0.28}s`, animationDuration: `${1.8 + (i % 5) * 0.5}s`, width: `${1 + (i % 4)}px`, height: `${1 + (i % 4)}px` }"></span>
       </div>
       <!-- 流星 -->
       <div class="hero-meteors">
@@ -714,78 +714,119 @@ watch(
   justify-content: space-between;
   align-items: center;
   gap: 24px;
-  padding: 32px 36px;
+  padding: 36px 40px;
   margin-bottom: 20px;
   border-radius: 20px;
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 75% 20%, rgba(139,92,246,0.18) 0%, transparent 50%),
-    radial-gradient(ellipse at 20% 85%, rgba(59,130,246,0.08) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 50%, rgba(88,28,200,0.12) 0%, transparent 45%),
-    rgba(10, 8, 22, 0.82);
-  border: 1px solid rgba(139,92,246,0.08);
-  box-shadow: 0 4px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03);
-  min-height: 140px;
+    radial-gradient(ellipse at 72% 25%, rgba(139,92,246,0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 40%, rgba(88,28,200,0.16) 0%, transparent 50%),
+    radial-gradient(ellipse at 15% 80%, rgba(59,130,246,0.1) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(15,10,35,0.9) 0%, rgba(8,6,20,0.95) 100%);
+  border: 1px solid rgba(139,92,246,0.1);
+  box-shadow: 0 4px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  min-height: 150px;
 }
 
-/* 星球系统 */
+/* 星球系统 — 设计图级别 */
 .planet-system {
   position: absolute;
-  top: -45%;
-  right: 8%;
-  width: 260px;
-  height: 260px;
+  top: -65%;
+  right: -2%;
+  width: 380px;
+  height: 380px;
   pointer-events: none;
-  animation: planetFloat 16s ease-in-out infinite alternate;
+  animation: planetFloat 20s ease-in-out infinite alternate;
+  z-index: 0;
 }
 .planet-core {
   position: absolute;
-  inset: 25%;
+  inset: 22%;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 35% 35%, rgba(180,140,255,0.6) 0%, rgba(110,60,220,0.4) 30%, rgba(60,30,140,0.3) 60%, rgba(20,10,60,0.5) 100%);
+    radial-gradient(circle at 38% 32%,
+      rgba(220,200,255,0.7) 0%,
+      rgba(160,120,255,0.55) 15%,
+      rgba(110,60,220,0.45) 35%,
+      rgba(70,30,170,0.35) 55%,
+      rgba(30,15,80,0.5) 80%,
+      rgba(10,5,40,0.6) 100%);
   box-shadow:
-    0 0 30px rgba(139,92,246,0.4),
-    0 0 60px rgba(139,92,246,0.2),
-    inset 0 -8px 20px rgba(0,0,0,0.3),
-    inset 0 4px 12px rgba(200,180,255,0.15);
+    0 0 50px rgba(139,92,246,0.5),
+    0 0 100px rgba(139,92,246,0.3),
+    0 0 150px rgba(99,102,241,0.15),
+    inset 0 -12px 30px rgba(0,0,0,0.4),
+    inset 0 6px 20px rgba(220,200,255,0.2),
+    inset -6px 0 15px rgba(139,92,246,0.15);
+}
+.planet-core::before {
+  content: '';
+  position: absolute;
+  top: 12%; left: 18%;
+  width: 35%; height: 20%;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.18) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(6px);
+  transform: rotate(-15deg);
 }
 .planet-ring {
   position: absolute;
-  inset: 15%;
+  inset: 12%;
   border-radius: 50%;
-  border: 1.5px solid rgba(139,92,246,0.12);
+  border: 2px solid rgba(139,92,246,0.08);
   animation: planetRingPulse 8s ease-in-out infinite;
+}
+.planet-ring::after {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  border: 1px solid rgba(99,102,241,0.05);
+  animation: planetRingPulse 12s ease-in-out infinite reverse;
 }
 .planet-glow {
   position: absolute;
-  inset: 10%;
+  inset: 5%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(139,92,246,0.2) 0%, rgba(99,102,241,0.08) 40%, transparent 70%);
-  filter: blur(20px);
+  background: radial-gradient(circle,
+    rgba(139,92,246,0.35) 0%,
+    rgba(99,102,241,0.15) 30%,
+    rgba(59,130,246,0.06) 55%,
+    transparent 75%);
+  filter: blur(25px);
   animation: planetGlowPulse 6s ease-in-out infinite alternate;
 }
 .planet-halo {
   position: absolute;
-  inset: -10%;
+  inset: -25%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, rgba(59,130,246,0.03) 40%, transparent 65%);
-  filter: blur(40px);
+  background: radial-gradient(circle,
+    rgba(139,92,246,0.1) 0%,
+    rgba(99,102,241,0.06) 25%,
+    rgba(59,130,246,0.03) 45%,
+    transparent 70%);
+  filter: blur(50px);
+  animation: haloBreath 10s ease-in-out infinite alternate;
 }
 
 @keyframes planetFloat {
-  0% { transform: translate(0,0) scale(1); }
-  50% { transform: translate(-6px, 8px) scale(1.03); }
-  100% { transform: translate(4px, -4px) scale(0.98); }
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-5px, 6px) scale(1.02); }
+  100% { transform: translate(3px, -3px) scale(0.99); }
 }
 @keyframes planetRingPulse {
-  0%, 100% { transform: scale(1); opacity: 0.3; }
-  50% { transform: scale(1.06); opacity: 0.6; }
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.04); opacity: 0.7; }
 }
 @keyframes planetGlowPulse {
-  from { opacity: 0.6; transform: scale(1); }
-  to { opacity: 1; transform: scale(1.05); }
+  from { opacity: 0.7; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.06); }
+}
+@keyframes haloBreath {
+  from { opacity: 0.5; transform: scale(1); }
+  to { opacity: 0.8; transform: scale(1.08); }
 }
 
 /* 星云层 */
@@ -819,9 +860,13 @@ watch(
   animation: starTwinkle ease-in-out infinite;
 }
 @keyframes starTwinkle {
-  0%, 100% { opacity: 0.1; transform: scale(0.6); }
-  30% { opacity: 0.8; transform: scale(1.4); }
-  70% { opacity: 0.3; transform: scale(0.9); }
+  0%, 100% { opacity: 0.08; transform: scale(0.5); }
+  30% { opacity: 0.9; transform: scale(1.5); }
+  70% { opacity: 0.25; transform: scale(0.8); }
+}
+.h-star-bright {
+  background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(200,180,255,0.6) 40%, transparent 100%) !important;
+  box-shadow: 0 0 6px rgba(200,180,255,0.5);
 }
 
 /* 流星 */
@@ -843,9 +888,17 @@ watch(
 }
 
 .hero-left { position: relative; z-index: 1; flex: 1; }
-.hero-greeting { margin: 0 0 6px; color: rgba(255,255,255,0.95); font-size: 28px; font-weight: 800; letter-spacing: 1.5px; line-height: 1.3; }
-.hero-date { color: rgba(255,255,255,0.3); font-size: 13px; margin: 0 0 6px; }
-.hero-insight { color: rgba(139,92,246,0.55); font-size: 13px; margin: 0; line-height: 1.6; max-width: 520px; }
+.hero-greeting {
+  margin: 0 0 6px;
+  color: rgba(255,255,255,0.97);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  line-height: 1.3;
+  text-shadow: 0 2px 20px rgba(139,92,246,0.15);
+}
+.hero-date { color: rgba(255,255,255,0.35); font-size: 13px; margin: 0 0 6px; }
+.hero-insight { color: rgba(139,92,246,0.65); font-size: 13px; margin: 6px 0 0; line-height: 1.6; max-width: 520px; }
 
 .hero-right { position: relative; z-index: 1; display: flex; gap: 10px; flex-shrink: 0; }
 .btn.hero-ghost { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08); height: 40px; padding: 0 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
@@ -1346,7 +1399,6 @@ watch(
 }
 
 .hero-date { color: var(--color-text-muted); font-size: 13px; margin: 4px 0 0; }
-.hero-insight { color: rgba(139,92,246,0.6); font-size: 13px; margin: 6px 0 0; }
 
 .card-sub { font-size: 12px; color: var(--color-text-muted); }
 

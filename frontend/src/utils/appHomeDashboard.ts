@@ -36,6 +36,7 @@ export interface DashboardStat {
   label: string
   color: string
   svg: string
+  sub?: string
 }
 
 const ICONS = {
