@@ -670,6 +670,14 @@ function handleResize() {
 }
 
 function handleBack() {
+  if (viewingRec.value) {
+    viewingRec.value = null
+    return
+  }
+  if (showHistory.value) {
+    showHistory.value = false
+    return
+  }
   if (phase.value === 'input') {
     router.back()
     return
