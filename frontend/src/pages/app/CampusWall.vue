@@ -23,12 +23,15 @@
         <!-- 用户档案卡 -->
         <div v-if="user" class="profile-card">
           <div class="pc-header">
-            <div class="pc-avatar" :style="{ background: 'linear-gradient(135deg, #4f8ef7, #8b5cf6)' }">
-              {{ avatarInitial }}
-            </div>
+            <SparkAvatar
+              :avatar-url="myProfile.avatar_url"
+              :name="displayName"
+              size="lg"
+              class="pc-avatar-comp"
+            />
             <div class="pc-info">
-              <span class="pc-name">{{ user.user_metadata?.nickname || user.email?.split('@')[0] || '同学' }}</span>
-              <span class="pc-school" v-if="mySchool">{{ mySchool }}</span>
+              <span class="pc-name">{{ displayName }}</span>
+              <span class="pc-school" v-if="myProfile.university || mySchool">{{ myProfile.university || mySchool }}</span>
             </div>
           </div>
           <div class="pc-stats">
@@ -525,9 +528,12 @@
                 </div>
               </div>
               <div class="comment-input-row">
-                <div class="c-avatar-sm self" :style="{ background: 'linear-gradient(135deg, #4f8ef7, #8b5cf6)' }">
-                  {{ avatarInitial }}
-                </div>
+                <SparkAvatar
+                  :avatar-url="myProfile.avatar_url"
+                  :name="displayName"
+                  size="sm"
+                  class="c-avatar-self"
+                />
                 <div class="comment-field">
                   <!-- 回复标记 -->
                   <div class="reply-indicator" v-if="replyToComment">
@@ -700,6 +706,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAuth } from '../../composables/useAuth'
 import { supabase } from '../../supabase'
+import SparkAvatar from '../../components/SparkAvatar.vue'
 import {
   ANONYMOUS_PLACEHOLDER_NAME,
   buildCampusWallUploadOptions,
@@ -713,11 +720,50 @@ import {
 
 const { user } = useAuth()
 
-// ====== 用户信息 ======
-const avatarInitial = computed(() => {
-  const name = user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '?'
-  return name.charAt(0).toUpperCase()
+// ====== 用户信息 & 个人资料 ======
+interface UserProfile {
+  nickname: string
+  avatar_url: string
+  university: string
+  bio: string
+  level: number
+  credit_score: number
+}
+
+const myProfile = ref<UserProfile>({
+  nickname: '', avatar_url: '', university: '', bio: '', level: 1, credit_score: 80
 })
+
+const loadMyProfile = async () => {
+  if (!user.value) return
+  try {
+    const { data } = await supabase
+      .from('spark_profiles')
+      .select('nickname, avatar_url, university, bio')
+      .eq('user_id', user.value.id)
+      .maybeSingle()
+    if (data) {
+      myProfile.value = {
+        ...myProfile.value,
+        nickname: data.nickname || '',
+        avatar_url: data.avatar_url || '',
+        university: data.university || '',
+        bio: data.bio || '',
+      }
+    }
+  } catch {
+    // spark_profiles 表可能不存在
+  }
+}
+
+const displayName = computed(() =>
+  myProfile.value.nickname
+  || user.value?.user_metadata?.nickname
+  || user.value?.email?.split('@')[0]
+  || '同学'
+)
+
+const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase())
 
 // ====== Tab 筛选 ======
 const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白']
@@ -1114,8 +1160,9 @@ onMounted(() => {
   if (user.value) {
     fetchPosts()
     fetchFollowingIds()
+    loadMyProfile()
   } else {
-    setTimeout(() => { fetchPosts(); fetchFollowingIds() }, 1000)
+    setTimeout(() => { fetchPosts(); fetchFollowingIds(); loadMyProfile() }, 1000)
   }
 
   // 订阅评论实时更新
@@ -1160,6 +1207,7 @@ const canPost = computed(() => ['推荐', '最新', '本校', '同城', '活动'
 
 // ====== 用户学校/地区信息（与发帖快照比对） ======
 const mySchool = computed(() => {
+  if (myProfile.value.university) return myProfile.value.university
   const meta = user.value?.user_metadata
   return meta?.university || meta?.school || ''
 })
@@ -1753,9 +1801,7 @@ const submitComment = async () => {
     if (commentUploadFails > 0) {
       showToast(`${commentUploadFails} 个附件上传失败`, 'error')
     }
-    const authorName = isCommentAnonymous.value
-      ? ANONYMOUS_PLACEHOLDER_NAME
-      : (user.value.user_metadata?.nickname || user.value.email?.split('@')[0] || '同学')
+    const authorName = isCommentAnonymous.value ? ANONYMOUS_PLACEHOLDER_NAME : displayName.value
     const anonymousSeed = isCommentAnonymous.value ? createAnonymousSeed() : null
     const commentPayload = {
       post_id: activePostForComment.value.id,
@@ -2204,9 +2250,7 @@ const submitPost = async () => {
       showToast(`${uploadFailCount} 个附件上传失败，帖子将不含这些附件`, 'error')
     }
 
-    const authorName = isAnonymous.value
-      ? ANONYMOUS_PLACEHOLDER_NAME
-      : (user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '同学')
+    const authorName = isAnonymous.value ? ANONYMOUS_PLACEHOLDER_NAME : displayName.value
     const anonymousSeed = isAnonymous.value ? createAnonymousSeed() : null
 
     const meta = user.value.user_metadata || {}
@@ -2302,11 +2346,7 @@ const submitPost = async () => {
   border-radius: 14px; padding: 16px;
 }
 .pc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.pc-avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 15px; color: white; flex-shrink: 0;
-}
+.pc-avatar-comp { flex-shrink: 0; border-radius: 50% !important; }
 .pc-info { display: flex; flex-direction: column; }
 .pc-name { font-size: 14px; font-weight: 600; color: white; }
 .pc-school { font-size: 11px; color: var(--color-text-muted); }
@@ -2960,6 +3000,7 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   font-weight: 600; font-size: 12px; color: white;
 }
 .c-avatar-sm.self { width: 36px; height: 36px; }
+.c-avatar-self { flex-shrink: 0; border-radius: 50% !important; }
 .c-body { flex: 1; min-width: 0; }
 .c-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
 .c-name { font-size: 13px; font-weight: 600; color: white; }
