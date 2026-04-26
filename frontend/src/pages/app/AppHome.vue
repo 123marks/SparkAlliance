@@ -690,19 +690,24 @@ watch(
 .shortcut-card,
 .action-card,
 .signal {
-  background: rgba(12, 10, 24, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 17, 24, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 18px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.02);
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.06);
-  border-color: rgba(139, 92, 246, 0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.04);
+  border-color: rgba(168, 85, 247, 0.12);
+}
+
+.stat-chip {
+  border-color: rgba(168, 85, 247, 0.06);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(168, 85, 247, 0.03);
 }
 
 .hero {
@@ -729,22 +734,22 @@ watch(
 /* 星球图片 */
 .planet-img-wrap {
   position: absolute;
-  top: -80%;
-  right: -12%;
-  width: 480px;
-  height: 340px;
+  top: -60%;
+  right: -8%;
+  width: 420px;
+  height: 300px;
   pointer-events: none;
   z-index: 0;
   animation: planetFloat 20s ease-in-out infinite alternate;
-  opacity: 0.7;
+  opacity: 0.55;
   mix-blend-mode: screen;
 }
 .planet-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
-  filter: brightness(0.8) saturate(1.3);
+  object-position: center right;
+  filter: brightness(0.75) saturate(1.4) contrast(1.1);
 }
 
 @keyframes planetFloat {
@@ -809,14 +814,14 @@ watch(
 .hero-left { position: relative; z-index: 1; flex: 1; }
 .hero-greeting {
   margin: 0 0 6px;
-  color: rgba(255,255,255,0.97);
-  font-size: 30px;
+  color: #e2e8f0;
+  font-size: 28px;
   font-weight: 800;
-  letter-spacing: 1.5px;
+  letter-spacing: 1px;
   line-height: 1.3;
-  text-shadow: 0 2px 20px rgba(139,92,246,0.15);
+  text-shadow: 0 2px 24px rgba(168,85,247,0.12);
 }
-.hero-date { color: rgba(255,255,255,0.35); font-size: 13px; margin: 0 0 6px; }
+.hero-date { color: rgba(226,232,240,0.35); font-size: 13px; margin: 0 0 6px; }
 .hero-insight { color: rgba(139,92,246,0.65); font-size: 13px; margin: 6px 0 0; line-height: 1.6; max-width: 520px; }
 
 .hero-right { position: relative; z-index: 1; display: flex; gap: 10px; flex-shrink: 0; }
@@ -897,8 +902,8 @@ watch(
 
 .stat-chip:hover {
   transform: translateY(-2px);
-  border-color: rgba(139,92,246,0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border-color: rgba(168,85,247,0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(168, 85, 247, 0.06);
 }
 
 .stat-chip strong {
@@ -1516,8 +1521,8 @@ watch(
 
 .shortcut-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(139,92,246,0.12);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  border-color: rgba(168,85,247,0.12);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 16px rgba(168,85,247,0.05);
 }
 
 .shortcut-card:hover .shortcut-icon {
