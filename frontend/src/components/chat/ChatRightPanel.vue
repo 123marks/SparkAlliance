@@ -6,6 +6,7 @@
       </svg>
     </button>
 
+    <SparkMascot v-show="!collapsed" />
     <div class="rp-scroll" v-show="!collapsed">
       <!-- 今日状态 -->
       <section class="rp-card rp-status">
@@ -159,6 +160,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import SparkMascot from './SparkMascot.vue'
 import { useCheckin, MOOD_META, type Mood } from '../../composables/useCheckin'
 import { supabase } from '../../supabase'
 import { useAuth } from '../../composables/useAuth'
@@ -347,7 +349,7 @@ onMounted(async () => {
 
 <style scoped>
 .chat-right-panel {
-  width: 280px;
+  width: 310px;
   background: rgba(8, 6, 18, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);

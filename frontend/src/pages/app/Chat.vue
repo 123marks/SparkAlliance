@@ -62,7 +62,7 @@
               <!-- 正常态：会话项 -->
               <div v-else class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
                 <span v-if="c.isPinned" class="pin-dot" title="已置顶">⭐</span>
-                <svg v-else class="sb-conv-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span v-else class="sb-conv-dot" :style="{ background: convDotColor(c.id) }"></span>
                 <span class="sb-text">{{ c.title }}</span>
                 <span class="sb-time" v-if="c.updatedAt">{{ formatConvTime(c.updatedAt) }}</span>
                 <button class="sb-more" aria-label="会话操作菜单" @click.stop="toggleMenu(c.id)">⋯</button>
@@ -131,7 +131,7 @@
           <Transition name="sb-fold">
             <div v-if="sbShowFavorites" class="sb-section-body">
               <div v-for="fav in favorites.slice(0, 3)" :key="fav.id" class="sb-fav-item" @click="openFavorite(fav)">
-                <span class="sb-fav-text">{{ fav.content.slice(0, 20) }}</span>
+                <span class="sb-fav-text">{{ stripMarkdown(fav.content).slice(0, 20) }}</span>
                 <span class="sb-fav-time">{{ formatRelativeTime(fav.savedAt) }}</span>
               </div>
               <div v-if="favorites.length === 0" class="sb-section-empty">暂无收藏</div>
@@ -581,9 +581,6 @@
       @send-message="handleQuick"
     />
 
-    <!-- 小精灵 -->
-    <SparkMascot />
-
     <!-- 签到弹窗 -->
     <CheckinModal
       :visible="showCheckinModal"
@@ -711,7 +708,6 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } 
 import { useRouter } from 'vue-router'
 import ChatRightPanel from '../../components/chat/ChatRightPanel.vue'
 import CheckinModal from '../../components/chat/CheckinModal.vue'
-import SparkMascot from '../../components/chat/SparkMascot.vue'
 import { useCheckin } from '../../composables/useCheckin'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, WORKFLOW_PRESETS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode, Conversation } from '../../composables/useSparkAI'
@@ -825,6 +821,17 @@ function formatRelativeTime(dateStr: string): string {
   if (days === 1) return '昨天'
   if (days < 7) return `${days}天前`
   return '上周'
+}
+
+const CONV_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#6366f1', '#14b8a6', '#f43f5e']
+function convDotColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
+  return CONV_COLORS[Math.abs(hash) % CONV_COLORS.length]
+}
+
+function stripMarkdown(text: string): string {
+  return text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#/g, '').replace(/`/g, '').trim()
 }
 
 function formatConvTime(dateStr: string): string {
@@ -2891,8 +2898,9 @@ async function handleInheritMemory() {
 
 .sb-item { position:relative; }
 .pin-dot { font-size:10px; margin-right:4px; flex-shrink:0; }
-.sb-conv-icon { flex-shrink:0; color:rgba(255,255,255,.1); margin-right:2px; }
-.sb-item.active .sb-conv-icon { color:rgba(139,92,246,.4); }
+.sb-conv-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-right:4px; opacity:0.5; transition:opacity .15s; }
+.sb-item:hover .sb-conv-dot { opacity:0.8; }
+.sb-item.active .sb-conv-dot { opacity:1; box-shadow:0 0 6px currentColor; }
 .sb-time { font-size:9px; color:rgba(255,255,255,.1); flex-shrink:0; margin-left:4px; font-variant-numeric:tabular-nums; }
 .sb-item:hover .sb-time { display:none; }
 .sb-more { opacity:0; background:none; border:none; color:rgba(255,255,255,.25); font-size:13px; cursor:pointer; padding:0 4px; border-radius:4px; }

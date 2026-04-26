@@ -149,9 +149,9 @@ onUnmounted(() => {
 
 <style scoped>
 .mascot-wrap {
-  position: fixed;
+  position: absolute;
   bottom: 16px;
-  right: 296px;
+  left: -40px;
   z-index: 150;
 }
 
