@@ -41,6 +41,8 @@
         @delete="handleDeleteTask"
         @edit="handleEditTask"
         @push="handlePushToSchedule"
+        @unsync="handleUnsyncSchedule"
+        @jump="handleJumpToSchedule"
         @record="handleRecordTask"
       />
     </div>
@@ -68,6 +70,8 @@
             @archive="handleArchive"
             @delete-goal="handleDeleteGoal"
             @push-to-schedule="handlePushToSchedule"
+            @unsync-schedule="handleUnsyncSchedule"
+            @jump-to-schedule="handleJumpToSchedule"
             @record-task="handleRecordTask"
           />
         </div>
@@ -76,7 +80,7 @@
 
     <!-- ===== 历史 Tab ===== -->
     <div v-else-if="activeTab === 'history'" class="pl-content">
-      <HistoryPanel :goals="historyGoals" @review="handleReview" @share="handleShare" />
+      <HistoryPanel :goals="historyGoals" @review="handleReview" @share="handleShare" @share-friend="handleShareToFriend" />
     </div>
 
     <!-- ===== 习惯 Tab ===== -->
@@ -148,37 +152,94 @@
       </div>
     </Transition>
 
-    <!-- 任务记录上传弹窗 -->
+    <!-- 任务记录上传弹窗（支持拖拽 + 多文件 + 预览 + AI评审可选） -->
     <Transition name="fade">
       <div v-if="recordingTask" class="pl-modal-overlay" @click.self="recordingTask = null">
-        <div class="pl-modal">
+        <div class="pl-modal pl-record-modal">
           <h3>📸 提交任务记录</h3>
           <p class="pl-modal-desc">为「{{ recordingTask.title }}」提交完成证据</p>
           <textarea v-model="recordNote" class="pl-modal-textarea" rows="2" placeholder="记录一下你的进展或心得..."></textarea>
-          <!-- 文件上传 -->
-          <label class="pl-upload-area">
-            <input type="file" accept="image/*,video/*" @change="handleFileSelect" style="display:none" />
-            <span v-if="!recordFile">📎 点击上传图片/视频</span>
-            <span v-else class="pl-file-name">✅ {{ recordFile.name }}</span>
-          </label>
+
+          <!-- 拖拽上传区域 -->
+          <div
+            class="pl-upload-zone"
+            :class="{ dragover: isDragging, 'has-files': recordFiles.length > 0 }"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            @drop.prevent="handleFileDrop"
+            @click="triggerFileInput"
+          >
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              style="display:none"
+              @change="handleMultiFileSelect"
+            />
+            <div v-if="recordFiles.length === 0" class="pl-upload-placeholder">
+              <div class="pl-upload-icon">📎</div>
+              <p>拖拽文件到此处，或点击上传</p>
+              <span>支持图片、视频（最多5个文件）</span>
+            </div>
+            <div v-else class="pl-file-previews">
+              <div v-for="(f, i) in recordFiles" :key="i" class="pl-file-preview">
+                <img v-if="f.type.startsWith('image')" :src="getFilePreview(f)" class="pl-preview-img" />
+                <div v-else class="pl-preview-video">🎬</div>
+                <button class="pl-preview-remove" @click.stop="removeFile(i)">✕</button>
+                <span class="pl-preview-name">{{ f.name.length > 12 ? f.name.slice(0, 10) + '...' : f.name }}</span>
+              </div>
+              <div v-if="recordFiles.length < 5" class="pl-file-preview pl-add-more" @click.stop="triggerFileInput">
+                <span>+</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI评审选项 -->
+          <div class="pl-ai-option">
+            <label class="pl-ai-toggle">
+              <input v-model="wantAiReview" type="checkbox" />
+              <span class="pl-toggle-slider"></span>
+              <span class="pl-toggle-label">🤖 AI 智能评审</span>
+            </label>
+            <span class="pl-ai-hint">{{ wantAiReview ? 'AI将根据你的记录评分并给出反馈' : '跳过AI评审，直接提交' }}</span>
+          </div>
+
           <div class="pl-modal-actions">
             <button class="pl-modal-cancel" @click="recordingTask = null">取消</button>
-            <button class="pl-modal-confirm" :disabled="(!recordNote.trim() && !recordFile) || recordUploading" @click="submitRecord">
-              {{ recordUploading ? '上传中...' : '🚀 提交并AI评审' }}
+            <button class="pl-modal-confirm" :disabled="(!recordNote.trim() && recordFiles.length === 0) || recordUploading" @click="submitRecord">
+              {{ recordUploading ? '上传中...' : (wantAiReview ? '🚀 提交并AI评审' : '✅ 直接提交') }}
             </button>
           </div>
+
           <!-- AI 评审结果 -->
-          <div v-if="recordAiFeedback" class="pl-ai-result">
-            <div class="pl-ai-score">{{ recordAiScore }}分</div>
-            <p class="pl-ai-text">{{ recordAiFeedback }}</p>
-          </div>
+          <Transition name="fade">
+            <div v-if="recordAiFeedback" class="pl-ai-result">
+              <div class="pl-ai-score-ring">
+                <svg viewBox="0 0 36 36" class="pl-score-svg">
+                  <path class="pl-score-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="pl-score-fill" :stroke-dasharray="`${recordAiScore}, 100`" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <span class="pl-score-num">{{ recordAiScore }}</span>
+              </div>
+              <p class="pl-ai-text">{{ recordAiFeedback }}</p>
+            </div>
+          </Transition>
         </div>
       </div>
     </Transition>
 
-    <!-- Toast 提示 -->
-    <Transition name="fade">
-      <div v-if="toastMsg" class="pl-toast">{{ toastMsg }}</div>
+    <!-- 优雅通知 -->
+    <Transition name="notify">
+      <div v-if="toastMsg" class="pl-notify" :class="toastType">
+        <div class="pl-notify-icon">{{ toastIcon }}</div>
+        <div class="pl-notify-body">
+          <span class="pl-notify-text">{{ toastMsg }}</span>
+        </div>
+        <div class="pl-notify-progress">
+          <div class="pl-notify-bar" :style="{ animationDuration: `${toastDuration}ms` }"></div>
+        </div>
+      </div>
     </Transition>
 
     <!-- 里程碑庆祝动画 -->
@@ -194,7 +255,8 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePlanner } from '../../composables/usePlanner'
+import { supabase } from '../../supabase'
+import { usePlanner, GOAL_TYPES } from '../../composables/usePlanner'
 import { useAchievements } from '../../composables/useAchievements'
 import type { PlannerTask } from '../../composables/usePlanner'
 import PlannerEmpty from '../../components/planner/PlannerEmpty.vue'
@@ -253,16 +315,34 @@ const reviewImprovements = ref('')
 // 任务记录弹窗
 const recordingTask = ref<PlannerTask | null>(null)
 const recordNote = ref('')
-const recordFile = ref<File | null>(null)
+const recordFiles = ref<File[]>([])
 const recordUploading = ref(false)
 const recordAiFeedback = ref('')
 const recordAiScore = ref(0)
+const isDragging = ref(false)
+const wantAiReview = ref(true)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
-// Toast
+// 通知系统
 const toastMsg = ref('')
-function showToast(msg: string, duration = 2500) {
+const toastType = ref<'success' | 'error' | 'info' | 'warning'>('success')
+const toastIcon = ref('✅')
+const toastDuration = ref(2500)
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showToast(msg: string, duration = 2500, type: 'success' | 'error' | 'info' | 'warning' = 'success') {
+  if (toastTimer) clearTimeout(toastTimer)
+
+  const icons: Record<string, string> = { success: '✅', error: '❌', info: '💡', warning: '⚠️' }
+  if (msg.startsWith('⚠️') || msg.includes('失败')) type = 'error'
+  else if (msg.startsWith('📅') || msg.startsWith('📤')) type = 'info'
+  else if (msg.startsWith('🎉') || msg.startsWith('🚀') || msg.startsWith('🤖')) type = 'success'
+
+  toastType.value = type
+  toastIcon.value = icons[type]
+  toastDuration.value = duration
   toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, duration)
+  toastTimer = setTimeout(() => { toastMsg.value = '' }, duration)
 }
 
 // 里程碑庆祝
@@ -419,7 +499,31 @@ async function submitEditTask() {
 // ===== 推送到日程 =====
 async function handlePushToSchedule(task: PlannerTask) {
   await pushTaskToSchedule(task)
-  showToast('📅 已同步到星火日程')
+  showToast('📅 已同步到星火日程 — 点击任务旁的 ↗️ 可跳转查看', 3000, 'info')
+}
+
+// ===== 取消同步日程 =====
+async function handleUnsyncSchedule(task: PlannerTask) {
+  if (!task.schedule_event_id) return
+  try {
+    await supabase.from('schedule_events').delete().eq('id', task.schedule_event_id)
+    await supabase.from('planner_tasks').update({ schedule_event_id: null }).eq('id', task.id)
+    const t = todayTasks.value.find(t => t.id === task.id)
+    if (t) t.schedule_event_id = undefined
+    showToast('🔗 已取消日程同步', 2000, 'info')
+  } catch (e) {
+    console.error('取消同步失败:', e)
+    showToast('取消同步失败', 2000, 'error')
+  }
+}
+
+// ===== 跳转到日程查看 =====
+function handleJumpToSchedule(task: PlannerTask) {
+  if (!task.due_date) return
+  router.push({
+    path: '/app/schedule',
+    query: { date: task.due_date, highlight: task.schedule_event_id || '' },
+  })
 }
 
 // ===== 添加任务到目标 =====
@@ -499,50 +603,145 @@ async function handleShare(goalId: string) {
   else showToast('分享失败，请稍后重试')
 }
 
+// ===== 分享给好友（生成可分享的摘要链接） =====
+async function handleShareToFriend(goalId: string) {
+  const goal = historyGoals.value.find(g => g.id === goalId)
+  if (!goal) return
+
+  const emoji = GOAL_TYPES.find(t => t.value === goal.goal_type)?.label.split(' ')[0] || '🎯'
+  const statusText = goal.status === 'completed' ? '完成' : '归档'
+  const shareText = `${emoji} 我${statusText}了目标「${goal.title}」！完成度：${goal.total_progress.toFixed(0)}%`
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `星火规划 - ${goal.title}`,
+        text: shareText,
+        url: `${window.location.origin}/app/planner?tab=goals&goalId=${goal.id}`,
+      })
+      showToast('🎉 分享成功！')
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        await copyShareText(shareText, goal.id)
+      }
+    }
+  } else {
+    await copyShareText(shareText, goal.id)
+  }
+}
+
+async function copyShareText(text: string, goalId: string) {
+  const url = `${window.location.origin}/app/planner?tab=goals&goalId=${goalId}`
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`)
+    showToast('📋 分享链接已复制到剪贴板', 2500, 'info')
+  } catch {
+    showToast('分享链接生成失败', 2000, 'error')
+  }
+}
+
 // ===== 任务记录上传 =====
 function handleRecordTask(task: PlannerTask) {
   recordingTask.value = task
   recordNote.value = ''
-  recordFile.value = null
+  recordFiles.value = []
   recordAiFeedback.value = ''
   recordAiScore.value = 0
+  isDragging.value = false
+  wantAiReview.value = true
 }
-function handleFileSelect(e: Event) {
+
+function triggerFileInput() {
+  fileInputRef.value?.click()
+}
+
+function handleMultiFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.[0]) {
-    recordFile.value = input.files[0]
+  if (input.files) {
+    addFiles(Array.from(input.files))
+    input.value = ''
   }
 }
+
+function handleFileDrop(e: DragEvent) {
+  isDragging.value = false
+  if (e.dataTransfer?.files) {
+    addFiles(Array.from(e.dataTransfer.files))
+  }
+}
+
+function addFiles(newFiles: File[]) {
+  const validTypes = ['image/', 'video/']
+  const filtered = newFiles.filter(f => validTypes.some(t => f.type.startsWith(t)))
+  if (filtered.length !== newFiles.length) {
+    showToast('部分文件格式不支持，仅支持图片和视频', 2500, 'warning')
+  }
+  const maxTotal = 5
+  const remaining = maxTotal - recordFiles.value.length
+  if (remaining <= 0) {
+    showToast('最多上传5个文件', 2000, 'warning')
+    return
+  }
+  recordFiles.value.push(...filtered.slice(0, remaining))
+}
+
+function removeFile(index: number) {
+  recordFiles.value.splice(index, 1)
+}
+
+const filePreviews = new WeakMap<File, string>()
+function getFilePreview(file: File): string {
+  if (filePreviews.has(file)) return filePreviews.get(file)!
+  const url = URL.createObjectURL(file)
+  filePreviews.set(file, url)
+  return url
+}
+
 async function submitRecord() {
   if (!recordingTask.value || recordUploading.value) return
-  if (!recordNote.value.trim() && !recordFile.value) return
+  if (!recordNote.value.trim() && recordFiles.value.length === 0) return
   recordUploading.value = true
   recordAiFeedback.value = ''
 
-  const evidenceType = recordFile.value
-    ? (recordFile.value.type.startsWith('video') ? 'video' : 'image')
+  const firstFile = recordFiles.value[0] || null
+  const evidenceType = firstFile
+    ? (firstFile.type.startsWith('video') ? 'video' : 'image')
     : 'text'
 
   const evidence = await uploadEvidence(
     recordingTask.value.id,
     evidenceType as 'image' | 'video' | 'text',
-    { content: recordNote.value.trim() || undefined, file: recordFile.value || undefined }
+    { content: recordNote.value.trim() || undefined, file: firstFile || undefined }
   )
 
-  if (evidence) {
-    showToast('📤 记录已上传，AI正在评审...')
-    // AI 评审
-    const result = await aiReviewEvidence(
-      evidence.id,
-      recordingTask.value.title,
-      recordNote.value.trim() || undefined,
-      evidence.media_url || undefined
+  // 上传其余文件
+  for (let i = 1; i < recordFiles.value.length; i++) {
+    const f = recordFiles.value[i]
+    await uploadEvidence(
+      recordingTask.value.id,
+      f.type.startsWith('video') ? 'video' : 'image',
+      { file: f }
     )
-    recordAiFeedback.value = result.feedback
-    recordAiScore.value = result.score
-    showToast(`🤖 AI评分：${result.score}分`, 3000)
+  }
+
+  if (evidence) {
+    if (wantAiReview.value) {
+      showToast('📤 记录已上传，AI正在评审...', 3000, 'info')
+      const result = await aiReviewEvidence(
+        evidence.id,
+        recordingTask.value!.title,
+        recordNote.value.trim() || undefined,
+        evidence.media_url || undefined
+      )
+      recordAiFeedback.value = result.feedback
+      recordAiScore.value = result.score
+      showToast(`🤖 AI评分：${result.score}分`, 3000)
+    } else {
+      showToast('📤 记录已提交！', 2000)
+      recordingTask.value = null
+    }
   } else {
-    showToast('上传失败，请重试')
+    showToast('上传失败，请重试', 2500, 'error')
   }
   recordUploading.value = false
 }
@@ -599,16 +798,44 @@ onMounted(async () => {
 .pl-star{background:none;border:none;font-size:22px;cursor:pointer;opacity:.3;transition:opacity .2s}
 .pl-star.active{opacity:1}
 
-/* 记录上传区 */
-.pl-upload-area{display:flex;align-items:center;justify-content:center;padding:16px;border-radius:12px;border:2px dashed rgba(139,92,246,.12);background:rgba(139,92,246,.03);cursor:pointer;margin-bottom:10px;transition:all .2s}
-.pl-upload-area:hover{border-color:rgba(139,92,246,.25);background:rgba(139,92,246,.06)}
-.pl-upload-area span{font-size:13px;color:rgba(255,255,255,.3)}
-.pl-file-name{color:rgba(34,197,94,.6)!important}
+/* 拖拽上传区 */
+.pl-record-modal{max-width:440px}
+.pl-upload-zone{border-radius:14px;border:2px dashed rgba(139,92,246,.12);background:rgba(139,92,246,.03);cursor:pointer;margin-bottom:10px;transition:all .25s;min-height:80px}
+.pl-upload-zone.dragover{border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.08);transform:scale(1.01)}
+.pl-upload-zone.has-files{border-style:solid;border-color:rgba(139,92,246,.15)}
+.pl-upload-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:4px}
+.pl-upload-icon{font-size:28px;opacity:.5}
+.pl-upload-placeholder p{font-size:13px;color:rgba(255,255,255,.35);margin:0}
+.pl-upload-placeholder span{font-size:11px;color:rgba(255,255,255,.2)}
+.pl-file-previews{display:flex;gap:8px;padding:10px;flex-wrap:wrap}
+.pl-file-preview{width:64px;height:64px;border-radius:10px;overflow:hidden;position:relative;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.pl-preview-img{width:100%;height:100%;object-fit:cover}
+.pl-preview-video{font-size:24px}
+.pl-preview-remove{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:rgba(239,68,68,.8);border:none;color:white;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s}
+.pl-file-preview:hover .pl-preview-remove{opacity:1}
+.pl-preview-name{position:absolute;bottom:0;left:0;right:0;font-size:8px;color:white;background:rgba(0,0,0,.5);padding:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-add-more{border:2px dashed rgba(139,92,246,.15);background:transparent;cursor:pointer;font-size:20px;color:rgba(139,92,246,.4)}
+.pl-add-more:hover{border-color:rgba(139,92,246,.3);color:rgba(139,92,246,.6)}
+
+/* AI评审选项 */
+.pl-ai-option{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.pl-ai-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.pl-ai-toggle input{display:none}
+.pl-toggle-slider{width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.1);position:relative;transition:background .2s;flex-shrink:0}
+.pl-toggle-slider::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.4);transition:all .2s}
+.pl-ai-toggle input:checked + .pl-toggle-slider{background:rgba(139,92,246,.4)}
+.pl-ai-toggle input:checked + .pl-toggle-slider::after{transform:translateX(16px);background:rgba(139,92,246,.9)}
+.pl-toggle-label{font-size:13px;color:rgba(255,255,255,.5)}
+.pl-ai-hint{font-size:11px;color:rgba(255,255,255,.2);margin-left:44px}
 
 /* AI 评审结果 */
-.pl-ai-result{margin-top:12px;padding:12px;border-radius:12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);text-align:center}
-.pl-ai-score{font-size:28px;font-weight:800;background:linear-gradient(135deg,#8b5cf6,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.pl-ai-text{font-size:13px;color:rgba(255,255,255,.5);margin:6px 0 0;line-height:1.5}
+.pl-ai-result{margin-top:12px;padding:14px;border-radius:14px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(245,158,11,.04));border:1px solid rgba(139,92,246,.12);display:flex;align-items:center;gap:14px}
+.pl-ai-score-ring{position:relative;width:56px;height:56px;flex-shrink:0}
+.pl-score-svg{width:100%;height:100%;transform:rotate(-90deg)}
+.pl-score-bg{fill:none;stroke:rgba(255,255,255,.06);stroke-width:3}
+.pl-score-fill{fill:none;stroke:url(#ring-gradient);stroke-width:3;stroke-linecap:round;transition:stroke-dasharray .6s ease}
+.pl-score-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;background:linear-gradient(135deg,#8b5cf6,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.pl-ai-text{font-size:13px;color:rgba(255,255,255,.5);line-height:1.5;flex:1}
 
 .pl-loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);z-index:50;backdrop-filter:blur(4px)}
 .pl-spinner{width:28px;height:28px;border:2.5px solid rgba(139,92,246,.1);border-top-color:rgba(139,92,246,.6);border-radius:50%;animation:spin .7s linear infinite}
@@ -616,6 +843,20 @@ onMounted(async () => {
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}
 .fade-enter-from,.fade-leave-to{opacity:0}
 
-/* Toast */
-.pl-toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:14px;background:rgba(139,92,246,.9);color:white;font-size:13px;font-weight:500;white-space:nowrap;z-index:200;box-shadow:0 4px 20px rgba(139,92,246,.3);backdrop-filter:blur(8px)}
+/* 优雅通知 */
+.pl-notify{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:16px;color:white;font-size:13px;font-weight:500;z-index:200;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.3);overflow:hidden;max-width:90vw}
+.pl-notify.success{background:linear-gradient(135deg,rgba(34,197,94,.85),rgba(16,185,129,.85))}
+.pl-notify.error{background:linear-gradient(135deg,rgba(239,68,68,.85),rgba(220,38,38,.85))}
+.pl-notify.info{background:linear-gradient(135deg,rgba(99,102,241,.85),rgba(139,92,246,.85))}
+.pl-notify.warning{background:linear-gradient(135deg,rgba(245,158,11,.85),rgba(234,138,0,.85))}
+.pl-notify-icon{font-size:18px;flex-shrink:0}
+.pl-notify-body{flex:1;min-width:0}
+.pl-notify-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.pl-notify-progress{position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(255,255,255,.15)}
+.pl-notify-bar{height:100%;background:rgba(255,255,255,.5);border-radius:1px;animation:notifyCountdown linear forwards;width:100%}
+@keyframes notifyCountdown{from{width:100%}to{width:0%}}
+.notify-enter-active{animation:notifyIn .35s cubic-bezier(.21,1.02,.73,1)}
+.notify-leave-active{animation:notifyOut .25s ease forwards}
+@keyframes notifyIn{0%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.9)}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+@keyframes notifyOut{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.9)}}
 </style>

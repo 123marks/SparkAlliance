@@ -30,6 +30,7 @@
       <div class="hp-actions">
         <button v-if="!g.review" class="hp-btn" @click="$emit('review', g.id)">📝 写评语</button>
         <button class="hp-btn share" @click="$emit('share', g.id)">🚀 分享到广场</button>
+        <button class="hp-btn friend" @click="$emit('shareFriend', g.id)">💬 分享给好友</button>
       </div>
     </div>
   </div>
@@ -45,6 +46,7 @@ defineProps<{
 defineEmits<{
   review: [goalId: string]
   share: [goalId: string]
+  shareFriend: [goalId: string]
 }>()
 
 function formatDate(d: string): string {
@@ -83,4 +85,6 @@ function formatDate(d: string): string {
 .hp-btn:hover{background:rgba(139,92,246,.06);color:rgba(255,255,255,.55)}
 .hp-btn.share{border-color:rgba(34,197,94,.1)}
 .hp-btn.share:hover{background:rgba(34,197,94,.06);color:rgba(34,197,94,.6)}
+.hp-btn.friend{border-color:rgba(59,130,246,.1)}
+.hp-btn.friend:hover{background:rgba(59,130,246,.06);color:rgba(59,130,246,.6)}
 </style>

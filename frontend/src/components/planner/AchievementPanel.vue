@@ -78,9 +78,13 @@
       </div>
     </Transition>
 
-    <!-- 新解锁动画 -->
+    <!-- 新解锁动画（含粒子特效） -->
     <Transition name="unlock">
-      <div v-if="newlyUnlocked" class="ap-unlock-toast" :class="newlyUnlocked.tier">
+      <div v-if="newlyUnlocked" class="ap-unlock-toast" :class="newlyUnlocked.tier" @click="dismissUnlock">
+        <div class="ap-unlock-particles">
+          <span v-for="i in 12" :key="i" class="ap-particle" :style="particleStyle(i)"></span>
+        </div>
+        <div class="ap-unlock-glow"></div>
         <div class="ap-unlock-icon">{{ newlyUnlocked.icon }}</div>
         <div class="ap-unlock-info">
           <span class="ap-unlock-title">🎉 成就解锁！</span>
@@ -107,6 +111,7 @@ const {
   fetchUserAchievements,
   getAchievementProgress,
   getLevelTitle,
+  clearNewlyUnlocked,
 } = useAchievements()
 
 const showAll = ref(false)
@@ -146,6 +151,25 @@ function tierLabel(tier: string): string {
     platinum: '💎 铂金',
   }
   return labels[tier] || tier
+}
+
+function dismissUnlock() {
+  clearNewlyUnlocked()
+}
+
+function particleStyle(i: number): Record<string, string> {
+  const angle = (i / 12) * 360
+  const dist = 30 + Math.random() * 40
+  const size = 3 + Math.random() * 4
+  const delay = Math.random() * 0.3
+  const colors = ['#8b5cf6', '#f59e0b', '#22c55e', '#ef4444', '#ec4899', '#06b6d4']
+  return {
+    '--angle': `${angle}deg`,
+    '--dist': `${dist}px`,
+    '--size': `${size}px`,
+    '--delay': `${delay}s`,
+    '--color': colors[i % colors.length],
+  }
 }
 
 onMounted(fetchUserAchievements)
@@ -212,20 +236,36 @@ onMounted(fetchUserAchievements)
 .ap-modal-unlocked{font-size:14px;color:rgba(34,197,94,.6);margin-bottom:12px}
 .ap-modal-close{padding:8px 24px;border-radius:10px;border:none;background:rgba(255,255,255,.1);color:rgba(255,255,255,.5);font-size:12px;cursor:pointer}
 
-/* 解锁动画 */
-.ap-unlock-toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:12px 20px;border-radius:16px;background:linear-gradient(135deg,rgba(139,92,246,.9),rgba(245,158,11,.8));box-shadow:0 8px 32px rgba(139,92,246,.4);z-index:300}
-.ap-unlock-toast.gold{background:linear-gradient(135deg,rgba(255,215,0,.9),rgba(245,158,11,.8))}
-.ap-unlock-toast.platinum{background:linear-gradient(135deg,rgba(229,228,226,.9),rgba(139,92,246,.8))}
-.ap-unlock-icon{font-size:32px}
-.ap-unlock-info{display:flex;flex-direction:column;gap:2px}
-.ap-unlock-title{font-size:11px;color:rgba(255,255,255,.7)}
-.ap-unlock-name{font-size:15px;font-weight:700;color:white}
-.ap-unlock-xp{font-size:12px;color:rgba(255,255,255,.8)}
+/* 徽章悬浮特效 */
+.ap-badge:not(.locked):hover{transform:scale(1.12);box-shadow:0 4px 16px rgba(139,92,246,.2)}
+.ap-badge.gold:not(.locked):hover{box-shadow:0 4px 20px rgba(255,215,0,.3)}
+.ap-badge.platinum:not(.locked):hover{box-shadow:0 4px 20px rgba(229,228,226,.3)}
+.ap-badge:not(.locked)::after{content:'';position:absolute;inset:0;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.1),transparent);opacity:0;transition:opacity .3s}
+.ap-badge:not(.locked):hover::after{opacity:1}
 
-.unlock-enter-active{animation:unlockIn .5s ease}
+/* 解锁动画（含粒子） */
+.ap-unlock-toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:20px;background:linear-gradient(135deg,rgba(139,92,246,.92),rgba(99,102,241,.88));box-shadow:0 12px 48px rgba(139,92,246,.5),0 0 60px rgba(139,92,246,.15);z-index:300;cursor:pointer;overflow:visible}
+.ap-unlock-toast.gold{background:linear-gradient(135deg,rgba(255,215,0,.9),rgba(245,158,11,.85));box-shadow:0 12px 48px rgba(255,215,0,.4),0 0 60px rgba(255,215,0,.12)}
+.ap-unlock-toast.platinum{background:linear-gradient(135deg,rgba(200,200,230,.9),rgba(139,92,246,.85));box-shadow:0 12px 48px rgba(229,228,226,.4),0 0 60px rgba(229,228,226,.12)}
+.ap-unlock-toast.silver{background:linear-gradient(135deg,rgba(192,192,210,.9),rgba(148,163,184,.85));box-shadow:0 12px 48px rgba(192,192,192,.4)}
+.ap-unlock-glow{position:absolute;inset:-4px;border-radius:24px;background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(245,158,11,.2));filter:blur(12px);animation:unlockGlow 2s ease-in-out infinite alternate;z-index:-1}
+@keyframes unlockGlow{0%{opacity:.5;transform:scale(1)}100%{opacity:.8;transform:scale(1.05)}}
+.ap-unlock-icon{font-size:36px;animation:unlockBounce .6s ease;z-index:1}
+@keyframes unlockBounce{0%{transform:scale(0) rotate(-15deg)}50%{transform:scale(1.3) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
+.ap-unlock-info{display:flex;flex-direction:column;gap:2px;z-index:1}
+.ap-unlock-title{font-size:11px;color:rgba(255,255,255,.7)}
+.ap-unlock-name{font-size:16px;font-weight:700;color:white;text-shadow:0 1px 4px rgba(0,0,0,.2)}
+.ap-unlock-xp{font-size:12px;color:rgba(255,255,255,.85);font-weight:600}
+
+/* 粒子特效 */
+.ap-unlock-particles{position:absolute;inset:0;pointer-events:none;z-index:2}
+.ap-particle{position:absolute;top:50%;left:20%;width:var(--size);height:var(--size);border-radius:50%;background:var(--color);animation:particleBurst .8s ease-out var(--delay) forwards;opacity:0}
+@keyframes particleBurst{0%{opacity:1;transform:translate(0,0) scale(1)}60%{opacity:.8}100%{opacity:0;transform:translate(calc(cos(var(--angle)) * var(--dist)),calc(sin(var(--angle)) * var(--dist))) scale(0)}}
+
+.unlock-enter-active{animation:unlockIn .5s cubic-bezier(.21,1.02,.73,1)}
 .unlock-leave-active{animation:unlockOut .3s ease}
-@keyframes unlockIn{0%{opacity:0;transform:translateX(-50%) translateY(-20px) scale(.8)}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
-@keyframes unlockOut{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(-20px)}}
+@keyframes unlockIn{0%{opacity:0;transform:translateX(-50%) translateY(-30px) scale(.7)}50%{transform:translateX(-50%) translateY(5px) scale(1.05)}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+@keyframes unlockOut{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(-30px) scale(.8)}}
 
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}
 .fade-enter-from,.fade-leave-to{opacity:0}

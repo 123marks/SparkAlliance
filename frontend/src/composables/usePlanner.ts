@@ -10,7 +10,7 @@ export interface Goal {
   user_id: string
   title: string
   description?: string
-  goal_type: 'academic' | 'skill' | 'habit' | 'fitness' | 'career' | 'custom'
+  goal_type: 'academic' | 'skill' | 'habit' | 'fitness' | 'career' | 'reading' | 'social' | 'creativity' | 'emotional' | 'finance' | 'custom'
   deadline: string
   status: 'active' | 'paused' | 'completed' | 'archived'
   total_progress: number
@@ -86,6 +86,11 @@ export const GOAL_TYPES = [
   { value: 'habit', label: '🎯 习惯', color: '#14b8a6' },
   { value: 'fitness', label: '💪 运动', color: '#ef4444' },
   { value: 'career', label: '💼 职业', color: '#f59e0b' },
+  { value: 'reading', label: '📖 阅读', color: '#06b6d4' },
+  { value: 'social', label: '🤝 社交', color: '#ec4899' },
+  { value: 'creativity', label: '🎭 创作', color: '#f472b6' },
+  { value: 'emotional', label: '🧘 心理', color: '#a855f7' },
+  { value: 'finance', label: '💰 理财', color: '#84cc16' },
   { value: 'custom', label: '✨ 自定义', color: '#6366f1' },
 ] as const
 
@@ -208,10 +213,23 @@ export function usePlanner() {
 
   async function createGoal(title: string, goalType: string, deadline: string, description?: string): Promise<Goal | null> {
     if (!user.value) return null
+
+    const today = getLocalDate()
+    if (deadline <= today) {
+      console.error('创建目标失败: 截止日期必须在未来')
+      return null
+    }
+
+    const validTypes = GOAL_TYPES.map(t => t.value) as string[]
+    const safeType = validTypes.includes(goalType) ? goalType : 'custom'
+
     try {
       const { data, error } = await supabase.from('goals').insert({
         user_id: user.value.id,
-        title, goal_type: goalType, deadline, description,
+        title: title.slice(0, 200),
+        goal_type: safeType,
+        deadline,
+        description: description?.slice(0, 500),
       }).select().single()
       if (error) throw error
       goals.value.unshift(data)
@@ -537,14 +555,16 @@ export function usePlanner() {
   async function aiDecomposeGoal(title: string, goalType: string, deadline: string): Promise<AIPlan | null> {
     aiGenerating.value = true
     try {
+      const safeTitle = title.replace(/[<>"'`\\]/g, '').slice(0, 200)
+      const safeType = goalType.replace(/[<>"'`\\]/g, '').slice(0, 50)
       const daysLeft = Math.max(1, Math.ceil(
         (new Date(deadline).getTime() - Date.now()) / 86400000
       ))
       const prompt = `你是学习与成长规划助手。根据用户目标拆解出可执行的里程碑和具体任务。
 
 输入：
-- 目标：${title}
-- 类型：${goalType}
+- 目标：${safeTitle}
+- 类型：${safeType}
 - 截止日期：${deadline}（剩余${daysLeft}天）
 
 输出要求（必须返回 JSON，不要 markdown）：
@@ -643,6 +663,46 @@ export function usePlanner() {
           ['研究目标岗位要求', '更新简历和作品集', '列出技能差距清单'],
           ['针对性学习补短板', '准备面试常见问题', '做模拟面试'],
           ['投递目标公司', '复盘面试表现', '优化策略再出击'],
+        ],
+      },
+      reading: {
+        phases: ['选书计划', '精读实践', '输出总结'],
+        tasks: [
+          ['确定阅读书单和优先级', '制定每日阅读时间', '准备笔记工具'],
+          ['精读核心章节并做标注', '撰写读书笔记', '与他人讨论书中观点'],
+          ['完成阅读清单', '写一篇读后感', '分享阅读收获'],
+        ],
+      },
+      social: {
+        phases: ['破冰启动', '深度交流', '巩固关系'],
+        tasks: [
+          ['列出想认识的人或群体', '主动参加一次活动', '练习自我介绍'],
+          ['约一次深度聊天', '参与社群讨论', '帮助他人解决问题'],
+          ['建立定期联系习惯', '组织一次小活动', '回顾社交收获'],
+        ],
+      },
+      creativity: {
+        phases: ['灵感收集', '创作实践', '展示分享'],
+        tasks: [
+          ['建立灵感素材库', '学习相关创作技巧', '确定创作主题'],
+          ['完成初版作品', '征求反馈并迭代', '提升作品细节'],
+          ['发布或展示作品', '复盘创作过程', '规划下一个项目'],
+        ],
+      },
+      emotional: {
+        phases: ['自我觉察', '调节练习', '内化巩固'],
+        tasks: [
+          ['记录情绪日记3天', '学习正念冥想基础', '识别情绪触发点'],
+          ['每日10分钟冥想', '练习深呼吸放松', '尝试认知重构'],
+          ['建立情绪管理工具箱', '回顾情绪变化', '与信任的人分享感悟'],
+        ],
+      },
+      finance: {
+        phases: ['记账分析', '计划制定', '执行优化'],
+        tasks: [
+          ['连续记账7天', '分析消费结构', '确定储蓄目标'],
+          ['制定月度预算', '开设专用储蓄账户', '学习基础理财知识'],
+          ['复盘月度财务', '调整支出结构', '设定下阶段目标'],
         ],
       },
       custom: {

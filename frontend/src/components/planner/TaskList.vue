@@ -24,6 +24,8 @@
           <button v-if="t.due_date && !t.schedule_event_id" class="tl-act sync" title="同步到日程" @click="$emit('push', t)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </button>
+          <button v-if="t.schedule_event_id" class="tl-act unsync" title="取消同步" @click="$emit('unsync', t)">🔗</button>
+          <button v-if="t.schedule_event_id" class="tl-act jump" title="查看日程" @click="$emit('jump', t)">↗️</button>
           <button class="tl-act record" title="提交记录" @click="$emit('record', t)">
             📸
           </button>
@@ -49,6 +51,8 @@ const emit = defineEmits<{
   delete: [taskId: string]
   edit: [task: PlannerTask]
   push: [task: PlannerTask]
+  unsync: [task: PlannerTask]
+  jump: [task: PlannerTask]
   record: [task: PlannerTask]
 }>()
 
@@ -95,6 +99,10 @@ function formatDate(d: string): string {
 .tl-act:hover{opacity:.6}
 .tl-act.sync{color:rgba(59,130,246,.7)}
 .tl-act.sync:hover{opacity:.8}
+.tl-act.unsync{color:rgba(245,158,11,.5);font-size:11px}
+.tl-act.unsync:hover{color:rgba(245,158,11,.8);opacity:1}
+.tl-act.jump{color:rgba(34,197,94,.5);font-size:10px}
+.tl-act.jump:hover{color:rgba(34,197,94,.8);opacity:1}
 .tl-act.edit{color:rgba(255,255,255,.5)}
 .tl-act.record{font-size:12px}
 .tl-act.record:hover{opacity:.8}

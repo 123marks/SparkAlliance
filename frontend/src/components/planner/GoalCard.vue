@@ -33,7 +33,9 @@
           </div>
           <!-- 未完成任务的操作 -->
           <div class="gc-task-acts" v-if="!t.is_completed">
-            <button class="gc-tact sync" title="同步日程" v-if="t.due_date && !t.schedule_event_id" @click.stop="$emit('pushToSchedule', t)">📅</button>
+            <button class="gc-tact sync" title="同步到日程" v-if="t.due_date && !t.schedule_event_id" @click.stop="$emit('pushToSchedule', t)">📅</button>
+            <button class="gc-tact unsync" title="取消同步日程" v-if="t.schedule_event_id" @click.stop="$emit('unsyncSchedule', t)">🔗</button>
+            <button class="gc-tact jump" title="查看日程" v-if="t.schedule_event_id" @click.stop="$emit('jumpToSchedule', t)">↗️</button>
             <button class="gc-tact record" title="提交记录" @click.stop="$emit('recordTask', t)">📸</button>
             <button class="gc-tact edit" title="编辑" @click.stop="$emit('editTask', t)">✏️</button>
             <button class="gc-tact del" title="删除" @click.stop="handleDelete(t.id)">🗑️</button>
@@ -64,6 +66,8 @@ const emit = defineEmits<{
   archive: [goalId: string]
   deleteGoal: [goalId: string]
   pushToSchedule: [task: PlannerTask]
+  unsyncSchedule: [task: PlannerTask]
+  jumpToSchedule: [task: PlannerTask]
   recordTask: [task: PlannerTask]
 }>()
 
@@ -156,6 +160,10 @@ watch(expanded, async (v) => {
 .gc-tact{background:none;border:none;font-size:11px;cursor:pointer;opacity:.3;transition:opacity .2s;padding:3px}
 .gc-tact:hover{opacity:.7}
 .gc-tact.sync{color:rgba(59,130,246,.6)}
+.gc-tact.unsync{color:rgba(245,158,11,.5)}
+.gc-tact.unsync:hover{color:rgba(245,158,11,.8)}
+.gc-tact.jump{color:rgba(34,197,94,.5);font-size:10px}
+.gc-tact.jump:hover{color:rgba(34,197,94,.8)}
 .gc-tact.record{font-size:12px}
 .gc-tact.edit{color:rgba(255,255,255,.5)}
 .gc-tact.del{color:rgba(239,68,68,.6)}

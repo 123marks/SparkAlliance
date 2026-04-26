@@ -1,5 +1,5 @@
 <template>
-  <!-- 创建目标：3步引导 + 模板自动填充 + 日期校验 -->
+  <!-- 创建目标：3步引导 + 日期校验 + 自定义类型 -->
   <Transition name="sheet">
     <div v-if="visible" class="gcs-overlay" @click.self="$emit('close')">
       <div class="gcs-sheet">
@@ -13,17 +13,46 @@
           <h2 class="gcs-title">🌟 你想达成什么？</h2>
           <textarea v-model="goalTitle" class="gcs-input" rows="2" placeholder="例：3个月背完考研英语5500词" maxlength="200"></textarea>
           <div class="gcs-types">
-            <button v-for="t in GOAL_TYPES" :key="t.value" class="gcs-type-btn" :class="{ selected: goalType === t.value }" @click="goalType = t.value">
+            <button
+              v-for="t in allGoalTypes"
+              :key="t.value"
+              class="gcs-type-btn"
+              :class="{ selected: goalType === t.value }"
+              @click="handleTypeSelect(t.value)"
+            >
               {{ t.label }}
             </button>
           </div>
-          <!-- 截止日期在 Step 1 就填，这样 AI 拆解能用 -->
+          <!-- 自定义类型输入 -->
+          <Transition name="fade">
+            <div v-if="goalType === 'custom' && showCustomInput" class="gcs-custom-row">
+              <input
+                v-model="customTypeName"
+                class="gcs-custom-input"
+                placeholder="输入你的自定义类型名称，如：阅读、社交..."
+                maxlength="20"
+                @keydown.enter.prevent
+              />
+            </div>
+          </Transition>
+          <!-- 截止日期 -->
           <div class="gcs-deadline-row">
             <label class="gcs-label">📅 目标截止日期</label>
-            <input v-model="deadline" type="date" class="gcs-date-input" :min="minDate" />
-            <p v-if="deadline" class="gcs-days-hint">⏳ 还有 <strong>{{ daysLeft }}</strong> 天</p>
+            <input v-model="deadline" type="date" class="gcs-date-input" :min="minDate" @change="validateDeadline" />
+            <!-- 日期校验提示 -->
+            <Transition name="fade">
+              <p v-if="deadlineError" class="gcs-date-error">⚠️ {{ deadlineError }}</p>
+            </Transition>
+            <p v-if="deadline && !deadlineError && daysLeft > 0" class="gcs-days-hint">⏳ 还有 <strong>{{ daysLeft }}</strong> 天</p>
           </div>
-          <button class="gcs-next" :disabled="!goalTitle.trim() || !goalType || !deadline" @click="goStep2">
+          <!-- 错误反馈 -->
+          <Transition name="fade">
+            <div v-if="createError" class="gcs-error-banner">
+              <span>❌ {{ createError }}</span>
+              <button class="gcs-error-close" @click="createError = ''">✕</button>
+            </div>
+          </Transition>
+          <button class="gcs-next" :disabled="!canProceed" @click="goStep2">
             🪄 AI 帮我拆解
           </button>
         </div>
@@ -64,6 +93,14 @@
             <p class="gcs-edit-hint">💡 创建后可在目标卡片中编辑、取消或添加任务</p>
           </div>
 
+          <!-- 创建错误反馈 -->
+          <Transition name="fade">
+            <div v-if="createError" class="gcs-error-banner">
+              <span>❌ {{ createError }}</span>
+              <button class="gcs-error-close" @click="createError = ''">✕</button>
+            </div>
+          </Transition>
+
           <div class="gcs-nav">
             <button class="gcs-back" @click="step = 1">← 返回</button>
             <button class="gcs-regen" @click="regenerate">🔄 重新生成</button>
@@ -85,27 +122,80 @@ import type { AIPlan } from '../../composables/usePlanner'
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: []; created: [goalId: string] }>()
 
-const { aiDecomposeGoal, createGoal, savePlanToDB, daysUntil, getTomorrowDate } = usePlanner()
+const { aiDecomposeGoal, createGoal, savePlanToDB, daysUntil, getLocalDate, getTomorrowDate } = usePlanner()
 
 const step = ref(1)
 const goalTitle = ref('')
 const goalType = ref('')
+const customTypeName = ref('')
+const showCustomInput = ref(false)
 const deadline = ref('')
+const deadlineError = ref('')
+const createError = ref('')
 const plan = ref<AIPlan | null>(null)
 const aiLoading = ref(false)
 const creating = ref(false)
 
-// 最早选择明天
+const allGoalTypes = computed(() => [
+  ...GOAL_TYPES,
+  { value: 'reading' as const, label: '📖 阅读', color: '#06b6d4' },
+  { value: 'social' as const, label: '🤝 社交', color: '#ec4899' },
+  { value: 'creativity' as const, label: '🎭 创作', color: '#f472b6' },
+  { value: 'emotional' as const, label: '🧘 心理', color: '#a855f7' },
+  { value: 'finance' as const, label: '💰 理财', color: '#84cc16' },
+])
+
 const minDate = computed(() => getTomorrowDate())
 const daysLeft = computed(() => deadline.value ? daysUntil(deadline.value) : 0)
 
-// 重置表单（弹窗关闭时）
+const canProceed = computed(() => {
+  if (!goalTitle.value.trim() || !goalType.value || !deadline.value) return false
+  if (deadlineError.value) return false
+  if (goalType.value === 'custom' && !customTypeName.value.trim()) return false
+  return true
+})
+
+function handleTypeSelect(value: string) {
+  goalType.value = value
+  if (value === 'custom') {
+    showCustomInput.value = true
+  } else {
+    showCustomInput.value = false
+    customTypeName.value = ''
+  }
+}
+
+function validateDeadline() {
+  deadlineError.value = ''
+  if (!deadline.value) return
+
+  const today = getLocalDate()
+  if (deadline.value <= today) {
+    deadlineError.value = '截止日期需要设在未来哦，过去的日期无法创建目标'
+    return
+  }
+
+  const deadlineDate = new Date(deadline.value + 'T23:59:59')
+  const now = new Date()
+  const diffDays = Math.ceil((deadlineDate.getTime() - now.getTime()) / 86400000)
+
+  if (diffDays < 1) {
+    deadlineError.value = '至少需要1天时间来完成目标'
+  } else if (diffDays > 365 * 3) {
+    deadlineError.value = '建议目标周期不超过3年，保持可执行性'
+  }
+}
+
 watch(() => props.visible, (v) => {
   if (!v) {
     step.value = 1
     goalTitle.value = ''
     goalType.value = ''
+    customTypeName.value = ''
+    showCustomInput.value = false
     deadline.value = ''
+    deadlineError.value = ''
+    createError.value = ''
     plan.value = null
     aiLoading.value = false
     creating.value = false
@@ -113,6 +203,10 @@ watch(() => props.visible, (v) => {
 })
 
 async function goStep2() {
+  if (!canProceed.value) return
+  validateDeadline()
+  if (deadlineError.value) return
+  createError.value = ''
   step.value = 2
   await regenerate()
 }
@@ -120,18 +214,25 @@ async function goStep2() {
 async function regenerate() {
   aiLoading.value = true
   plan.value = null
-  plan.value = await aiDecomposeGoal(goalTitle.value, goalType.value, deadline.value)
+  const typeForAI = goalType.value === 'custom' ? customTypeName.value.trim() : goalType.value
+  plan.value = await aiDecomposeGoal(goalTitle.value, typeForAI, deadline.value)
   aiLoading.value = false
 }
 
-// 合并 Step2 + Step3（日期已在 Step1 填了）
 async function handleCreate() {
   if (!plan.value || creating.value) return
   creating.value = true
-  const goal = await createGoal(goalTitle.value.trim(), goalType.value, deadline.value)
+  createError.value = ''
+
+  const effectiveType = goalType.value === 'custom' ? 'custom' : goalType.value
+  const description = goalType.value === 'custom' ? `自定义类型：${customTypeName.value.trim()}` : undefined
+
+  const goal = await createGoal(goalTitle.value.trim(), effectiveType, deadline.value, description)
   if (goal && plan.value) {
     await savePlanToDB(goal.id, plan.value)
     emit('created', goal.id)
+  } else if (!goal) {
+    createError.value = '目标创建失败，请检查网络连接后重试'
   }
   creating.value = false
 }
@@ -158,7 +259,16 @@ async function handleCreate() {
 .gcs-date-input::-webkit-calendar-picker-indicator{filter:invert(.5)}
 .gcs-days-hint{font-size:12px;color:rgba(139,92,246,.5);margin:0}
 .gcs-days-hint strong{color:rgba(139,92,246,.8)}
+.gcs-date-error{font-size:12px;color:rgba(239,68,68,.7);margin:0;padding:6px 10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.1);border-radius:8px}
+.gcs-custom-row{display:flex;gap:6px}
+.gcs-custom-input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(139,92,246,.15);background:rgba(139,92,246,.04);color:white;font-size:13px;outline:none;box-sizing:border-box}
+.gcs-custom-input:focus{border-color:rgba(139,92,246,.3)}
+.gcs-custom-input::placeholder{color:rgba(255,255,255,.25)}
+.gcs-error-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);font-size:12px;color:rgba(239,68,68,.8)}
+.gcs-error-close{background:none;border:none;color:rgba(239,68,68,.5);cursor:pointer;font-size:14px;padding:0 2px}
 .gcs-next{padding:11px;border-radius:12px;border:none;background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.fade-enter-active,.fade-leave-active{transition:all .2s ease}
+.fade-enter-from,.fade-leave-to{opacity:0;transform:translateY(-4px)}
 .gcs-next:disabled{opacity:.3;cursor:default}
 .gcs-loading{text-align:center;padding:30px 0}
 .gcs-spinner{width:36px;height:36px;margin:0 auto 14px;border:3px solid rgba(139,92,246,.12);border-top-color:rgba(139,92,246,.6);border-radius:50%;animation:spin .8s linear infinite}

@@ -117,6 +117,18 @@ export const ACHIEVEMENTS: Achievement[] = [
 
   { id: '29', key: 'companion_first_share', name: '初次分享', description: '把第一条动态分享给朋友', icon: '↗️', category: 'companion', tier: 'bronze', condition: { type: 'share_count', threshold: 1 }, reward_xp: 25 },
   { id: '30', key: 'companion_share_10', name: '传播之星', description: '累计分享 10 次', icon: '🔁', category: 'companion', tier: 'silver', condition: { type: 'share_count', threshold: 10 }, reward_xp: 120 },
+
+  // ===== 新增炫酷成就 =====
+  { id: '31', key: 'task_250', name: '钢铁意志', description: '累计完成250个任务', icon: '🔨', category: 'task', tier: 'gold', condition: { type: 'task_count', threshold: 250 }, reward_xp: 600 },
+  { id: '32', key: 'task_1000', name: '千任传说', description: '累计完成1000个任务', icon: '🏅', category: 'task', tier: 'platinum', condition: { type: 'task_count', threshold: 1000 }, reward_xp: 2000 },
+  { id: '33', key: 'goal_20', name: '不可阻挡', description: '累计完成20个目标', icon: '🚀', category: 'goal', tier: 'platinum', condition: { type: 'goal_count', threshold: 20 }, reward_xp: 1000 },
+  { id: '34', key: 'streak_14', name: '两周勇士', description: '连续14天完成任务', icon: '⚡', category: 'streak', tier: 'silver', condition: { type: 'daily_streak', threshold: 14 }, reward_xp: 150 },
+  { id: '35', key: 'streak_60', name: '两月磐石', description: '连续60天完成任务', icon: '🗿', category: 'streak', tier: 'gold', condition: { type: 'daily_streak', threshold: 60 }, reward_xp: 600 },
+  { id: '36', key: 'streak_365', name: '年度王者', description: '连续365天完成任务', icon: '👸', category: 'streak', tier: 'platinum', condition: { type: 'daily_streak', threshold: 365 }, reward_xp: 5000 },
+  { id: '37', key: 'habit_100', name: '百日如一', description: '某个习惯连续打卡100天', icon: '🏔️', category: 'habit', tier: 'platinum', condition: { type: 'habit_streak', threshold: 100 }, reward_xp: 1000 },
+  { id: '38', key: 'companion_friend_100', name: '万人迷', description: '添加100位好友', icon: '💫', category: 'companion', tier: 'platinum', condition: { type: 'friend_count', threshold: 100 }, reward_xp: 800 },
+  { id: '39', key: 'companion_moment_50', name: '内容创作者', description: '发布50条动态', icon: '✍️', category: 'companion', tier: 'gold', condition: { type: 'moment_count', threshold: 50 }, reward_xp: 400 },
+  { id: '40', key: 'companion_ai_200', name: 'AI 挚友', description: '与星火AI累计对话200次', icon: '🧠', category: 'companion', tier: 'gold', condition: { type: 'ai_chat_count', threshold: 200 }, reward_xp: 500 },
 ]
 
 // 等级经验配置
