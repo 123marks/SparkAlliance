@@ -17,7 +17,7 @@
 
     <!-- 顶部导航 -->
     <header class="realm-header">
-      <button v-if="phase !== 'input'" class="hdr-btn back" @click="goBack">
+      <button class="hdr-btn back" @click="handleBack" :title="phase === 'input' ? '返回上一页' : '返回上一步'">
         <span class="btn-icon">←</span>
       </button>
       <div class="hdr-center">
@@ -669,7 +669,11 @@ function handleResize() {
   }
 }
 
-function goBack() {
+function handleBack() {
+  if (phase.value === 'input') {
+    router.back()
+    return
+  }
   cancelAnimationFrame(spinRaf); cancelAnimationFrame(gestureRaf); stopCamera()
   clearInterval(typeTimer)
   spinning.value = false; isTyping.value = false
