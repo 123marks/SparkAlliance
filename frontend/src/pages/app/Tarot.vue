@@ -475,6 +475,7 @@ import { useAuth } from '../../composables/useAuth'
 import { TAROT_CARDS, type TarotCard } from '../../data/tarotCards'
 import { useTarotAI, type QuestionBreakdown } from '../../composables/useTarotAI'
 
+const emit = defineEmits<{ 'back-to-calendar': [] }>()
 const router = useRouter()
 const { user } = useAuth()
 const { analyzing: aiAnalyzing, doAnalyze, doReading, doDailyReading, doFollowUp, selectRelevantCards, pickOneCard } = useTarotAI()
@@ -679,7 +680,7 @@ function handleBack() {
     return
   }
   if (phase.value === 'input') {
-    router.back()
+    emit('back-to-calendar')
     return
   }
   cancelAnimationFrame(spinRaf); cancelAnimationFrame(gestureRaf); stopCamera()

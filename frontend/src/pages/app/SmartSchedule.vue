@@ -2,10 +2,10 @@
   <div class="smart-schedule">
     <!-- 子模块内容区 -->
     <div class="ss-content">
-      <component :is="currentModule" />
+      <component :is="currentModule" @back-to-calendar="backToCalendar" />
     </div>
 
-    <!-- 辅助模块侧滑面板 -->
+    <!-- 辅助模块侧滑面板（仅规划使用） -->
     <Transition name="panel-slide">
       <div v-if="showPanel" class="ss-panel-overlay" @click.self="showPanel = false">
         <div class="ss-panel" :class="panelSide">
@@ -24,31 +24,33 @@
       </div>
     </Transition>
 
-    <!-- 底部浮动辅助入口（避免遮挡侧栏统计数据） -->
-    <div class="ss-aux-fab">
-      <button
-        class="ss-aux-btn planner-btn"
-        :class="{ active: showPanel && panelKey === 'planner' }"
-        title="星火规划"
-        @click="togglePanel('planner')"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-        <span class="ss-aux-label">规划</span>
-      </button>
-      <button
-        class="ss-aux-btn tarot-btn"
-        title="星火卡罗牌"
-        @click="router.push('/app/tarot')"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 16v-4" /><path d="M12 8h.01" />
-        </svg>
-        <span class="ss-aux-label">卡罗牌</span>
-      </button>
-    </div>
+    <!-- 底部浮动辅助入口 -->
+    <Transition name="fab-fade">
+      <div v-if="activeModule === 'calendar'" class="ss-aux-fab">
+        <button
+          class="ss-aux-btn planner-btn"
+          :class="{ active: showPanel && panelKey === 'planner' }"
+          title="星火规划"
+          @click="togglePanel('planner')"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+          <span class="ss-aux-label">规划</span>
+        </button>
+        <button
+          class="ss-aux-btn tarot-btn"
+          title="星火卡罗牌"
+          @click="switchToTarot"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" /><path d="M12 8h.01" />
+          </svg>
+          <span class="ss-aux-label">卡罗牌</span>
+        </button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -75,36 +77,41 @@ const moduleMap: Record<string, Component> = {
   tarot: markRaw(Tarot),
 }
 
-// 主视图始终为日程日历
-const currentModule = computed(() => moduleMap['calendar'])
+const currentModule = computed(() => moduleMap[activeModule.value] || moduleMap['calendar'])
 
-// 辅助面板状态
 const showPanel = ref(false)
-const panelKey = ref<'planner' | 'tarot'>('planner')
+const panelKey = ref<'planner'>('planner')
 const panelSide = ref('right')
 
-const panelTitle = computed(() => panelKey.value === 'planner' ? '⭐ 星火规划' : '🔮 每日灵感')
-const panelModule = computed(() => panelKey.value === 'planner' ? markRaw(Planner) : markRaw(Tarot))
+const panelTitle = computed(() => '⭐ 星火规划')
+const panelModule = computed(() => markRaw(Planner))
 
-function togglePanel(key: 'planner' | 'tarot') {
+function togglePanel(key: 'planner') {
   if (showPanel.value && panelKey.value === key) {
     showPanel.value = false
-    activeModule.value = 'calendar'
   } else {
     panelKey.value = key
     showPanel.value = true
-    activeModule.value = key
   }
 }
 
-// URL query 参数兼容
+function switchToTarot() {
+  showPanel.value = false
+  activeModule.value = 'tarot'
+}
+
+function backToCalendar() {
+  activeModule.value = 'calendar'
+}
+
 watch(() => route.query.module, (value) => {
   if (typeof value === 'string' && allowedModules.has(value) && value !== activeModule.value) {
-    if (value === 'calendar') {
-      showPanel.value = false
-      activeModule.value = 'calendar'
+    if (value === 'tarot') {
+      switchToTarot()
+    } else if (value === 'planner') {
+      togglePanel('planner')
     } else {
-      togglePanel(value as 'planner' | 'tarot')
+      backToCalendar()
     }
   }
 })
@@ -112,16 +119,14 @@ watch(() => route.query.module, (value) => {
 watch(activeModule, (value) => {
   if (route.query.module === value) return
   router.replace({
-    query: {
-      ...route.query,
-      module: value,
-    },
+    query: { ...route.query, module: value },
   })
 })
 
-// 如果 URL 指定了 planner/tarot，初始化时打开面板
-if (routeModule === 'planner' || routeModule === 'tarot') {
-  panelKey.value = routeModule as 'planner' | 'tarot'
+if (routeModule === 'tarot') {
+  activeModule.value = 'tarot'
+} else if (routeModule === 'planner') {
+  panelKey.value = 'planner'
   showPanel.value = true
 }
 
@@ -281,6 +286,10 @@ if (routeModule === 'planner' || routeModule === 'tarot') {
 .panel-slide-leave-to {
   opacity: 0;
 }
+
+/* fab 过渡 */
+.fab-fade-enter-active, .fab-fade-leave-active { transition: all 0.3s ease }
+.fab-fade-enter-from, .fab-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(10px) }
 
 /* 响应式 */
 @media (max-width: 640px) {
