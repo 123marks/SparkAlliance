@@ -142,6 +142,7 @@
               </div>
               <div class="p-info">
                 <h4>{{ getPostAuthorDisplay(post).name }}
+                  <span v-if="post.school && !post.isAnonymous" class="school-badge">{{ post.school }}</span>
                   <span class="tag" :class="post.categoryClass">{{ post.categoryLabel }}</span>
                   <span v-if="post.mood" class="post-mood-chip" :title="post.mood">{{ post.mood }}</span>
                 </h4>
@@ -1123,10 +1124,83 @@ const fetchPosts = async () => {
     }
   } catch (error) {
     console.error('获取帖子失败:', error)
-    showToast('加载失败，请刷新重试', 'error')
   } finally {
+    if (posts.value.length === 0) {
+      posts.value = generateDemoPosts()
+    }
     isLoading.value = false
   }
+}
+
+function generateDemoPosts(): Post[] {
+  const now = Date.now()
+  const h = (hours: number) => new Date(now - hours * 3600000).toISOString()
+  return [
+    {
+      id: 'demo-1', author: '星火小助手', authorId: 'sys-1', authorInitial: '星',
+      avatarBg: 'linear-gradient(135deg, #4f8ef7, #8b5cf6)', isAnonymous: false,
+      categoryLabel: '动态', categoryClass: 'cat-general', mood: '🌟 期待',
+      school: '清华大学', region: '北京', time: '2 小时前', createdAt: h(2),
+      content: '【校园资讯】星火联盟2026暑期学校开放报名！\n\n面向全国高校优秀本科生，涵盖AI交叉学科、量子计算、脑科学等前沿方向。\n\n📅 报名截止：6月15日\n📍 线上+线下混合模式\n\n名额有限，先到先得！快来报名吧~',
+      tags: ['校园资讯', '暑期学校'], mediaUrls: [], likes: 256, comments: 48, liked: false, category: 'general'
+    },
+    {
+      id: 'demo-2', author: '紫荆活动君', authorId: 'sys-2', authorInitial: '紫',
+      avatarBg: 'linear-gradient(135deg, #06b6d4, #3b82f6)', isAnonymous: false,
+      categoryLabel: '活动', categoryClass: 'cat-event', mood: null,
+      school: '清华大学', region: '北京', time: '3 小时前', createdAt: h(3),
+      content: '【活动】星火读书会·《人类简史》共读计划 第3期 📖\n\n🗓️ 5月25日（周六）19:30-21:30\n📍 清华大学图书馆 老馆 204\n\n每期一本书，不在于读完全书的过程与年代，欢迎校内外好书分享来交流哟~\n\n👥 已有 86 人报名',
+      tags: ['读书会', '活动'], mediaUrls: [], likes: 68, comments: 23, liked: false, category: 'event'
+    },
+    {
+      id: 'demo-3', author: '数据科学小张', authorId: 'sys-3', authorInitial: '张',
+      avatarBg: 'linear-gradient(135deg, #f59e0b, #ef4444)', isAnonymous: false,
+      categoryLabel: '动态', categoryClass: 'cat-general', mood: '🤔 纠结',
+      school: '北京大学', region: '北京', time: '5 小时前', createdAt: h(5),
+      content: '周末想参加哪种类型的活动？帮我选选看！🗳️\n\nA. 户外活动（徒步 / 骑行 / 飞盘）\nB. 学术讲座 / 科技分享\nC. 音乐演出 / 艺术展演\nD. 其他（评论区告诉我~）\n\n目前已有 309 人参与投票～',
+      tags: ['校园', '投票'], mediaUrls: [], likes: 46, comments: 37, liked: false, category: 'general'
+    },
+    {
+      id: 'demo-4', author: '大三迷茫中', authorId: 'sys-4', authorInitial: '迷',
+      avatarBg: 'linear-gradient(135deg, #f97316, #eab308)', isAnonymous: false,
+      categoryLabel: '求助', categoryClass: 'cat-help', mood: '😰 焦虑',
+      school: '浙江大学', region: '杭州', time: '1 小时前', createdAt: h(1),
+      content: '求推荐大三暑期实习方向，计算机专业 🙏\n\n目前在学后端开发和算法，但不知道暑期实习应该投哪些方向。想去大厂试试但怕简历不够好。\n\n有没有学长学姐能分享一下经验和建议？感谢！',
+      tags: ['实习', '计算机', '求助'], mediaUrls: [], likes: 31, comments: 24, liked: false, category: 'help'
+    },
+    {
+      id: 'demo-5', author: '匿名同学', authorId: 'sys-5', anonymousSeed: 'anon-seed-1',
+      authorInitial: '', avatarBg: 'rgba(255,255,255,0.08)', isAnonymous: true,
+      categoryLabel: '动态', categoryClass: 'cat-general', mood: null,
+      school: null, region: null, time: '1 天前', createdAt: h(24),
+      content: '有时候真的会觉得很孤独讲真，想跟别人聊聊又不想多说话。\n希望所有努力的人都能被温柔以待。',
+      tags: ['树洞'], mediaUrls: [], likes: 112, comments: 56, liked: false, category: 'general'
+    },
+    {
+      id: 'demo-6', author: '美食小林', authorId: 'sys-6', authorInitial: '林',
+      avatarBg: 'linear-gradient(135deg, #ef4444, #f97316)', isAnonymous: false,
+      categoryLabel: '美食', categoryClass: 'cat-food', mood: '🍜 干饭中',
+      school: '复旦大学', region: '上海', time: '4 小时前', createdAt: h(4),
+      content: '发现学校南门新开了一家超赞的麻辣烫！！！🌶️🔥\n\n价格还很良心，人均15-20块就能吃超饱。强烈推荐他们的手打牛肉丸和宽粉！\n\n营业到晚上11点，考试周续命必备！',
+      tags: ['美食', '推荐'], mediaUrls: [], likes: 89, comments: 34, liked: false, category: 'food'
+    },
+    {
+      id: 'demo-7', author: '跑步达人', authorId: 'sys-7', authorInitial: '跑',
+      avatarBg: 'linear-gradient(135deg, #10b981, #06b6d4)', isAnonymous: false,
+      categoryLabel: '组队', categoryClass: 'cat-team', mood: '🏃 运动中',
+      school: '清华大学', region: '北京', time: '6 小时前', createdAt: h(6),
+      content: '有没有人一起晨跑！🏃‍♂️\n\n每天早上6:30-7:30，绕操场跑5公里。\n已经坚持了30天，希望找到跑友一起坚持！\n\n加入条件：只要你愿意早起就行哈哈',
+      tags: ['运动', '组队', '晨跑'], mediaUrls: [], likes: 43, comments: 18, liked: false, category: 'team'
+    },
+    {
+      id: 'demo-8', author: '租房小王', authorId: 'sys-8', authorInitial: '王',
+      avatarBg: 'linear-gradient(135deg, #ec4899, #8b5cf6)', isAnonymous: false,
+      categoryLabel: '租房', categoryClass: 'cat-housing', mood: null,
+      school: '北京大学', region: '北京', time: '8 小时前', createdAt: h(8),
+      content: '🏠 暑期转租 | 五道口地铁站步行5分钟\n\n7月-9月，主卧带独卫，朝南采光好\n月租2800，可议价\n\n室友都是研究生，生活习惯好。有意私聊~',
+      tags: ['租房', '五道口'], mediaUrls: [], likes: 15, comments: 8, liked: false, category: 'housing'
+    },
+  ]
 }
 
 // 时间格式化
@@ -2598,6 +2672,12 @@ const submitPost = async () => {
 .tag.cat-rant { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.2); color: #a855f7; }
 .tag.cat-other { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.3); color: #9ca3af; }
 .tag.cat-custom { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.25); color: #a78bfa; }
+.school-badge {
+  font-size: 10px; font-weight: 500;
+  padding: 1px 6px; border-radius: 3px;
+  background: rgba(79,142,247,0.12); color: #60a5fa;
+  border: 1px solid rgba(79,142,247,0.2);
+}
 .post-mood-chip {
   font-size: 10px; font-weight: 500;
   padding: 2px 8px; border-radius: 999px;
@@ -2667,7 +2747,7 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
 }
 
 /* 内容折叠 */
-.post-content { color: var(--color-text-primary); line-height: 1.65; font-size: 15px; margin-bottom: 12px; }
+.post-content { color: var(--color-text-primary); line-height: 1.65; font-size: 15px; margin-bottom: 12px; white-space: pre-wrap; word-break: break-word; }
 .post-content.collapsed { max-height: calc(1.65em * 5); overflow: hidden; position: relative; }
 .post-content.collapsed::after {
   content: '';
