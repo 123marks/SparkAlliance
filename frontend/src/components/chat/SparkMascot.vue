@@ -1,61 +1,109 @@
 <template>
-  <div class="mascot-wrap" :class="{ 'mascot-hidden': hidden }">
-    <div class="mascot-body" @click="onMascotClick">
+  <div class="mascot-wrap">
+    <div class="mascot-body" @click="onMascotClick" title="点击互动">
       <div class="mascot-float">
-        <!-- 机器人头部 -->
-        <div class="mascot-head">
-          <div class="mascot-antenna">
-            <div class="antenna-ball"></div>
-          </div>
-          <div class="mascot-face">
-            <div class="mascot-eye left" :class="{ blink: blinking }"></div>
-            <div class="mascot-eye right" :class="{ blink: blinking }"></div>
-            <div class="mascot-mouth" :class="{ happy: isHappy }"></div>
-          </div>
-          <div class="mascot-ear left-ear"></div>
-          <div class="mascot-ear right-ear"></div>
-        </div>
-        <!-- 机器人身体 -->
-        <div class="mascot-torso">
-          <div class="mascot-core"></div>
-          <div class="mascot-arm left-arm"></div>
-          <div class="mascot-arm right-arm" :class="{ wave: waving }"></div>
-        </div>
-      </div>
-      <!-- 光晕 -->
-      <div class="mascot-glow"></div>
-      <!-- 粒子 -->
-      <div class="mascot-particles">
-        <span v-for="i in 5" :key="i" class="m-particle" :style="{ '--i': i }"></span>
+        <svg class="mascot-svg" viewBox="0 0 80 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- 底部光晕 -->
+          <ellipse cx="40" cy="92" rx="24" ry="4" fill="url(#glow)" opacity="0.4"/>
+          <!-- 身体 -->
+          <rect x="22" y="52" width="36" height="28" rx="14" fill="url(#bodyGrad)"/>
+          <!-- 核心光点 -->
+          <circle cx="40" cy="64" r="4" fill="url(#coreGrad)" opacity="0.8">
+            <animate attributeName="r" values="3.5;4.5;3.5" dur="2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <!-- 头部 -->
+          <rect x="14" y="12" width="52" height="44" rx="20" fill="url(#headGrad)"/>
+          <!-- 头部高光 -->
+          <ellipse cx="32" cy="22" rx="12" ry="6" fill="white" opacity="0.06"/>
+          <!-- 左眼 -->
+          <ellipse :cx="28" :cy="eyeY" rx="5" :ry="blinking ? 1 : 6" fill="white">
+            <animate v-if="!blinking" attributeName="ry" values="6;5.8;6" dur="3s" repeatCount="indefinite"/>
+          </ellipse>
+          <circle cx="29" :cy="eyeY" r="2.5" fill="#1a1035"/>
+          <circle cx="30" :cy="eyePupilY" r="1" fill="white" opacity="0.8"/>
+          <!-- 右眼 -->
+          <ellipse :cx="52" :cy="eyeY" rx="5" :ry="blinking ? 1 : 6" fill="white">
+            <animate v-if="!blinking" attributeName="ry" values="6;5.8;6" dur="3s" repeatCount="indefinite"/>
+          </ellipse>
+          <circle cx="53" :cy="eyeY" r="2.5" fill="#1a1035"/>
+          <circle cx="54" :cy="eyePupilY" r="1" fill="white" opacity="0.8"/>
+          <!-- 腮红 -->
+          <circle cx="20" cy="38" r="4" fill="#ec4899" opacity="0.15"/>
+          <circle cx="60" cy="38" r="4" fill="#ec4899" opacity="0.15"/>
+          <!-- 嘴巴 -->
+          <path :d="mouthPath" stroke="#2d1b69" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <!-- 天线 -->
+          <line x1="40" y1="12" x2="40" y2="4" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="40" cy="3" r="3" fill="url(#antennaGrad)">
+            <animate attributeName="r" values="2.5;3.5;2.5" dur="2.5s" repeatCount="indefinite"/>
+          </circle>
+          <!-- 左手 -->
+          <ellipse cx="18" cy="62" rx="5" ry="8" fill="url(#armGrad)" :transform="`rotate(-10 18 62)`"/>
+          <!-- 右手（挥手动画） -->
+          <ellipse cx="62" cy="62" rx="5" ry="8" fill="url(#armGrad)"
+            :transform="waving ? undefined : 'rotate(10 62 62)'">
+            <animateTransform v-if="waving" attributeName="transform" type="rotate"
+              values="10 62 62;-20 62 56;10 62 62" dur="0.5s" repeatCount="3"/>
+          </ellipse>
+          <!-- 渐变定义 -->
+          <defs>
+            <linearGradient id="headGrad" x1="14" y1="12" x2="66" y2="56">
+              <stop offset="0%" stop-color="#7c3aed"/>
+              <stop offset="100%" stop-color="#4c1d95"/>
+            </linearGradient>
+            <linearGradient id="bodyGrad" x1="22" y1="52" x2="58" y2="80">
+              <stop offset="0%" stop-color="#6d28d9"/>
+              <stop offset="100%" stop-color="#4c1d95"/>
+            </linearGradient>
+            <linearGradient id="armGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7c3aed"/>
+              <stop offset="100%" stop-color="#5b21b6"/>
+            </linearGradient>
+            <radialGradient id="coreGrad">
+              <stop offset="0%" stop-color="#a78bfa"/>
+              <stop offset="100%" stop-color="#6d28d9"/>
+            </radialGradient>
+            <radialGradient id="antennaGrad">
+              <stop offset="0%" stop-color="#c084fc"/>
+              <stop offset="100%" stop-color="#8b5cf6"/>
+            </radialGradient>
+            <radialGradient id="glow">
+              <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+        </svg>
       </div>
     </div>
-    <!-- 气泡 -->
     <Transition name="bubble">
-      <div v-if="bubbleText" class="mascot-bubble">
-        {{ bubbleText }}
-      </div>
+      <div v-if="bubbleText" class="mascot-bubble">{{ bubbleText }}</div>
     </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-
-defineProps<{ hidden?: boolean }>()
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 const blinking = ref(false)
 const waving = ref(false)
 const isHappy = ref(true)
 const bubbleText = ref('')
 
+const eyeY = computed(() => blinking.value ? 34 : 32)
+const eyePupilY = computed(() => blinking.value ? 34 : 30)
+const mouthPath = computed(() =>
+  isHappy.value ? 'M 34 42 Q 40 48 46 42' : 'M 36 44 L 44 44'
+)
+
 const greetings = [
   '加油，你可以的！ 💪',
-  '今天也要元气满满哦~',
+  '今天也要元气满满~',
   '记得休息一下眼睛 👀',
-  '你已经很棒啦！',
-  '星火陪你一起学习 ✨',
-  '要喝水啦～',
-  '坚持就是胜利！',
+  '你已经很棒啦！ ✨',
+  '星火陪你一起学习~',
+  '要喝水啦 🥤',
+  '坚持就是胜利！ 🔥',
 ]
 
 let blinkTimer: ReturnType<typeof setInterval>
@@ -64,15 +112,15 @@ let waveTimer: ReturnType<typeof setInterval>
 function startBlink() {
   blinkTimer = setInterval(() => {
     blinking.value = true
-    setTimeout(() => { blinking.value = false }, 200)
+    setTimeout(() => { blinking.value = false }, 180)
   }, 3000 + Math.random() * 2000)
 }
 
 function startWave() {
   waveTimer = setInterval(() => {
     waving.value = true
-    setTimeout(() => { waving.value = false }, 1200)
-  }, 12000 + Math.random() * 8000)
+    setTimeout(() => { waving.value = false }, 1800)
+  }, 15000 + Math.random() * 10000)
 }
 
 function onMascotClick() {
@@ -80,7 +128,7 @@ function onMascotClick() {
   bubbleText.value = msg
   isHappy.value = true
   waving.value = true
-  setTimeout(() => { waving.value = false }, 1200)
+  setTimeout(() => { waving.value = false }, 1800)
   setTimeout(() => { bubbleText.value = '' }, 3500)
 }
 
@@ -90,7 +138,7 @@ onMounted(() => {
   setTimeout(() => {
     bubbleText.value = '嗨~ 有什么需要帮忙的吗？'
     setTimeout(() => { bubbleText.value = '' }, 4000)
-  }, 2000)
+  }, 2500)
 })
 
 onUnmounted(() => {
@@ -102,276 +150,47 @@ onUnmounted(() => {
 <style scoped>
 .mascot-wrap {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 16px;
+  right: 296px;
   z-index: 150;
-  transition: all 0.3s ease;
-}
-
-.mascot-wrap.mascot-hidden {
-  opacity: 0;
-  transform: translateY(20px);
-  pointer-events: none;
 }
 
 .mascot-body {
-  position: relative;
-  width: 72px;
-  height: 90px;
+  width: 64px;
+  height: 80px;
   cursor: pointer;
   transition: transform 0.2s;
 }
 
-.mascot-body:hover {
-  transform: scale(1.08);
-}
+.mascot-body:hover { transform: scale(1.06); }
+.mascot-body:active { transform: scale(0.96); }
 
-.mascot-body:active {
-  transform: scale(0.95);
-}
+.mascot-float { animation: mascotBob 4s ease-in-out infinite; }
 
-.mascot-float {
-  animation: mascotFloat 4s ease-in-out infinite;
-  position: relative;
-}
-
-@keyframes mascotFloat {
+@keyframes mascotBob {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-5px); }
 }
 
-/* 头部 */
-.mascot-head {
-  width: 52px;
-  height: 48px;
-  margin: 0 auto;
-  position: relative;
+.mascot-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 12px rgba(109, 40, 217, 0.35));
 }
 
-.mascot-antenna {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-  height: 10px;
-  background: linear-gradient(to top, rgba(139, 92, 246, 0.6), rgba(139, 92, 246, 0.2));
-}
-
-.antenna-ball {
-  position: absolute;
-  top: -5px;
-  left: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #c084fc, #8b5cf6);
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
-  animation: antennaPulse 2s ease-in-out infinite;
-}
-
-@keyframes antennaPulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(139, 92, 246, 0.4); }
-  50% { box-shadow: 0 0 14px rgba(139, 92, 246, 0.7); }
-}
-
-.mascot-face {
-  width: 52px;
-  height: 48px;
-  border-radius: 18px 18px 22px 22px;
-  background: linear-gradient(135deg, #7c3aed, #6d28d9 40%, #581c87);
-  box-shadow:
-    0 4px 16px rgba(109, 40, 217, 0.4),
-    inset 0 2px 0 rgba(255, 255, 255, 0.1),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
-  position: relative;
-  overflow: hidden;
-}
-
-.mascot-face::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  left: 8px;
-  width: 16px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* 眼睛 */
-.mascot-eye {
-  position: absolute;
-  top: 16px;
-  width: 10px;
-  height: 12px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #fff, #e0d4ff);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: height 0.1s;
-}
-
-.mascot-eye.left { left: 12px; }
-.mascot-eye.right { right: 12px; }
-
-.mascot-eye::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #1e1145;
-}
-
-.mascot-eye.blink {
-  height: 2px;
-  top: 21px;
-  border-radius: 4px;
-}
-
-/* 嘴巴 */
-.mascot-mouth {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 10px;
-  height: 5px;
-  border-radius: 0 0 8px 8px;
-  background: rgba(0, 0, 0, 0.25);
-  transition: all 0.2s;
-}
-
-.mascot-mouth.happy {
-  width: 14px;
-  height: 7px;
-  border-radius: 0 0 10px 10px;
-}
-
-/* 耳朵 */
-.mascot-ear {
-  position: absolute;
-  top: 14px;
-  width: 8px;
-  height: 14px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
-.left-ear { left: -4px; }
-.right-ear { right: -4px; }
-
-/* 身体 */
-.mascot-torso {
-  width: 44px;
-  height: 30px;
-  margin: 2px auto 0;
-  border-radius: 10px 10px 16px 16px;
-  background: linear-gradient(180deg, #6d28d9, #581c87);
-  box-shadow:
-    0 4px 12px rgba(88, 28, 135, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  position: relative;
-}
-
-.mascot-core {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.8), rgba(59, 130, 246, 0.4));
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-  animation: corePulse 2.5s ease-in-out infinite;
-}
-
-@keyframes corePulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(139, 92, 246, 0.4); transform: translateX(-50%) scale(1); }
-  50% { box-shadow: 0 0 16px rgba(139, 92, 246, 0.7); transform: translateX(-50%) scale(1.1); }
-}
-
-/* 手臂 */
-.mascot-arm {
-  position: absolute;
-  width: 10px;
-  height: 18px;
-  border-radius: 5px;
-  background: linear-gradient(180deg, #7c3aed, #6d28d9);
-  top: 4px;
-}
-
-.left-arm { left: -8px; transform: rotate(-8deg); }
-.right-arm { right: -8px; transform: rotate(8deg); transition: transform 0.3s ease; }
-.right-arm.wave {
-  animation: armWave 0.4s ease-in-out 3;
-}
-
-@keyframes armWave {
-  0%, 100% { transform: rotate(8deg); }
-  50% { transform: rotate(-25deg) translateY(-4px); }
-}
-
-/* 光晕 */
-.mascot-glow {
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60px;
-  height: 12px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(139, 92, 246, 0.15), transparent 70%);
-  filter: blur(4px);
-}
-
-/* 粒子 */
-.mascot-particles {
-  position: absolute;
-  inset: -10px;
-  pointer-events: none;
-}
-
-.m-particle {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(196, 181, 253, 0.4);
-  animation: particleDrift 5s ease-in-out infinite;
-  animation-delay: calc(var(--i) * -1s);
-}
-
-.m-particle:nth-child(1) { top: 10%; left: 15%; }
-.m-particle:nth-child(2) { top: 5%; right: 20%; }
-.m-particle:nth-child(3) { bottom: 30%; left: 5%; }
-.m-particle:nth-child(4) { bottom: 20%; right: 10%; }
-.m-particle:nth-child(5) { top: 40%; left: 80%; }
-
-@keyframes particleDrift {
-  0%, 100% { opacity: 0; transform: translateY(0) scale(0.5); }
-  30% { opacity: 0.6; transform: translateY(-8px) scale(1); }
-  70% { opacity: 0.3; transform: translateY(-14px) scale(0.8); }
-}
-
-/* 气泡 */
 .mascot-bubble {
   position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-  min-width: 140px;
-  max-width: 200px;
-  padding: 8px 14px;
-  border-radius: 14px 14px 4px 14px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.08));
+  bottom: calc(100% + 6px);
+  right: -10px;
+  min-width: 120px;
+  max-width: 180px;
+  padding: 8px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: rgba(12, 10, 24, 0.9);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(139, 92, 246, 0.2);
   color: rgba(196, 181, 253, 0.9);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   line-height: 1.5;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
@@ -381,7 +200,7 @@ onUnmounted(() => {
 .bubble-enter-active { transition: all 0.25s ease-out; }
 .bubble-leave-active { transition: all 0.15s ease-in; }
 .bubble-enter-from { opacity: 0; transform: translateY(6px) scale(0.9); }
-.bubble-leave-to { opacity: 0; transform: translateY(-4px) scale(0.95); }
+.bubble-leave-to { opacity: 0; transform: translateY(-4px); }
 
 @media (max-width: 1100px) {
   .mascot-wrap { display: none; }

@@ -166,6 +166,8 @@ export interface GroupChat {
   is_muted?: boolean                // v11: 免打扰
   group_remark?: string             // v11: 群备注（仅自己可见）
   show_member_nickname?: boolean    // v11: 是否显示群成员昵称
+  atmosphere_score?: number         // 学习氛围值 (0-100)
+  quick_replies?: string[]          // 群快捷回复建议
 }
 
 /** 动态可见时间范围设置 */
@@ -528,6 +530,8 @@ export function useCompanion() {
           { id: uid(), sender_id: 'spark_ai_001', sender_name: '星火AI', sender_avatar: '🌟', sender_type: 'ai', content: '别急！我可以帮大家整理复习重点 📝\n建议按这个顺序复习：\n1. 先过一遍课件框架\n2. 重点公式+定理推导\n3. 刷往年试题\n需要我帮忙整理哪科的知识点？', type: 'text', is_read: true, created_at: new Date(Date.now() - 900000).toISOString() },
         ],
         created_at: now(), unread: 0,
+        atmosphere_score: 86,
+        quick_replies: ['今天的复习计划', '上次笔记分享一下', '有什么不懂的可以问我'],
       }
       groups.value = [demoGroup]
       saveData(STORAGE_KEYS.groups, groups.value)

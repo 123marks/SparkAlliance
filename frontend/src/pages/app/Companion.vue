@@ -182,9 +182,22 @@
       <div v-if="isDragging" class="cp-drop-overlay"><div class="cp-drop-box">📁 释放以添加文件</div></div>
       <div class="cp-chat-hdr">
         <button class="cp-back" @click="closeRight">←</button>
-        <h3>{{ chatTitle }}</h3>
-        <span v-if="activeChat?.type==='group'" class="cp-hdr-sub">{{ activeGroup?.members.length }}人</span>
-        <button v-if="activeChat?.type==='private'||activeChat?.type==='group'" class="cp-hdr-btn cs-btn" :class="{active:showChatSettings}" @click="showChatSettings=!showChatSettings" title="聊天设置">☰</button>
+        <div class="cp-hdr-title-group">
+          <h3>{{ chatTitle }}<span v-if="activeChat?.type==='group'" class="cp-hdr-badge">群聊</span></h3>
+          <span v-if="activeChat?.type==='group'" class="cp-hdr-sub">{{ getOnlineMemberCount() }} 人在线 | {{ activeGroup?.members.length }} 人</span>
+        </div>
+        <div v-if="activeChat?.type==='group'" class="cp-hdr-actions">
+          <button class="cp-hdr-btn" title="置顶" @click="activeGroup && toggleChatPin('group', activeGroup.id)">📌</button>
+          <button class="cp-hdr-btn" title="搜索" @click="showToast('搜索消息')">🔍</button>
+          <button class="cp-hdr-btn" title="群成员" @click="showChatSettings=!showChatSettings">👥</button>
+          <button class="cp-hdr-btn cs-btn" :class="{active:showChatSettings}" @click="showChatSettings=!showChatSettings" title="更多">···</button>
+        </div>
+        <button v-else-if="activeChat?.type==='private'" class="cp-hdr-btn cs-btn" :class="{active:showChatSettings}" @click="showChatSettings=!showChatSettings" title="聊天设置">☰</button>
+        <div v-if="activeChat?.type==='group' && activeGroup?.atmosphere_score" class="cp-atmo-score">
+          <span class="cp-atmo-label">学习氛围值</span>
+          <div class="cp-atmo-bar"><div class="cp-atmo-fill" :style="{width: (activeGroup.atmosphere_score || 0) + '%'}"></div></div>
+          <span class="cp-atmo-val">⚡ {{ activeGroup.atmosphere_score }}<small>/100</small></span>
+        </div>
       </div>
       <!-- v6.9: 群公告横幅（聊天区域顶部，可关闭） -->
       <div v-if="activeChat?.type==='group' && activeGroup?.announcement && showAnnouncementBanner" class="cp-ann-banner">
@@ -222,11 +235,12 @@
                 <!-- 自己头像（右侧）— 始终使用最新 profile 头像 -->
                 <SparkAvatar v-if="msg.sender_id===myProfile?.spark_id" :avatar="myProfile?.avatar||''" :avatar-url="myProfile?.avatar_url||''" :name="myProfile?.nickname||''" size="sm" clickable class="cp-msg-av-self" @click="showSelfProfile" @dblclick="openAvatarPreview(myProfile?.avatar_url, myProfile?.avatar||'', myProfile?.nickname||'')" />
                 <div class="cp-msg-body">
-                  <!-- 他人消息：头像旁展示 群主/管理员 tag + 昵称 -->
+                  <!-- 他人消息：头像旁展示 群主/管理员 tag + 昵称 + 身份标签 -->
                   <div v-if="msg.sender_id!==myProfile?.spark_id" class="cp-msg-meta">
                     <span v-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
                     <span v-else-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='admin'" class="cp-role-tag admin">管理员</span>
-                    <span class="cp-msg-name">{{ resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name }}</span>
+                    <span class="cp-msg-name">{{ parseSenderNameAndTitle(resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name).name }}</span>
+                    <span v-if="parseSenderNameAndTitle(resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name).title" class="cp-title-tag">{{ parseSenderNameAndTitle(resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name).title }}</span>
                   </div>
                   <!-- 自己消息：群主/管理员角色 tag + 昵称 -->
                   <div
@@ -572,9 +586,13 @@
           <button @click="handleMultiDelete" class="del">🗑️ 删除</button>
           <button @click="multiSelectMode=false;selectedMsgIds=[]">取消</button>
         </div>
+        <!-- 快捷回复建议条 -->
+        <div v-if="activeChat?.type==='group' && activeGroup?.quick_replies?.length" class="cp-quick-replies">
+          <button v-for="qr in activeGroup.quick_replies" :key="qr" class="cp-qr-chip" @click="chatInput=qr;handleChatSend()">{{ qr }}</button>
+          <button class="cp-qr-chip cp-qr-refresh" @click="shuffleQuickReplies">🔄 换一换</button>
+        </div>
         <div class="cp-tools">
           <button @click="showEmoji=!showEmoji" :class="{active:showEmoji}">😊</button>
-          <button @click="fileInput?.click()">🖼️</button>
           <button @click="fileInput?.click()">📎</button>
           <button @click="toggleVoicePanel" :class="{active:showVoicePanel}">🎙️</button>
           <div class="cp-tools-r"><button @click="showToast('语音通话开发中')">📞</button><button @click="showToast('视频通话开发中')">📹</button></div>
@@ -3218,6 +3236,24 @@ function getGroupMsgRole(msg: ChatMsg): 'owner' | 'admin' | 'member' | null {
   const m = activeGroup.value.members.find(m => m.spark_id === msg.sender_id)
   return m?.role || null
 }
+function getOnlineMemberCount(): number {
+  return Math.max(1, Math.floor((activeGroup.value?.members.length || 1) * 0.5))
+}
+function parseSenderNameAndTitle(fullName: string): { name: string; title: string | null } {
+  const match = fullName.match(/^(.+?)[\s]*[（(](.+?)[）)]$/)
+  if (match) return { name: match[1], title: match[2] }
+  return { name: fullName, title: null }
+}
+const QUICK_REPLY_POOL = [
+  '今天的复习计划', '上次笔记分享一下', '有什么不懂的可以问我',
+  '这道题怎么做？', '考试范围出来了吗？', '有没有好的学习方法',
+  '一起去图书馆吗？', '今天的作业写了吗', '帮我看看这段代码',
+]
+function shuffleQuickReplies() {
+  if (!activeGroup.value) return
+  const shuffled = [...QUICK_REPLY_POOL].sort(() => Math.random() - 0.5)
+  activeGroup.value.quick_replies = shuffled.slice(0, 3)
+}
 /** 群成员展示名：避免昵称为空时只显示「群主」标签 */
 function resolveGroupMemberName(m: GroupChat['members'][0]) {
   const raw = (m.group_nickname || m.nickname || '').trim()
@@ -4056,9 +4092,25 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-av.lg{width:48px;height:48px;font-size:22px;border-radius:12px}
 /* 右侧主面板 */
 .cp-main{flex:1;display:flex;flex-direction:column;min-width:0;z-index:1;position:relative}
-.cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;background:rgba(8,6,18,.7);backdrop-filter:blur(20px)}
-.cp-chat-hdr h3{margin:0;font-size:14px;color:white;font-weight:600;flex:1}.cp-back{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px}
-.cp-hdr-sub{font-size:10px;color:rgba(255,255,255,.15)}.cp-hdr-btn{background:none;border:none;font-size:15px;cursor:pointer;padding:4px}
+.cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;background:rgba(8,6,18,.7);backdrop-filter:blur(20px);flex-wrap:wrap}
+.cp-hdr-title-group{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+.cp-chat-hdr h3{margin:0;font-size:14px;color:white;font-weight:600;display:flex;align-items:center;gap:6px}
+.cp-hdr-badge{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,.15);color:rgba(139,92,246,.8);font-weight:600}
+.cp-back{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px}
+.cp-hdr-sub{font-size:10px;color:rgba(255,255,255,.3)}
+.cp-hdr-actions{display:flex;gap:2px;align-items:center}
+.cp-hdr-btn{background:none;border:none;font-size:14px;cursor:pointer;padding:4px 6px;border-radius:6px;color:rgba(255,255,255,.3);transition:all .15s}.cp-hdr-btn:hover{color:rgba(255,255,255,.6);background:rgba(255,255,255,.03)}
+.cp-atmo-score{display:flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);border-radius:8px;margin-left:auto}
+.cp-atmo-label{font-size:10px;color:rgba(255,255,255,.4);white-space:nowrap}
+.cp-atmo-bar{width:48px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.cp-atmo-fill{height:100%;background:linear-gradient(90deg,rgba(139,92,246,.6),rgba(59,130,246,.6));border-radius:2px;transition:width .5s}
+.cp-atmo-val{font-size:11px;color:rgba(245,158,11,.8);font-weight:700;white-space:nowrap}.cp-atmo-val small{font-size:9px;color:rgba(255,255,255,.2);font-weight:normal}
+/* 快捷回复建议条 */
+.cp-quick-replies{display:flex;gap:6px;padding:6px 12px;overflow-x:auto;flex-shrink:0;border-top:1px solid rgba(255,255,255,.03)}
+.cp-quick-replies::-webkit-scrollbar{height:0}
+.cp-qr-chip{padding:5px 12px;border-radius:14px;border:1px solid rgba(139,92,246,.12);background:rgba(139,92,246,.04);color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.cp-qr-chip:hover{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.25);color:rgba(255,255,255,.8)}
+.cp-qr-refresh{border-color:rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
 /* ☰设置按钮高亮 */
 .cs-btn{font-size:16px;color:rgba(255,255,255,.25);border-radius:6px;transition:all .15s}.cs-btn:hover{color:rgba(255,255,255,.4);background:rgba(255,255,255,.02)}.cs-btn.active{color:rgba(139,92,246,.6);background:rgba(139,92,246,.06)}
 .cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px}.cp-messages::-webkit-scrollbar{width:2px}
@@ -4390,6 +4442,7 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-role-tag.admin{background:#10b981}
 .cp-role-tag.member{background:rgba(255,255,255,.08);color:rgba(255,255,255,.35);font-weight:normal}
 .cp-role-tag.sm{font-size:9px;padding:0 4px}
+.cp-title-tag{font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(59,130,246,.12);color:rgba(96,165,250,.85);font-weight:600;line-height:1.3}
 /* 时间分隔线 */
 .cp-time-sep{text-align:center;color:rgba(255,255,255,.18);font-size:10px;padding:8px 0;user-select:none;width:100%;align-self:center}
 /* @提及高亮 */

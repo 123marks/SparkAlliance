@@ -62,6 +62,7 @@
               <!-- 正常态：会话项 -->
               <div v-else class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
                 <span v-if="c.isPinned" class="pin-dot" title="已置顶">⭐</span>
+                <svg v-else class="sb-conv-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span class="sb-text">{{ c.title }}</span>
                 <span class="sb-time" v-if="c.updatedAt">{{ formatConvTime(c.updatedAt) }}</span>
                 <button class="sb-more" aria-label="会话操作菜单" @click.stop="toggleMenu(c.id)">⋯</button>
@@ -186,8 +187,11 @@
 
         <!-- 用户资料卡（精装版） -->
         <div class="sb-user-card-v2">
-          <div class="sb-uc-avatar">
-            <span class="sb-uc-avatar-icon">⚡</span>
+          <div class="sb-uc-avatar" v-if="userAvatarUrl">
+            <img :src="userAvatarUrl" class="sb-uc-avatar-img" alt="" />
+          </div>
+          <div class="sb-uc-avatar sb-uc-avatar-fallback" v-else>
+            <span>{{ (userName || '星')[0] }}</span>
           </div>
           <div class="sb-uc-info">
             <div class="sb-uc-name-row">
@@ -195,7 +199,7 @@
               <span class="sb-uc-level">● Lv.{{ userLevelComputed }}</span>
             </div>
             <div class="sb-uc-detail">连续陪伴 {{ streakDaysComputed }} 天</div>
-            <div class="sb-uc-school">🏫 星火大学</div>
+            <div class="sb-uc-school">🏫 星火大学 · 计算机学院</div>
             <div class="sb-uc-xp-row">
               <div class="sb-uc-xp-bar"><div class="sb-uc-xp-fill" :style="{ width: xpPercentComputed + '%' }"></div></div>
               <span class="sb-uc-xp-text">{{ userXPComputed }} / 2500 XP</span>
@@ -776,12 +780,42 @@ const studyTopics = [
   { icon: '🔧', label: '数据结构专题', prompt: '帮我总结数据结构与算法的核心考点' },
 ]
 
-const streakDaysComputed = computed(() => checkinStreak.value || 0)
+const userStatsStreak = ref(0)
+const userStatsWeeklyCompleted = ref(0)
+
+async function loadUserStats() {
+  const { data: userData } = await supabaseClient.auth.getUser()
+  if (!userData.user) return
+  try {
+    const { data: stats } = await supabaseClient
+      .from('user_stats')
+      .select('current_daily_streak')
+      .eq('user_id', userData.user.id)
+      .maybeSingle()
+    if (stats?.current_daily_streak) userStatsStreak.value = stats.current_daily_streak
+
+    const weekStart = new Date()
+    const day = weekStart.getDay()
+    weekStart.setDate(weekStart.getDate() - day + (day === 0 ? -6 : 1))
+    weekStart.setHours(0, 0, 0, 0)
+    const { count } = await supabaseClient
+      .from('planner_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userData.user.id)
+      .eq('is_completed', true)
+      .gte('due_date', weekStart.toISOString().slice(0, 10))
+    userStatsWeeklyCompleted.value = count || 0
+  } catch (e) {
+    console.warn('[Chat] stats load fallback:', e)
+  }
+}
+
+const streakDaysComputed = computed(() => Math.max(checkinStreak.value, userStatsStreak.value))
 const userLevelComputed = computed(() => {
-  const base = streakDaysComputed.value * 15 + 50
-  return Math.max(1, Math.min(99, Math.floor(base / 100) + 1))
+  const totalXP = streakDaysComputed.value * 15 + userStatsWeeklyCompleted.value * 50
+  return Math.max(1, Math.min(99, Math.floor(totalXP / 100) + 1))
 })
-const userXPComputed = computed(() => (streakDaysComputed.value * 15 + 50) % 2500)
+const userXPComputed = computed(() => (streakDaysComputed.value * 15 + userStatsWeeklyCompleted.value * 50) % 2500)
 const xpPercentComputed = computed(() => Math.min(100, Math.round((userXPComputed.value / 2500) * 100)))
 
 function formatRelativeTime(dateStr: string): string {
@@ -859,7 +893,12 @@ const sbSearchQuery = ref('')
 const sbSearchResults = computed(() => sbSearchQuery.value.trim() ? searchConversations(sbSearchQuery.value) : [])
 const sbShowWorkflows = ref(false)
 const userName = ref('')
-supabaseClient.auth.getUser().then(({ data }) => { userName.value = data.user?.user_metadata?.display_name || data.user?.email?.split('@')[0] || '' })
+const userAvatarUrl = ref('')
+supabaseClient.auth.getUser().then(({ data }) => {
+  const meta = data.user?.user_metadata
+  userName.value = meta?.nickname || meta?.display_name || data.user?.email?.split('@')[0] || '星火同学'
+  userAvatarUrl.value = meta?.avatar_url || ''
+})
 
 // v9: 会话 ... 菜单
 const openMenuId = ref<string | null>(null)
@@ -1997,6 +2036,7 @@ onMounted(() => {
   window.addEventListener('offline', handleOffline)
   window.addEventListener('keydown', onGlobalKeyDown)
   document.addEventListener('click', onGlobalClick)
+  loadUserStats()
   // 读取缓存统计用于 UI 展示
   const stats = getCacheStats()
   if (stats.hits > 0) console.log(`[SparkCache] 历史累计命中 ${stats.hits} 次，缓存大小 ${stats.size}`)
@@ -2423,8 +2463,9 @@ async function handleInheritMemory() {
 .sb-topic-icon { font-size:13px; }
 
 .sb-user-card-v2 { display:flex; gap:10px; padding:10px; border-radius:12px; background:linear-gradient(135deg, rgba(139,92,246,.04), rgba(59,130,246,.02)); border:1px solid rgba(139,92,246,.06); margin-top:6px; }
-.sb-uc-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #6d28d9, #8b5cf6); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(139,92,246,.3); }
-.sb-uc-avatar-icon { font-size:16px; }
+.sb-uc-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #6d28d9, #8b5cf6); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(139,92,246,.3); overflow:hidden; }
+.sb-uc-avatar-img { width:100%; height:100%; object-fit:cover; }
+.sb-uc-avatar-fallback span { font-size:15px; font-weight:700; color:white; }
 .sb-uc-info { flex:1; min-width:0; }
 .sb-uc-name-row { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
 .sb-uc-name { font-size:12px; font-weight:700; color:rgba(255,255,255,.65); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -2850,6 +2891,8 @@ async function handleInheritMemory() {
 
 .sb-item { position:relative; }
 .pin-dot { font-size:10px; margin-right:4px; flex-shrink:0; }
+.sb-conv-icon { flex-shrink:0; color:rgba(255,255,255,.1); margin-right:2px; }
+.sb-item.active .sb-conv-icon { color:rgba(139,92,246,.4); }
 .sb-time { font-size:9px; color:rgba(255,255,255,.1); flex-shrink:0; margin-left:4px; font-variant-numeric:tabular-nums; }
 .sb-item:hover .sb-time { display:none; }
 .sb-more { opacity:0; background:none; border:none; color:rgba(255,255,255,.25); font-size:13px; cursor:pointer; padding:0 4px; border-radius:4px; }
