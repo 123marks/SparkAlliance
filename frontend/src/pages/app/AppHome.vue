@@ -1299,7 +1299,7 @@ watch(
 
 .ring-bg {
   fill: none;
-  stroke: rgba(255,255,255,0.06);
+  stroke: rgba(255,255,255,0.08);
   stroke-width: 8;
 }
 
@@ -1312,6 +1312,7 @@ watch(
   transform: rotate(-90deg);
   transform-origin: center;
   transition: stroke-dashoffset 0.8s ease;
+  filter: drop-shadow(0 0 6px rgba(139,92,246,0.3));
 }
 
 .ring-label {
