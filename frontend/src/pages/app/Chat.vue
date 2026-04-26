@@ -163,8 +163,33 @@
       <header class="top-bar">
         <button class="menu-btn" aria-label="切换侧边栏" @click="sidebarOpen = !sidebarOpen">☰</button>
         <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
+
+        <!-- 顶栏中部控件组 -->
+        <div class="top-center">
+          <!-- 模型选择 -->
+          <div class="top-pill" :title="`当前模型：${currentModel}`">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+            <span>{{ currentModel || 'DeepSeek-R1' }}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <!-- 模式切换 -->
+          <div class="top-pill" @click="chatMode = chatMode === 'general' ? 'study' : chatMode === 'study' ? 'creative' : 'general'">
+            <span>{{ chatMode === 'general' ? '通用模式' : chatMode === 'study' ? '学习模式' : '创意模式' }}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <!-- 记忆开关 -->
+          <div class="top-pill top-pill-toggle" :class="{ active: memoryEnabled }" @click="memoryEnabled = !memoryEnabled">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span>记忆{{ memoryEnabled ? '已开启' : '已关闭' }}</span>
+          </div>
+          <!-- 专注模式 -->
+          <div class="top-pill top-pill-toggle" :class="{ active: focusModeOn }" @click="focusModeOn = !focusModeOn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <span>专注模式</span>
+          </div>
+        </div>
+
         <div class="top-right">
-          <!-- v11: 上下文窗口用量指示器（达到 80% 触发建议摘要；达到 100% 自动后台摘要） -->
           <div
             class="ctx-gauge"
             :class="{ warn: contextUsage.ratio > 0.8, full: contextUsage.ratio >= 1, summarizing }"
@@ -176,7 +201,6 @@
             <span class="ctx-bar"><span class="ctx-fill" :class="{ warn: contextUsage.ratio > 0.8 }" :style="{ width: (contextUsage.ratio * 100).toFixed(0) + '%' }"></span></span>
             <span class="ctx-num">{{ contextUsage.used }}/{{ contextUsage.limit }}</span>
           </div>
-          <!-- v11: 新开对话并继承记忆（让 AI 还记得之前聊过什么） -->
           <button
             v-if="contextUsage.used >= 8"
             class="top-inherit"
@@ -187,9 +211,7 @@
             <span v-if="summarizing">压缩中…</span>
             <span v-else>🧠 续聊</span>
           </button>
-          <!-- 离线指示 -->
           <span v-if="!isOnline" class="offline-dot" title="离线">● 离线</span>
-          <!-- 收藏夹入口 -->
           <button class="top-fav" aria-label="查看收藏消息" :title="`收藏夹（${favorites.length}）`" @click="showFavorites = true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             <span v-if="favorites.length" class="top-fav-count">{{ favorites.length }}</span>
@@ -502,6 +524,19 @@
       </div>
     </main>
 
+    <!-- 右侧智能面板 -->
+    <ChatRightPanel
+      @checkin="handleCheckinFromPanel"
+      @send-message="handleQuick"
+    />
+
+    <!-- 签到弹窗 -->
+    <CheckinModal
+      :visible="showCheckinModal"
+      @close="showCheckinModal = false"
+      @success="onCheckinSuccess"
+    />
+
     <!-- v13: 附件预览 Lightbox（图片放大 / 文本预览） -->
     <Teleport to="body">
       <Transition name="fade">
@@ -620,6 +655,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import ChatRightPanel from '../../components/chat/ChatRightPanel.vue'
+import CheckinModal from '../../components/chat/CheckinModal.vue'
+import { useCheckin } from '../../composables/useCheckin'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, WORKFLOW_PRESETS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode, Conversation } from '../../composables/useSparkAI'
 import { useSchedule } from '../../composables/useSchedule'
@@ -635,6 +673,18 @@ import { readCache, writeCache, makeCacheKey, fingerprintContext, replayCachedSt
 import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } from '../../utils/emojiPack'
 
 const router = useRouter()
+const { checkinToday, isCheckedInToday: checkinDone } = useCheckin()
+
+const showCheckinModal = ref(false)
+
+function handleCheckinFromPanel() {
+  showCheckinModal.value = true
+}
+
+function onCheckinSuccess(record: { streak_days: number }) {
+  toast(`✅ 签到成功！连续 ${record.streak_days} 天`)
+}
+
 const {
   error: aiError, currentModel,
   conversations, currentConversationId, favorites, summarizingConvId,
@@ -663,6 +713,9 @@ const { createEvent } = useSchedule()
 const { createGoal } = usePlanner()
 
 const sidebarOpen = ref(false)
+const chatMode = ref<'general' | 'study' | 'creative'>('general')
+const memoryEnabled = ref(true)
+const focusModeOn = ref(false)
 const inputText = ref('')
 const iFocus = ref(false)
 const scrollRef = ref<HTMLElement|null>(null)
@@ -2231,6 +2284,7 @@ async function handleInheritMemory() {
 
 <style scoped>
 .chat-layout { display:flex; height:calc(100vh - 72px); background:rgba(10,8,20,0.78); position:relative; overflow:hidden; }
+.chat-layout > .chat-right-panel { flex-shrink:0; }
 .chat-layout > .cosmic-bg { position:absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
 .fade-enter-active,.fade-leave-active { transition:opacity .2s; } .fade-enter-from,.fade-leave-to { opacity:0; }
 .toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); padding:8px 20px; border-radius:10px; background:rgba(139,92,246,.12); backdrop-filter:blur(12px); border:1px solid rgba(139,92,246,.15); color:rgba(139,92,246,.9); font-size:12px; font-weight:600; z-index:200; white-space:nowrap; }
@@ -2711,7 +2765,13 @@ async function handleInheritMemory() {
 .sb-hit { font-size:10px; color:rgba(255,255,255,.3); line-height:1.45; margin-top:2px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 
 /* ============ v9: 顶部指示器 ============ */
-.top-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.top-center { display:flex; align-items:center; gap:6px; margin-left:16px; flex:1; min-width:0; }
+.top-pill { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:8px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); color:rgba(255,255,255,.45); font-size:11px; font-weight:500; cursor:pointer; transition:all .15s; white-space:nowrap; user-select:none; }
+.top-pill:hover { background:rgba(139,92,246,.06); border-color:rgba(139,92,246,.12); color:rgba(255,255,255,.65); }
+.top-pill-toggle { border-color:rgba(255,255,255,.04); }
+.top-pill-toggle.active { background:rgba(16,185,129,.06); border-color:rgba(16,185,129,.15); color:rgba(52,211,153,.8); }
+.top-pill svg { flex-shrink:0; }
+.top-right { margin-left:auto; display:flex; align-items:center; gap:10px; flex-shrink:0; }
 .ctx-gauge { display:flex; align-items:center; gap:6px; padding:3px 10px; border-radius:8px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.06); }
 .ctx-label { font-size:10px; color:rgba(255,255,255,.35); font-weight:600; }
 .ctx-bar { width:42px; height:4px; border-radius:2px; background:rgba(255,255,255,.05); overflow:hidden; }
