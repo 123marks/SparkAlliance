@@ -12,12 +12,12 @@
       </div>
     </section>
 
-    <!-- 第二行：统计卡片 -->
+    <!-- 第二行：统计卡片（6列） -->
     <section class="stats-strip">
-      <div v-for="stat in miniStats.slice(0, 4)" :key="stat.label" class="stat-chip">
+      <div v-for="stat in miniStats" :key="stat.label" class="stat-chip">
         <div class="stat-icon" :style="{ color: stat.color, background: stat.color + '18' }" v-html="stat.svg"></div>
         <div class="stat-text">
-          <strong>{{ stat.value }}</strong>
+          <strong>{{ stat.value }}<sub v-if="stat.sub" class="stat-unit">{{ stat.sub }}</sub></strong>
           <span>{{ stat.label }}</span>
         </div>
       </div>
@@ -36,7 +36,10 @@
             <strong>{{ action.title }}</strong>
             <span>{{ action.description }}</span>
           </div>
-          <span class="action-cta">去处理</span>
+          <div class="action-right">
+            <span class="priority-tag" :class="`p-${action.emphasis}`">{{ action.emphasis === 'high' ? '高优先级' : action.emphasis === 'medium' ? '中优先级' : '低优先级' }}</span>
+            <span class="action-cta">去处理</span>
+          </div>
         </router-link>
         <p v-if="dashboardActions.length === 0" class="empty">今天暂无紧急事项，专注你最重要的目标吧。</p>
       </div>
@@ -729,9 +732,17 @@ watch(
 
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
   margin-bottom: 20px;
+}
+
+.stat-unit {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.4);
+  margin-left: 2px;
+  vertical-align: baseline;
 }
 
 .stat-chip {
@@ -884,6 +895,35 @@ watch(
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.action-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.priority-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.priority-tag.p-high {
+  background: rgba(239,68,68,0.1);
+  color: #f87171;
+}
+
+.priority-tag.p-medium {
+  background: rgba(59,130,246,0.08);
+  color: rgba(96,165,250,0.8);
+}
+
+.priority-tag.p-low {
+  background: rgba(245,158,11,0.06);
+  color: rgba(245,158,11,0.5);
 }
 
 .action-cta {
@@ -1318,7 +1358,7 @@ watch(
   }
 
   .stats-strip {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
