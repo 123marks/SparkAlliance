@@ -5,6 +5,8 @@
       <div class="planet-img-wrap">
         <img src="/hero-planet.png" alt="" class="planet-img" />
       </div>
+      <!-- 一线天/星空线 -->
+      <div class="hero-horizon"></div>
       <!-- 星云层 -->
       <div class="hero-nebula-core"></div>
       <div class="hero-nebula-mid"></div>
@@ -20,7 +22,7 @@
       </div>
       <!-- 内容 -->
       <div class="hero-left">
-        <h1 class="hero-greeting">{{ greeting }}，SparkAlliance ✦</h1>
+        <h1 class="hero-greeting">{{ greeting }}，SparkAlliance</h1>
         <p class="hero-date">{{ currentDate }}</p>
         <p class="hero-insight">AI 洞察：{{ aiInsight }}</p>
       </div>
@@ -181,26 +183,42 @@
       <div class="card growth-card">
         <div class="card-head"><h3>成长进度</h3></div>
         <div class="growth-level">
-          <div class="gl-avatar"><span class="gl-icon">🔥</span></div>
+          <div class="gl-avatar">
+            <img v-if="user?.user_metadata?.avatar_url" :src="user.user_metadata.avatar_url" class="gl-avatar-img" />
+            <span v-else class="gl-icon">🔥</span>
+          </div>
           <div class="gl-info">
-            <div class="gl-name">Lv.{{ userLevel }} <span class="gl-title">星火探索者</span></div>
+            <div class="gl-name">Lv.{{ userLevel }} <span class="gl-title">{{ userName === '同学' ? '星火探索者' : userName }}</span></div>
             <div class="gl-xp">{{ userXP }} / {{ nextLevelXP }} XP</div>
             <div class="gl-bar"><div class="gl-bar-fill" :style="{ width: xpPercent + '%' }"></div></div>
           </div>
         </div>
         <div class="gl-stats">
-          <div><strong>🔥 {{ dashboardSnapshot.streakDays }} 天</strong><span>连续天数</span></div>
-          <div><strong>📅 14 天</strong><span>最长连续</span></div>
+          <div><strong>连续 {{ dashboardSnapshot.streakDays }} 天</strong><span>连续天数</span></div>
+          <div><strong>最长 14 天</strong><span>最长连续</span></div>
         </div>
+        <p class="gl-hint">再获取 {{ nextLevelXP - userXP }} XP 升级！</p>
       </div>
       <!-- 成就徽章 -->
       <div class="card badge-card">
         <div class="card-head"><h3>成就徽章</h3><router-link to="/app/profile" class="more-link">查看全部</router-link></div>
-        <div class="badge-grid">
-          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"><span class="badge-icon">🏆</span></div><span class="badge-name">高效达人</span></div>
-          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#8b5cf6,#3b82f6)"><span class="badge-icon">⭐</span></div><span class="badge-name">学习之星</span></div>
-          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#10b981,#06b6d4)"><span class="badge-icon">🤝</span></div><span class="badge-name">交流先锋</span></div>
-          <div class="badge-item locked"><div class="badge-icon-wrap" style="background:rgba(255,255,255,0.06)"><span class="badge-icon">🌟</span></div><span class="badge-name">探索之星</span></div>
+        <div class="badge-row">
+          <div class="badge-item-v2 earned">
+            <div class="badge-circle" style="background:linear-gradient(135deg,#f59e0b,#ef4444);box-shadow:0 4px 20px rgba(245,158,11,0.3)"><span>🏆</span></div>
+            <span>高效达人</span>
+          </div>
+          <div class="badge-item-v2 earned">
+            <div class="badge-circle" style="background:linear-gradient(135deg,#8b5cf6,#3b82f6);box-shadow:0 4px 20px rgba(139,92,246,0.3)"><span>⭐</span></div>
+            <span>学习之星</span>
+          </div>
+          <div class="badge-item-v2 earned">
+            <div class="badge-circle" style="background:linear-gradient(135deg,#10b981,#06b6d4);box-shadow:0 4px 20px rgba(16,185,129,0.3)"><span>🤝</span></div>
+            <span>交流先锋</span>
+          </div>
+          <div class="badge-item-v2 locked">
+            <div class="badge-circle" style="background:rgba(255,255,255,0.04)"><span>🌟</span></div>
+            <span>探索之星</span>
+          </div>
         </div>
       </div>
       <div class="card quote-card">
@@ -758,6 +776,28 @@ watch(
   100% { transform: translate(3px, -3px) scale(0.99); }
 }
 
+/* 一线天效果 */
+.hero-horizon {
+  position: absolute;
+  bottom: 25%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(168,85,247,0.15) 20%, rgba(96,165,250,0.25) 50%, rgba(168,85,247,0.15) 80%, transparent 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+.hero-horizon::before {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 10%;
+  right: 10%;
+  height: 8px;
+  background: linear-gradient(90deg, transparent, rgba(168,85,247,0.06) 30%, rgba(96,165,250,0.08) 50%, rgba(168,85,247,0.06) 70%, transparent);
+  filter: blur(4px);
+}
+
 /* 星云层 */
 .hero-nebula-core {
   position: absolute; top: -20%; right: 15%; width: 300px; height: 300px;
@@ -1292,9 +1332,9 @@ watch(
 
 .ring-wrap {
   position: relative;
-  width: 120px;
-  height: 120px;
-  margin: 10px auto 16px;
+  width: 130px;
+  height: 130px;
+  margin: 8px auto 12px;
 }
 
 .ring {
@@ -1406,6 +1446,7 @@ watch(
 .growth-level { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
 .gl-avatar { width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #8b5cf6, #f59e0b); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .gl-icon { font-size: 22px; }
+.gl-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 14px; }
 .gl-info { flex: 1; min-width: 0; }
 .gl-name { font-size: 14px; font-weight: 700; color: var(--color-text-primary); }
 .gl-title { font-weight: 400; color: var(--color-text-muted); font-size: 12px; margin-left: 4px; }
@@ -1420,22 +1461,46 @@ watch(
 
 /* 成就徽章 */
 .badge-card { background: linear-gradient(135deg, rgba(236,72,153,0.05), rgba(139,92,246,0.04)); }
-.badge-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.badge-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; border-radius: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); transition: transform 0.2s; }
-.badge-item.earned { border-color: rgba(245,197,94,0.15); }
-.badge-item.locked { opacity: 0.35; }
-.badge-item:hover { transform: translateY(-2px); }
-.badge-icon-wrap {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+.badge-row {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
 }
-.badge-icon { font-size: 20px; }
-.badge-name { font-size: 10px; color: var(--color-text-muted); }
+.badge-item-v2 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s;
+}
+.badge-item-v2:hover { transform: translateY(-3px); }
+.badge-item-v2.locked { opacity: 0.3; }
+.badge-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.badge-item-v2:hover .badge-circle {
+  transform: scale(1.08);
+}
+.badge-item-v2 > span {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
 
 .quote-card {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(79, 142, 247, 0.03)), rgba(12, 10, 24, 0.65);
-  border-color: rgba(139, 92, 246, 0.1);
+  background:
+    radial-gradient(ellipse at 90% 20%, rgba(168,85,247,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 10% 80%, rgba(96,165,250,0.06) 0%, transparent 50%),
+    linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(79, 142, 247, 0.04)),
+    rgba(15, 17, 24, 0.7);
+  border-color: rgba(139, 92, 246, 0.12);
 }
 
 .quote-tag {
