@@ -114,6 +114,48 @@
           {{ showArchived ? '▼' : '▶' }} 已归档（{{ archivedCount }}）
         </button>
       </div>
+
+      <!-- 侧边栏底部功能区 -->
+      <div class="sb-bottom">
+        <!-- 工作流快捷入口 -->
+        <div class="sb-section">
+          <div class="sb-section-head" @click="sbShowWorkflows = !sbShowWorkflows">
+            <span>🚀 工作流</span>
+            <span class="sb-section-toggle">{{ sbShowWorkflows ? '▼' : '▶' }}</span>
+          </div>
+          <Transition name="sb-fold">
+            <div v-if="sbShowWorkflows" class="sb-section-body">
+              <button v-for="w in WORKFLOW_PRESETS.slice(0, 6)" :key="w.key" class="sb-wf-item" @click="showWorkflow = true; expandedWorkflow = w.key">
+                <span>{{ w.icon }}</span>{{ w.label }}
+              </button>
+              <button class="sb-wf-item sb-wf-more" @click="showWorkflow = true">
+                <span>⋯</span>全部工作流
+              </button>
+            </div>
+          </Transition>
+        </div>
+
+        <!-- 快捷能力 -->
+        <div class="sb-section">
+          <div class="sb-section-head">
+            <span>⚡ 快捷能力</span>
+          </div>
+          <div class="sb-abilities">
+            <button v-for="t in ABILITY_TOOLS" :key="t.key" class="sb-ability-chip" :class="{ 'sb-ability-active': activeAbilityKey === t.key }" @click="activateAbility(t)">
+              {{ t.icon }} {{ t.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 用户资料卡 -->
+        <div class="sb-user-card">
+          <div class="sb-user-avatar">⚡</div>
+          <div class="sb-user-info">
+            <div class="sb-user-name">{{ userName || '星火同学' }}</div>
+            <div class="sb-user-meta">{{ conversations.length }} 次对话 · {{ favorites.length }} 条收藏</div>
+          </div>
+        </div>
+      </div>
     </aside>
 
     <!-- 主区域 -->
@@ -672,6 +714,9 @@ const actionCards = ref<ACard[]>([])
 // v9: 侧边栏搜索
 const sbSearchQuery = ref('')
 const sbSearchResults = computed(() => sbSearchQuery.value.trim() ? searchConversations(sbSearchQuery.value) : [])
+const sbShowWorkflows = ref(false)
+const userName = ref('')
+supabaseClient.auth.getUser().then(({ data }) => { userName.value = data.user?.user_metadata?.display_name || data.user?.email?.split('@')[0] || '' })
 
 // v9: 会话 ... 菜单
 const openMenuId = ref<string | null>(null)
@@ -2200,6 +2245,30 @@ async function handleInheritMemory() {
 .sb-item { display:flex; align-items:center; padding:6px 8px; border-radius:6px; color:rgba(255,255,255,.25); font-size:12px; cursor:pointer; transition:all .15s; } .sb-item:hover { background:rgba(255,255,255,.02); color:rgba(255,255,255,.4); } .sb-item.active { background:rgba(139,92,246,.05); color:rgba(139,92,246,.6); }
 .sb-text { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .sb-del { opacity:0; background:none; border:none; color:rgba(255,255,255,.1); font-size:14px; cursor:pointer; } .sb-item:hover .sb-del { opacity:1; }
 .sb-empty { text-align:center; padding:30px 0; color:rgba(255,255,255,.06); font-size:11px; }
+
+/* 侧边栏底部功能区 */
+.sb-bottom { border-top:1px solid rgba(255,255,255,.03); padding:6px 8px 8px; flex-shrink:0; }
+.sb-section { margin-bottom:6px; }
+.sb-section-head { display:flex; align-items:center; justify-content:space-between; padding:4px 6px; font-size:10px; font-weight:700; color:rgba(255,255,255,.2); cursor:pointer; border-radius:4px; transition:all .15s; letter-spacing:.5px; }
+.sb-section-head:hover { color:rgba(255,255,255,.35); background:rgba(255,255,255,.015); }
+.sb-section-toggle { font-size:8px; color:rgba(255,255,255,.1); }
+.sb-section-body { padding:3px 0; }
+.sb-wf-item { display:flex; align-items:center; gap:5px; width:100%; padding:4px 8px; border:none; background:none; border-radius:5px; font-size:11px; color:rgba(255,255,255,.2); cursor:pointer; transition:all .15s; text-align:left; }
+.sb-wf-item:hover { background:rgba(139,92,246,.04); color:rgba(139,92,246,.55); }
+.sb-wf-more { color:rgba(255,255,255,.1); font-style:italic; }
+.sb-fold-enter-active { transition:all .2s ease-out; } .sb-fold-leave-active { transition:all .15s ease-in; }
+.sb-fold-enter-from,.sb-fold-leave-to { opacity:0; max-height:0; overflow:hidden; } .sb-fold-enter-to,.sb-fold-leave-from { opacity:1; max-height:200px; }
+
+.sb-abilities { display:flex; flex-wrap:wrap; gap:3px; padding:3px 2px; }
+.sb-ability-chip { padding:3px 8px; border-radius:12px; border:1px solid rgba(255,255,255,.03); background:rgba(255,255,255,.01); font-size:10px; color:rgba(255,255,255,.18); cursor:pointer; transition:all .18s; white-space:nowrap; }
+.sb-ability-chip:hover { background:rgba(139,92,246,.04); color:rgba(139,92,246,.5); border-color:rgba(139,92,246,.1); }
+.sb-ability-active { background:rgba(139,92,246,.1) !important; color:rgba(139,92,246,.8) !important; border-color:rgba(139,92,246,.25) !important; }
+
+.sb-user-card { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background:rgba(139,92,246,.02); border:1px solid rgba(139,92,246,.04); margin-top:4px; }
+.sb-user-avatar { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1)); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.sb-user-info { flex:1; min-width:0; }
+.sb-user-name { font-size:12px; font-weight:700; color:rgba(255,255,255,.5); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-user-meta { font-size:9px; color:rgba(255,255,255,.12); margin-top:1px; }
 
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; position:relative; z-index:1; }
 .top-bar { height:42px; border-bottom:1px solid rgba(255,255,255,.03); display:flex; align-items:center; padding:0 16px; flex-shrink:0; }

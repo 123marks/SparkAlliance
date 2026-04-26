@@ -960,13 +960,16 @@ function toRoman(n: number): string {
 /* ====== 全局基础 ====== */
 .tarot-realm {
   width: 100%;
-  height: 100%;
   min-height: calc(100vh - 56px);
   background: #06030f;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: white;
   position: relative;
 }
+
+.tarot-realm::-webkit-scrollbar { width: 4px }
+.tarot-realm::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 2px }
 
 .bg-particles {
   position: absolute;
@@ -1219,13 +1222,16 @@ function toRoman(n: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 24px 40px;
+  padding: 0 40px 40px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ====== 阶段1: 开始 ====== */
 .phase-input {
   width: 100%;
-  max-width: 560px;
+  max-width: 580px;
+  margin: 0 auto;
 }
 
 .input-scene {
@@ -1482,7 +1488,8 @@ function toRoman(n: number): string {
 /* ====== 阶段2: 确认 ====== */
 .phase-confirm {
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 .analyzing-orb {
@@ -1643,6 +1650,8 @@ function toRoman(n: number): string {
 /* ====== 阶段3: 旋转牌阵 ====== */
 .phase-carousel {
   width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1991,7 +2000,8 @@ function toRoman(n: number): string {
 /* ====== 阶段4: 结果 ====== */
 .phase-result {
   width: 100%;
-  max-width: 800px;
+  max-width: 960px;
+  margin: 0 auto;
 }
 
 .result-immersive {
@@ -2575,37 +2585,9 @@ function toRoman(n: number): string {
   .rc-card { width: 155px; height: 240px }
 }
 
-@media (min-width: 1024px) {
-  .result-immersive {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 40px;
-    max-width: 960px;
-  }
-
-  .ri-card-section {
-    flex-shrink: 0;
-    position: sticky;
-    top: 20px;
-  }
-
+@media (min-width: 900px) {
   .ri-reading-section {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .keyword-wings {
-    position: relative;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 16px;
-  }
-
-  .kw-left, .kw-right {
-    flex-direction: row;
-    justify-content: center;
-    padding: 0;
+    max-width: 680px;
   }
 }
 </style>
