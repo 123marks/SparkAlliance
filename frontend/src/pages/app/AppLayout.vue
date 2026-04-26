@@ -193,34 +193,44 @@
           </div>
         </nav>
 
-        <!-- 一键专注模块 — 仅主控台显示 -->
-        <div class="focus-widget" v-show="!sidebarCollapsed && isHomePage">
-          <div class="focus-header">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            <span class="focus-title">一键专注</span>
-          </div>
-          <p class="focus-desc">沉浸当下，提升专注力</p>
-          <button class="focus-start-btn" type="button" @click="startFocusMode">开始专注</button>
-          <div class="focus-timer-select">
+        <!-- 侧边栏底部工具区 — 可折叠 -->
+        <div class="sidebar-tools" v-show="!sidebarCollapsed">
+          <button class="tools-toggle" @click="toolsExpanded = !toolsExpanded">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            <select v-model="focusDuration" class="focus-select">
-              <option :value="5">5 分钟</option>
-              <option :value="15">15 分钟</option>
-              <option :value="25">25 分钟</option>
-              <option :value="45">45 分钟</option>
-              <option :value="60">60 分钟</option>
-            </select>
-          </div>
+            <span>一键专注</span>
+            <svg class="tools-chevron" :class="{ expanded: toolsExpanded }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+
+          <Transition name="tools-slide">
+            <div v-if="toolsExpanded" class="tools-content">
+              <p class="focus-desc">沉浸当下，提升专注力</p>
+              <button class="focus-start-btn" type="button" @click="startFocusMode">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                开始专注
+              </button>
+              <div class="focus-timer-select">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <select v-model="focusDuration" class="focus-select">
+                  <option :value="5">5 分钟</option>
+                  <option :value="15">15 分钟</option>
+                  <option :value="25">25 分钟</option>
+                  <option :value="45">45 分钟</option>
+                  <option :value="60">60 分钟</option>
+                </select>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+          </Transition>
         </div>
 
-        <!-- 今日能量值 — 仅主控台显示 -->
-        <div class="energy-widget" v-show="!sidebarCollapsed && isHomePage">
+        <!-- 今日能量值 — 常驻 -->
+        <div class="energy-widget" v-show="!sidebarCollapsed">
           <div class="energy-header">
             <span class="energy-label">今日能量值</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:rgba(255,255,255,0.25);cursor:help"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:rgba(255,255,255,0.2);cursor:help"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
           </div>
-          <div class="energy-display">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+          <div class="energy-row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><defs><linearGradient id="eGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient></defs><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="url(#eGrad)"></path></svg>
             <span class="energy-value">{{ energyValue }}</span>
             <span class="energy-max">/ 100</span>
           </div>
@@ -283,6 +293,7 @@ const showNotifPanel = ref(false)
 const sidebarCollapsed = ref(false)
 const searchQuery = ref('')
 const focusDuration = ref(25)
+const toolsExpanded = ref(true)
 const selectedCampus = ref('default')
 const { user } = useAuth()
 
@@ -768,28 +779,48 @@ const handleLogout = async () => {
   transform: translateY(-50%) translateX(0);
 }
 
-/* 一键专注模块 */
-.focus-widget {
-  margin: 8px 10px;
-  padding: 14px;
+/* 侧边栏工具区 */
+.sidebar-tools {
+  margin: 6px 10px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.04));
-  border: 1px solid rgba(139,92,246,0.1);
+  background: linear-gradient(135deg, rgba(139,92,246,0.06), rgba(59,130,246,0.03));
+  border: 1px solid rgba(139,92,246,0.08);
+  overflow: hidden;
 }
-.focus-header {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+.tools-toggle {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px;
+  background: none; border: none;
+  color: var(--color-text-primary);
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
 }
-.focus-title {
-  font-size: 13px; font-weight: 700; color: var(--color-text-primary);
+.tools-toggle:hover { background: rgba(139,92,246,0.06); }
+.tools-toggle svg:first-child { color: #8b5cf6; flex-shrink: 0; }
+.tools-toggle span { flex: 1; text-align: left; }
+.tools-chevron {
+  color: rgba(255,255,255,0.25);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.tools-chevron.expanded { transform: rotate(180deg); }
+
+.tools-content {
+  padding: 0 14px 14px;
 }
 .focus-desc {
   font-size: 11px; color: var(--color-text-muted); margin: 0 0 10px;
 }
 .focus-start-btn {
   width: 100%; height: 34px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   background: linear-gradient(135deg, #6d28d9, #8b5cf6);
   color: white; border: none; border-radius: 10px;
   font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
   transition: all 0.2s;
   box-shadow: 0 2px 12px rgba(139,92,246,0.25);
 }
@@ -806,47 +837,57 @@ const handleLogout = async () => {
   background: transparent; border: none; outline: none;
   color: var(--color-text-muted); font-size: 12px;
   font-family: inherit; cursor: pointer;
+  flex: 1;
 }
 .focus-select option { background: #1a1625; color: #ccc; }
 
+/* 工具区展开/收起动画 */
+.tools-slide-enter-active { transition: all 0.25s ease; }
+.tools-slide-leave-active { transition: all 0.2s ease; }
+.tools-slide-enter-from,
+.tools-slide-leave-to { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+.tools-slide-enter-to,
+.tools-slide-leave-from { opacity: 1; max-height: 200px; }
+
 /* 今日能量值 */
 .energy-widget {
-  margin: 8px 10px;
-  padding: 14px;
+  margin: 6px 10px;
+  padding: 12px 14px;
   border-radius: 14px;
   background: rgba(12,10,24,0.5);
   border: 1px solid rgba(255,255,255,0.04);
 }
 .energy-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .energy-label {
-  font-size: 12px; font-weight: 600; color: var(--color-text-muted);
+  font-size: 11px; font-weight: 600; color: var(--color-text-muted);
 }
-.energy-display {
-  display: flex; align-items: baseline; gap: 4px; margin-bottom: 8px;
+.energy-row {
+  display: flex; align-items: baseline; gap: 4px; margin-bottom: 6px;
 }
 .energy-value {
-  font-size: 32px; font-weight: 800; color: var(--color-text-primary);
+  font-size: 28px; font-weight: 800; color: var(--color-text-primary);
   line-height: 1;
 }
 .energy-max {
-  font-size: 14px; color: var(--color-text-muted); font-weight: 500;
+  font-size: 13px; color: var(--color-text-muted); font-weight: 500;
 }
 .energy-bar {
-  height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px;
-  overflow: hidden; margin-bottom: 8px;
+  height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px;
+  overflow: hidden; margin-bottom: 6px;
 }
 .energy-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #3b82f6, #10b981);
   border-radius: 3px;
   transition: width 0.6s ease;
+  box-shadow: 0 0 8px rgba(16,185,129,0.3);
 }
 .energy-hint {
-  font-size: 11px; color: var(--color-text-muted); margin: 0;
-  opacity: 0.7;
+  font-size: 10px; color: var(--color-text-muted); margin: 0;
+  opacity: 0.6;
 }
 
 /* 侧边栏底部 */
