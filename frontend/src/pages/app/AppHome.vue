@@ -46,11 +46,17 @@
           <router-link to="/app/schedule" class="more-link">管理日程 →</router-link>
         </div>
         <div class="list">
-          <router-link v-for="event in todaySchedule" :key="event.id" :to="`/app/schedule?view=day&date=${getLocalDate()}`" class="list-item list-item-link">
+          <router-link v-for="(event, idx) in todaySchedule" :key="event.id" :to="`/app/schedule?view=day&date=${getLocalDate()}`" class="list-item list-item-link" :style="{ animationDelay: `${0.3 + idx * 0.05}s` }">
             <span class="dot" :class="event.kind"></span>
-            <div><strong>{{ event.title }}</strong><span>{{ event.time }}</span></div>
+            <div>
+              <strong>{{ event.title }}</strong>
+              <span>{{ event.time }}</span>
+            </div>
+            <span v-if="idx === 0" class="status-tag active">进行中</span>
+            <span v-else-if="idx === 1" class="status-tag upcoming">即将</span>
           </router-link>
           <p v-if="todaySchedule.length === 0" class="empty">今天还没有安排，去日程页规划一下吧。</p>
+          <router-link v-if="todaySchedule.length > 0" to="/app/schedule" class="card-bottom-link">查看完整日程 →</router-link>
         </div>
       </div>
     </section>
@@ -124,6 +130,11 @@
           </div>
         </div>
         <p class="progress-summary">{{ weeklyProgress.summary }}</p>
+        <div class="progress-detail">
+          <span>已完成 {{ dashboardSnapshot.weeklyCompletedTasks }}</span>
+          <span>进行中 {{ dashboardSnapshot.todayTasks }}</span>
+          <span v-if="dashboardSnapshot.overdueTasks > 0" class="overdue-tag">逾期 {{ dashboardSnapshot.overdueTasks }}</span>
+        </div>
       </div>
     </section>
 
@@ -994,6 +1005,19 @@ watch(
   color: #c4b5fd;
 }
 
+.progress-detail {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.25);
+}
+
+.overdue-tag {
+  color: rgba(248,113,113,0.6);
+}
+
 .ring-wrap {
   position: relative;
   width: 120px;
@@ -1046,6 +1070,39 @@ watch(
 .hero-insight { color: rgba(139,92,246,0.6); font-size: 13px; margin: 6px 0 0; }
 
 .card-sub { font-size: 12px; color: var(--color-text-muted); }
+
+.status-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.status-tag.active {
+  background: rgba(16,185,129,0.1);
+  color: #34d399;
+}
+
+.status-tag.upcoming {
+  background: rgba(245,158,11,0.08);
+  color: rgba(245,158,11,0.6);
+}
+
+.card-bottom-link {
+  display: block;
+  text-align: center;
+  padding: 8px 0 0;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  font-size: 12px;
+  color: rgba(196,181,253,0.5);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.card-bottom-link:hover { color: #c4b5fd; }
 
 /* AI 今日建议 */
 .ai-card {
@@ -1170,8 +1227,14 @@ watch(
 }
 
 .shortcut-card:hover {
-  transform: translateY(-2px);
-  background: var(--color-bg-card-hover);
+  transform: translateY(-3px);
+  border-color: rgba(139,92,246,0.12);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.shortcut-card:hover .shortcut-icon {
+  transform: scale(1.08);
+  transition: transform 0.2s;
 }
 
 .shortcut-icon,
@@ -1208,6 +1271,30 @@ watch(
   color: var(--color-text-primary);
   box-shadow: var(--shadow-elevated);
   z-index: 20;
+}
+
+/* ====== 入场动画 ====== */
+.hero { animation: cardEnter 0.5s ease backwards; }
+.stats-strip .stat-chip:nth-child(1) { animation: cardEnter 0.4s ease 0.1s backwards; }
+.stats-strip .stat-chip:nth-child(2) { animation: cardEnter 0.4s ease 0.15s backwards; }
+.stats-strip .stat-chip:nth-child(3) { animation: cardEnter 0.4s ease 0.2s backwards; }
+.stats-strip .stat-chip:nth-child(4) { animation: cardEnter 0.4s ease 0.25s backwards; }
+.row-2col .card:first-child { animation: cardEnter 0.4s ease 0.3s backwards; }
+.row-2col .card:last-child { animation: cardEnter 0.4s ease 0.35s backwards; }
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 列表项入场 */
+.list-item, .action-card, .campus-hot-item, .signal {
+  animation: itemEnter 0.3s ease backwards;
+}
+
+@keyframes itemEnter {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .fade-enter-active,
