@@ -397,7 +397,12 @@
               {{ activeWorkflow.icon }} {{ activeWorkflow.label }}
               <button class="ab-wf-clear" aria-label="清除激活的工作流" title="清除" @click.stop="activeWorkflow = null">×</button>
             </div>
-            <button v-for="t in ABILITY_TOOLS" :key="t.key" class="ab-tool" :class="{ 'ab-tool-active': activeWorkflow?.suggestedAbilities?.includes(t.key) }" @click="activateAbility(t)">
+            <button
+              v-for="t in ABILITY_TOOLS" :key="t.key"
+              class="ab-tool"
+              :class="{ 'ab-tool-active': activeWorkflow?.suggestedAbilities?.includes(t.key), 'ab-tool-glow': activeAbilityKey === t.key }"
+              @click="activateAbility(t)"
+            >
               <span>{{ t.icon }}</span><span>{{ t.label }}</span>
             </button>
           </div>
@@ -861,8 +866,15 @@ function switchModel(key: ModelMode) {
   setTimeout(() => { showToast.value = false }, 2000)
 }
 
-// 能力工具栏点击
+// 能力工具栏点击（切换模式：再次点击取消并清除提示词）
+const activeAbilityKey = ref<string | null>(null)
 function activateAbility(t: (typeof ABILITY_TOOLS)[number]) {
+  if (activeAbilityKey.value === t.key) {
+    activeAbilityKey.value = null
+    if (inputText.value === t.prompt) inputText.value = ''
+    return
+  }
+  activeAbilityKey.value = t.key
   inputText.value = t.prompt
   nextTick(() => inputRef.value?.focus())
 }
@@ -1216,7 +1228,7 @@ async function handleSend() {
   if (pendingFiles.value.length > 5) { toast('单次最多附带 5 个文件'); return }
 
   const atts = [...pendingFiles.value]; inputText.value=''; streamingContent.value=''; thinkingText.value=''; actionCards.value=[]; pendingFiles.value=[]
-  showEmoji.value = false
+  showEmoji.value = false; activeAbilityKey.value = null
   if (inputRef.value) inputRef.value.style.height='auto'
   if (!currentConversationId.value) createConversation()
 
@@ -2584,8 +2596,11 @@ async function handleInheritMemory() {
 .ab-dot.default { background:rgba(59,130,246,.5); } .ab-dot.thinking { background:rgba(168,85,247,.5); } .ab-dot.fast { background:rgba(34,197,94,.5); } .ab-dot.standard { background:rgba(251,191,36,.55); }
 .ab-divider { width:1px; height:16px; background:rgba(255,255,255,.04); margin:0 4px; flex-shrink:0; }
 .ab-tools { display:flex; gap:2px; flex-wrap:wrap; }
-.ab-tool { display:flex; align-items:center; gap:3px; padding:4px 8px; border-radius:7px; border:none; background:none; color:rgba(255,255,255,.18); font-size:11px; cursor:pointer; transition:all .15s; white-space:nowrap; }
-.ab-tool:hover { color:rgba(139,92,246,.55); background:rgba(139,92,246,.03); }
+.ab-tool { display:flex; align-items:center; gap:3px; padding:4px 8px; border-radius:7px; border:1px solid transparent; background:none; color:rgba(255,255,255,.18); font-size:11px; cursor:pointer; transition:all .22s cubic-bezier(.2,.8,.2,1); white-space:nowrap; transform-origin:center; }
+.ab-tool:hover { color:rgba(139,92,246,.55); background:rgba(139,92,246,.03); transform:scale(1.05); }
+.ab-tool:active { transform:scale(.95); }
+.ab-tool-glow { color:rgba(139,92,246,.95) !important; background:rgba(139,92,246,.12) !important; border-color:rgba(139,92,246,.35) !important; transform:scale(1.1) !important; box-shadow:0 0 14px rgba(139,92,246,.25), 0 0 4px rgba(139,92,246,.15) inset; animation:abGlowPulse 2s ease-in-out infinite; }
+@keyframes abGlowPulse { 0%,100%{box-shadow:0 0 14px rgba(139,92,246,.25), 0 0 4px rgba(139,92,246,.15) inset} 50%{box-shadow:0 0 22px rgba(139,92,246,.4), 0 0 8px rgba(139,92,246,.2) inset} }
 
 /* ============ v9: 侧边栏搜索 + 菜单 + 置顶 ============ */
 .sb-search { display:flex; align-items:center; gap:6px; margin:2px 10px 6px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.03); transition:all .15s; }

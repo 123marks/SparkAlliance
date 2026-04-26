@@ -1,95 +1,105 @@
 <template>
   <div class="wall-layout">
-    <div class="wall-container">
+    <!-- ========== 左侧栏 ========== -->
+    <aside class="wall-left">
+      <div class="left-inner">
+        <!-- 页面标题 -->
+        <div class="left-brand">
+          <img src="/spark-logo.png" alt="Spark" class="brand-logo" />
+          <div>
+            <h1 class="brand-title">星火墙</h1>
+            <p class="brand-sub">校园动态、圈子、活动，一墙可见</p>
+          </div>
+        </div>
 
-      <!-- Feed 顶栏 -->
-      <div class="feed-header">
-        <h1 class="page-title">星火墙</h1>
-        <div class="tabs">
-          <button v-for="tab in tabList" :key="tab" class="tab" :class="{ active: activeTab === tab }" @click="switchTab(tab)">{{ tab }}</button>
+        <!-- 垂直 Tab 导航 -->
+        <nav class="left-nav">
+          <button v-for="tab in sideTabList" :key="tab.key" class="nav-item" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">
+            <span class="nav-icon">{{ tab.icon }}</span>
+            <span class="nav-label">{{ tab.key }}</span>
+          </button>
+        </nav>
+
+        <!-- 用户档案卡 -->
+        <div v-if="user" class="profile-card">
+          <div class="pc-header">
+            <div class="pc-avatar" :style="{ background: 'linear-gradient(135deg, #4f8ef7, #8b5cf6)' }">
+              {{ avatarInitial }}
+            </div>
+            <div class="pc-info">
+              <span class="pc-name">{{ user.user_metadata?.nickname || user.email?.split('@')[0] || '同学' }}</span>
+              <span class="pc-school" v-if="mySchool">{{ mySchool }}</span>
+            </div>
+          </div>
+          <div class="pc-stats">
+            <div class="pc-stat"><span class="pc-num">{{ myPostCount }}</span><span class="pc-label">帖子</span></div>
+            <div class="pc-stat"><span class="pc-num">{{ wallStats.totalLikes }}</span><span class="pc-label">获赞</span></div>
+            <div class="pc-stat"><span class="pc-num">{{ followingIds.size }}</span><span class="pc-label">关注</span></div>
+          </div>
+          <!-- 连续活跃 -->
+          <div class="streak-row">
+            <span class="streak-icon">🔥</span>
+            <span class="streak-text">连续活跃 <strong>{{ activityStreak }}</strong> 天</span>
+          </div>
+          <!-- 活跃日历迷你版 -->
+          <div class="mini-calendar">
+            <div
+              v-for="d in last14Days"
+              :key="d.date"
+              class="cal-dot"
+              :class="{ active: d.hasPost }"
+              :title="d.label"
+            ></div>
+          </div>
+        </div>
+
+        <!-- 今日任务 -->
+        <div class="left-section">
+          <h4 class="ls-title">📋 今日任务</h4>
+          <div class="task-item" v-for="task in dailyTasks" :key="task.id">
+            <span class="task-check" :class="{ done: task.done }">{{ task.done ? '✓' : '' }}</span>
+            <span class="task-text" :class="{ done: task.done }">{{ task.label }}</span>
+            <span class="task-progress">{{ task.current }}/{{ task.target }}</span>
+          </div>
+        </div>
+
+        <!-- 校园热度值 -->
+        <div class="heat-card">
+          <span class="heat-label">校园热度值</span>
+          <div class="heat-row">
+            <span class="heat-num">{{ campusHeatScore.toLocaleString() }}</span>
+            <span class="heat-badge" :class="trendDirection">
+              {{ trendDirection === 'up' ? '↑' : trendDirection === 'down' ? '↓' : '→' }}
+              {{ trendDelta }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ========== 中间 Feed 主区域 ========== -->
+    <main class="wall-main">
+      <!-- Feed 顶栏（搜索 + 快捷操作） -->
+      <div class="feed-topbar">
+        <div class="topbar-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input v-model="searchQuery" class="search-input" placeholder="搜索动态、话题、用户…" @input="onSearchInput" />
+        </div>
+        <div class="quick-actions">
+          <button class="qa-btn qa-primary" @click="toggleComposer"><span>✏️</span> 发动态</button>
+          <button class="qa-btn" @click="openQuickPost('event')"><span>📅</span> 发活动</button>
+          <button class="qa-btn" @click="openQuickPost('help')"><span>🙋</span> 求助</button>
+          <button class="qa-btn" @click="openQuickPost('lost')"><span>🔍</span> 失物</button>
         </div>
       </div>
 
-      <!-- 星火墙数据概览 -->
-      <div v-if="!isLoading && posts.length > 0" class="wall-stats-bar">
-        <div class="ws-item"><span class="ws-num">{{ wallStats.totalPosts }}</span><span class="ws-label">全部</span></div>
-        <div class="ws-item"><span class="ws-num">{{ wallStats.todayPosts }}</span><span class="ws-label">今日</span></div>
-        <div class="ws-item"><span class="ws-num">{{ wallStats.totalLikes }}</span><span class="ws-label">点赞</span></div>
-        <div class="ws-item"><span class="ws-num">{{ wallStats.totalComments }}</span><span class="ws-label">评论</span></div>
-      </div>
-
-      <!-- 星火墙数据面板 -->
-      <div v-if="!isLoading && posts.length > 0" class="wall-insight-panel">
-        <!-- 面板头 -->
-        <button class="wip-toggle" @click="insightExpanded = !insightExpanded">
-          <span class="wip-toggle-label">📊 星火洞察</span>
-          <span class="wip-toggle-arrow" :class="{ open: insightExpanded }">›</span>
-        </button>
-
-        <!-- 面板内容（可折叠） -->
-        <Transition name="panel-slide">
-          <div v-if="insightExpanded" class="wip-body">
-            <!-- 词云 -->
-            <div v-if="trendingTags.length > 0" class="wip-section">
-              <h4 class="wip-title">🏷️ 话题词云</h4>
-              <div class="wip-wordcloud">
-                <button
-                  v-for="(t, i) in wordCloudTags"
-                  :key="t.tag"
-                  class="wc-word"
-                  :style="{
-                    fontSize: t.size + 'px',
-                    color: t.color,
-                    opacity: t.opacity,
-                    animationDelay: (i * 0.04) + 's',
-                  }"
-                  @click="filterByTag(t.tag)"
-                >
-                  #{{ t.tag }}
-                </button>
-              </div>
-            </div>
-
-            <!-- 7日趋势 -->
-            <div class="wip-section">
-              <h4 class="wip-title">📈 7日活跃趋势</h4>
-              <div class="wip-trend">
-                <div class="wip-trend-chart">
-                  <div
-                    v-for="(d, i) in weeklyTrend"
-                    :key="i"
-                    class="wip-bar-col"
-                  >
-                    <div class="wip-bar" :style="{ height: d.pct + '%' }" :title="d.count + ' 条'"></div>
-                    <span class="wip-bar-label">{{ d.label }}</span>
-                  </div>
-                </div>
-                <div class="wip-trend-summary">
-                  <span class="wip-trend-num" :class="trendDirection">{{ trendDelta }}</span>
-                  <span class="wip-trend-desc">较上周{{ trendDirection === 'up' ? '增长' : trendDirection === 'down' ? '下降' : '持平' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 活跃时段 -->
-            <div class="wip-section">
-              <h4 class="wip-title">⏰ 今日活跃时段</h4>
-              <div class="wip-hours">
-                <div v-for="h in hourlyActivity" :key="h.hour" class="wip-hour-dot" :class="{ active: h.count > 0 }" :style="{ opacity: h.intensity }" :title="h.hour + ':00 — ' + h.count + '条'">
-                  <span class="wip-hour-label">{{ h.hour }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- 热门标签（精简版，始终可见） -->
+      <!-- 热门标签（始终可见） -->
       <div v-if="!isLoading && trendingTags.length > 0" class="wall-trending">
         <span class="wt-label">🔥 热门</span>
-        <button v-for="t in trendingTags.slice(0, 8)" :key="t.tag" class="wt-tag" @click="filterByTag(t.tag)">
+        <button v-for="t in trendingTags.slice(0, 8)" :key="t.tag" class="wt-tag" :class="{ active: activeTagFilter === t.tag }" @click="filterByTag(t.tag)">
           #{{ t.tag }} <span class="wt-count">{{ t.count }}</span>
         </button>
+        <button v-if="activeTagFilter" class="wt-clear" @click="activeTagFilter = null">✕ 清除筛选</button>
       </div>
 
       <!-- 骨架屏加载 -->
@@ -119,7 +129,7 @@
 
       <!-- 帖子流 -->
       <div v-else class="feed-list">
-        <div class="post-card" v-for="post in filteredPosts" :key="post.id">
+        <div class="post-card" v-for="post in filteredPosts" :key="post.id" :data-post-id="post.id">
           <!-- 帖子头部 -->
           <div class="post-header">
             <div class="p-author">
@@ -226,9 +236,79 @@
           </div>
         </div>
       </div>
-    </div>
+    </main>
 
-    <!-- FAB 浮动按钮（仅推荐/最新 tab 显示） -->
+    <!-- ========== 右侧栏 ========== -->
+    <aside class="wall-right">
+      <div class="right-inner">
+        <!-- 发布入口 -->
+        <button class="right-publish-btn" @click="toggleComposer">
+          <span>✏️</span> 发布动态
+        </button>
+
+        <!-- 今日热榜 -->
+        <div class="right-section">
+          <h4 class="rs-title">🔥 今日热榜</h4>
+          <div class="hot-list">
+            <div v-for="(item, i) in hotRankList" :key="item.id" class="hot-item" @click="scrollToPost(item.id)">
+              <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
+              <span class="hot-text">{{ item.preview }}</span>
+              <span class="hot-heat">{{ item.heat }}</span>
+            </div>
+            <div v-if="hotRankList.length === 0" class="hot-empty">暂无热门内容</div>
+          </div>
+        </div>
+
+        <!-- 推荐圈子 -->
+        <div class="right-section">
+          <h4 class="rs-title">💬 推荐圈子</h4>
+          <div class="circle-list">
+            <div v-for="c in recommendedCircles" :key="c.name" class="circle-item">
+              <span class="circle-icon">{{ c.icon }}</span>
+              <div class="circle-info">
+                <span class="circle-name">{{ c.name }}</span>
+                <span class="circle-count">{{ c.members }} 人</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 实时动态 -->
+        <div class="right-section">
+          <h4 class="rs-title">⚡ 实时动态</h4>
+          <div class="realtime-list">
+            <div v-for="item in realtimeFeed" :key="item.id" class="rt-item">
+              <span class="rt-avatar">{{ item.initial }}</span>
+              <div class="rt-content">
+                <span class="rt-text">{{ item.text }}</span>
+                <span class="rt-time">{{ item.time }}</span>
+              </div>
+            </div>
+            <div v-if="realtimeFeed.length === 0" class="hot-empty">暂无实时动态</div>
+          </div>
+        </div>
+
+        <!-- AI 话题助手 -->
+        <div class="right-section ai-helper">
+          <h4 class="rs-title">🤖 AI 话题助手</h4>
+          <p class="ai-desc">生成一条关于对应校园热议话题的动态吧</p>
+          <div class="ai-suggestions">
+            <button v-for="s in aiSuggestions" :key="s" class="ai-chip" @click="applyAiSuggestion(s)">{{ s }}</button>
+          </div>
+        </div>
+
+        <!-- 校园信任与安全 -->
+        <div class="right-section trust-section">
+          <h4 class="rs-title">🛡️ 校园信任与安全</h4>
+          <div class="trust-stats">
+            <span>👥 {{ wallStats.totalPosts }} 条动态</span>
+            <span>✅ 社区内容安全审核中</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- FAB 浮动按钮（移动端使用） -->
     <button v-if="canPost" class="fab" :class="{ active: composerExpanded }" @click="toggleComposer">
       <span class="cross">+</span>
     </button>
@@ -641,7 +721,31 @@ const avatarInitial = computed(() => {
 
 // ====== Tab 筛选 ======
 const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白']
+const sideTabList = [
+  { key: '推荐', icon: '🌟' },
+  { key: '关注', icon: '👥' },
+  { key: '本校', icon: '🏫' },
+  { key: '热议表白', icon: '🔥' },
+  { key: '活动', icon: '📅' },
+  { key: '求助', icon: '🙋' },
+  { key: '最新', icon: '🕐' },
+  { key: '同城', icon: '📍' },
+  { key: '失物', icon: '🔍' },
+]
 const activeTab = ref('推荐')
+const searchQuery = ref('')
+const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+
+const onSearchInput = () => {
+  if (searchDebounceTimer.value) clearTimeout(searchDebounceTimer.value)
+  searchDebounceTimer.value = setTimeout(() => {}, 300)
+}
+
+// ====== 快捷操作 ======
+const openQuickPost = (category: string) => {
+  selectedCategory.value = category
+  composerExpanded.value = true
+}
 
 /** 用于本校/同城与资料字段比对（去空白、大小写） */
 function normalizeCampusMeta(s: string | undefined | null): string {
@@ -1052,7 +1156,7 @@ onBeforeUnmount(() => {
 })
 
 // ====== 发布权限 ======
-const canPost = computed(() => ['推荐', '最新', '本校', '同城'].includes(activeTab.value))
+const canPost = computed(() => ['推荐', '最新', '本校', '同城', '活动', '求助', '失物'].includes(activeTab.value))
 
 // ====== 用户学校/地区信息（与发帖快照比对） ======
 const mySchool = computed(() => {
@@ -1085,6 +1189,9 @@ const emptyStateHint = computed(() => {
   if (activeTab.value === '热议表白') {
     return '暂时没有热门内容，发一条表白或动态来引爆话题吧'
   }
+  if (activeTab.value === '活动') return '暂无活动信息，发布一个校园活动召集同学吧'
+  if (activeTab.value === '求助') return '暂无求助帖，有问题尽管发出来，同学们会帮你的'
+  if (activeTab.value === '失物') return '暂无失物招领信息'
   return '来，成为第一个发布的人！'
 })
 
@@ -1237,6 +1344,111 @@ const wallStats = computed(() => ({
   totalComments: posts.value.reduce((s, p) => s + p.comments, 0),
 }))
 
+// ====== 左侧栏：个人数据 ======
+const myPostCount = computed(() =>
+  user.value ? posts.value.filter(p => p.authorId === user.value!.id).length : 0
+)
+
+const activityStreak = computed(() => {
+  if (!user.value) return 0
+  const uid = user.value.id
+  const myPosts = posts.value.filter(p => p.authorId === uid)
+  let streak = 0
+  const now = new Date()
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - i)
+    const dayStr = d.toDateString()
+    if (myPosts.some(p => new Date(p.createdAt).toDateString() === dayStr)) {
+      streak++
+    } else {
+      break
+    }
+  }
+  return streak
+})
+
+const last14Days = computed(() => {
+  const now = new Date()
+  const uid = user.value?.id
+  const days: { date: string; hasPost: boolean; label: string }[] = []
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - i)
+    const dayStr = d.toDateString()
+    days.push({
+      date: dayStr,
+      hasPost: uid ? posts.value.some(p => p.authorId === uid && new Date(p.createdAt).toDateString() === dayStr) : false,
+      label: `${d.getMonth() + 1}/${d.getDate()}`
+    })
+  }
+  return days
+})
+
+const dailyTasks = computed(() => {
+  const uid = user.value?.id
+  const today = new Date().toDateString()
+  const todayMyPosts = uid ? posts.value.filter(p => p.authorId === uid && new Date(p.createdAt).toDateString() === today).length : 0
+  const todayMyComments = 0
+  const todayMyLikes = uid ? posts.value.filter(p => p.liked && new Date(p.createdAt).toDateString() === today).length : 0
+  return [
+    { id: 'post', label: '发布 1 条动态', current: Math.min(todayMyPosts, 1), target: 1, done: todayMyPosts >= 1 },
+    { id: 'like', label: '点赞 3 次', current: Math.min(todayMyLikes, 3), target: 3, done: todayMyLikes >= 3 },
+    { id: 'comment', label: '评论 1 次', current: Math.min(todayMyComments, 1), target: 1, done: todayMyComments >= 1 },
+  ]
+})
+
+const campusHeatScore = computed(() => {
+  return wallStats.value.totalLikes * 2 + wallStats.value.totalComments * 3 + wallStats.value.totalPosts * 5
+})
+
+// ====== 右侧栏数据 ======
+const hotRankList = computed(() => {
+  return [...posts.value]
+    .sort((a, b) => (b.likes * 2 + b.comments * 3) - (a.likes * 2 + a.comments * 3))
+    .slice(0, 6)
+    .map(p => ({
+      id: p.id,
+      preview: p.content.length > 22 ? p.content.slice(0, 22) + '…' : p.content,
+      heat: `${p.likes + p.comments}`,
+    }))
+})
+
+const recommendedCircles = [
+  { name: '学术交流圈', icon: '📚', members: '1.2K' },
+  { name: '摄影爱好者', icon: '📸', members: '876' },
+  { name: '美食探店', icon: '🍜', members: '1.5K' },
+  { name: '运动打卡', icon: '🏃', members: '943' },
+]
+
+const realtimeFeed = computed(() => {
+  return [...posts.value]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+    .map(p => ({
+      id: p.id,
+      initial: p.isAnonymous ? '匿' : p.author.charAt(0),
+      text: `${p.isAnonymous ? '匿名同学' : p.author} 发布了新${resolveCategoryDisplay(p.category).label}`,
+      time: p.time,
+    }))
+})
+
+const aiSuggestions = computed(() => {
+  const tags = trendingTags.value.slice(0, 3).map(t => `#${t.tag}`)
+  if (tags.length === 0) return ['分享校园生活', '表白墙', '期末加油']
+  return tags
+})
+
+const applyAiSuggestion = (text: string) => {
+  newPostContent.value = text.startsWith('#') ? `聊聊 ${text} 的那些事 ` : text
+  composerExpanded.value = true
+}
+
+const scrollToPost = (postId: string) => {
+  const el = document.querySelector(`[data-post-id="${postId}"]`)
+  el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
 // ====== Tab 筛选逻辑 ======
 const filteredPosts = computed(() => {
   const schoolMe = normalizeCampusMeta(mySchool.value)
@@ -1250,16 +1462,28 @@ const filteredPosts = computed(() => {
       ? list.filter(p => p.tags.includes(activeTagFilter.value!))
       : list
 
+  const withSearch = (list: Post[]) => {
+    if (!searchQuery.value.trim()) return list
+    const q = searchQuery.value.trim().toLowerCase()
+    return list.filter(p =>
+      p.content.toLowerCase().includes(q)
+      || p.tags.some(t => t.toLowerCase().includes(q))
+      || p.author.toLowerCase().includes(q)
+    )
+  }
+
+  const applyFilters = (list: Post[]) => withSearch(withTag(list))
+
   switch (activeTab.value) {
     case '最新':
-      return [...withTag(posts.value)].sort(byTime)
+      return [...applyFilters(posts.value)].sort(byTime)
     case '本校': {
       if (!schoolMe) return []
       const list = posts.value.filter(p => {
         const ps = normalizeCampusMeta(p.school || '')
         return ps && ps === schoolMe
       })
-      return [...withTag(list)].sort(byTime)
+      return [...applyFilters(list)].sort(byTime)
     }
     case '同城': {
       if (!regionMe) return []
@@ -1267,11 +1491,11 @@ const filteredPosts = computed(() => {
         const pr = normalizeCampusMeta(p.region || '')
         return pr && pr === regionMe
       })
-      return [...withTag(list)].sort(byTime)
+      return [...applyFilters(list)].sort(byTime)
     }
     case '热议表白': {
       const heatThreshold = 3
-      return withTag(posts.value)
+      return applyFilters(posts.value)
         .filter(p =>
           p.category === 'confession'
           || (p.likes * 2 + p.comments * 3) >= heatThreshold
@@ -1284,10 +1508,16 @@ const filteredPosts = computed(() => {
     }
     case '关注':
       if (followingIds.value.size === 0) return []
-      return withTag(posts.value).filter(p => followingIds.value.has(p.authorId))
+      return applyFilters(posts.value).filter(p => followingIds.value.has(p.authorId))
+    case '活动':
+      return [...applyFilters(posts.value.filter(p => p.category === 'event'))].sort(byTime)
+    case '求助':
+      return [...applyFilters(posts.value.filter(p => p.category === 'help'))].sort(byTime)
+    case '失物':
+      return [...applyFilters(posts.value.filter(p => p.category === 'lost'))].sort(byTime)
     case '推荐':
     default:
-      return [...withTag(posts.value)].sort((a, b) => {
+      return [...applyFilters(posts.value)].sort((a, b) => {
         const heatA = a.likes * 2 + a.comments * 3
         const heatB = b.likes * 2 + b.comments * 3
         if (heatB !== heatA) return heatB - heatA
@@ -2033,36 +2263,211 @@ const submitPost = async () => {
 </script>
 
 <style scoped>
-/* ====== 布局 ====== */
+/* ====== 三栏布局 ====== */
 .wall-layout {
-  position: relative;
+  display: grid;
+  grid-template-columns: 240px 1fr 280px;
+  gap: 24px;
   min-height: calc(100vh - 72px);
-  padding: 32px 0;
-}
-.wall-container {
-  max-width: 680px;
+  padding: 20px 24px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
 }
 
-/* ====== 头部 ====== */
-.feed-header { margin-bottom: 24px; }
-.page-title { font-size: 24px; font-weight: 800; margin-bottom: 20px; color: white; }
-.tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--color-border); padding-bottom: 12px; }
-.tab {
+/* ====== 左侧栏 ====== */
+.wall-left { position: sticky; top: 80px; align-self: start; max-height: calc(100vh - 100px); overflow-y: auto; }
+.wall-left::-webkit-scrollbar { width: 0; }
+.left-inner { display: flex; flex-direction: column; gap: 16px; }
+
+.left-brand { display: flex; align-items: center; gap: 10px; padding: 4px 0 8px; }
+.brand-logo { width: 32px; height: 32px; border-radius: 8px; }
+.brand-title { font-size: 18px; font-weight: 800; color: white; margin: 0; line-height: 1.2; }
+.brand-sub { font-size: 11px; color: var(--color-text-muted); margin: 0; }
+
+.left-nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; border-radius: 10px;
   background: transparent; border: none;
-  color: var(--color-text-secondary);
-  font-size: 14px; font-weight: 500;
-  padding: 6px 14px; border-radius: 8px;
-  cursor: pointer; transition: all 0.2s;
-  position: relative;
+  color: var(--color-text-secondary); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; text-align: left;
 }
-.tab:hover { color: white; background: rgba(255,255,255,0.04); }
-.tab.active { color: white; font-weight: 600; }
-.tab.active::after {
-  content: ''; position: absolute;
-  bottom: -13px; left: 20%; width: 60%; height: 2px;
-  background: var(--color-brand-blue); border-radius: 2px 2px 0 0;
+.nav-item:hover { background: rgba(255,255,255,0.04); color: white; }
+.nav-item.active { background: rgba(79,142,247,0.1); color: #4f8ef7; font-weight: 600; }
+.nav-icon { font-size: 16px; width: 22px; text-align: center; }
+.nav-label { flex: 1; }
+
+.profile-card {
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; padding: 16px;
+}
+.pc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.pc-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 15px; color: white; flex-shrink: 0;
+}
+.pc-info { display: flex; flex-direction: column; }
+.pc-name { font-size: 14px; font-weight: 600; color: white; }
+.pc-school { font-size: 11px; color: var(--color-text-muted); }
+.pc-stats { display: flex; justify-content: space-around; text-align: center; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.pc-stat { display: flex; flex-direction: column; gap: 2px; }
+.pc-num { font-size: 16px; font-weight: 700; color: white; }
+.pc-label { font-size: 11px; color: var(--color-text-muted); }
+.streak-row { display: flex; align-items: center; gap: 6px; padding: 10px 0 6px; }
+.streak-icon { font-size: 16px; }
+.streak-text { font-size: 12px; color: var(--color-text-secondary); }
+.streak-text strong { color: #f59e0b; }
+.mini-calendar { display: flex; gap: 4px; flex-wrap: wrap; }
+.cal-dot {
+  width: 14px; height: 14px; border-radius: 3px;
+  background: rgba(255,255,255,0.04); transition: all 0.15s;
+}
+.cal-dot.active { background: rgba(79,142,247,0.5); }
+
+.left-section {
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; padding: 14px;
+}
+.ls-title { font-size: 13px; font-weight: 600; color: white; margin: 0 0 10px; }
+.task-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.task-check {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: transparent; flex-shrink: 0;
+}
+.task-check.done { background: rgba(16,185,129,0.2); border-color: #10b981; color: #10b981; }
+.task-text { flex: 1; font-size: 12px; color: var(--color-text-secondary); }
+.task-text.done { text-decoration: line-through; opacity: 0.5; }
+.task-progress { font-size: 11px; color: var(--color-text-muted); }
+
+.heat-card {
+  background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
+  border: 1px solid rgba(139,92,246,0.2); border-radius: 14px; padding: 14px;
+}
+.heat-label { font-size: 12px; color: var(--color-text-muted); }
+.heat-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.heat-num { font-size: 24px; font-weight: 800; color: #a78bfa; }
+.heat-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.heat-badge.up { color: #10b981; background: rgba(16,185,129,0.1); }
+.heat-badge.down { color: #f43f5e; background: rgba(244,63,94,0.1); }
+.heat-badge.flat { color: var(--color-text-muted); background: rgba(255,255,255,0.05); }
+
+/* ====== 中间 Feed ====== */
+.wall-main { min-width: 0; }
+
+/* 搜索 + 快捷操作 */
+.feed-topbar { margin-bottom: 16px; }
+.topbar-search {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
+  color: var(--color-text-muted);
+}
+.search-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: white; font-size: 14px;
+}
+.search-input::placeholder { color: var(--color-text-muted); }
+.quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.qa-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 7px 14px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  color: var(--color-text-secondary); font-size: 13px;
+  cursor: pointer; transition: all 0.15s;
+}
+.qa-btn:hover { border-color: rgba(255,255,255,0.15); color: white; }
+.qa-btn.qa-primary {
+  background: linear-gradient(135deg, #4f8ef7, #8b5cf6);
+  border-color: transparent; color: white; font-weight: 600;
+}
+.qa-btn.qa-primary:hover { opacity: 0.9; }
+
+/* ====== 右侧栏 ====== */
+.wall-right { position: sticky; top: 80px; align-self: start; max-height: calc(100vh - 100px); overflow-y: auto; }
+.wall-right::-webkit-scrollbar { width: 0; }
+.right-inner { display: flex; flex-direction: column; gap: 16px; }
+
+.right-publish-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 12px; border-radius: 12px;
+  background: linear-gradient(135deg, #4f8ef7, #8b5cf6);
+  border: none; color: white; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.right-publish-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(79,142,247,0.3); }
+
+.right-section {
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; padding: 14px;
+}
+.rs-title { font-size: 13px; font-weight: 600; color: white; margin: 0 0 10px; }
+
+.hot-list { display: flex; flex-direction: column; gap: 6px; }
+.hot-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  cursor: pointer; transition: all 0.15s;
+}
+.hot-item:hover { opacity: 0.8; }
+.hot-rank {
+  width: 20px; height: 20px; border-radius: 4px; text-align: center;
+  font-size: 11px; font-weight: 700; line-height: 20px;
+  background: rgba(255,255,255,0.06); color: var(--color-text-muted);
+}
+.hot-rank.top { background: linear-gradient(135deg, #f59e0b, #f97316); color: white; }
+.hot-text { flex: 1; font-size: 12px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hot-heat { font-size: 11px; color: var(--color-text-muted); }
+.hot-empty { font-size: 12px; color: var(--color-text-muted); text-align: center; padding: 10px 0; }
+
+.circle-list { display: flex; flex-direction: column; gap: 8px; }
+.circle-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.circle-icon { font-size: 20px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border-radius: 8px; }
+.circle-info { display: flex; flex-direction: column; }
+.circle-name { font-size: 13px; color: white; font-weight: 500; }
+.circle-count { font-size: 11px; color: var(--color-text-muted); }
+
+.realtime-list { display: flex; flex-direction: column; gap: 8px; }
+.rt-item { display: flex; align-items: flex-start; gap: 8px; }
+.rt-avatar {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(79,142,247,0.15); color: #4f8ef7;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+}
+.rt-content { flex: 1; display: flex; flex-direction: column; }
+.rt-text { font-size: 12px; color: var(--color-text-secondary); line-height: 1.4; }
+.rt-time { font-size: 10px; color: var(--color-text-muted); }
+
+.ai-helper { background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(79,142,247,0.05)); border-color: rgba(6,182,212,0.15); }
+.ai-desc { font-size: 12px; color: var(--color-text-muted); margin: 0 0 10px; }
+.ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-chip {
+  padding: 5px 12px; border-radius: 20px;
+  border: 1px solid rgba(6,182,212,0.2);
+  background: rgba(6,182,212,0.06);
+  color: #22d3ee; font-size: 12px;
+  cursor: pointer; transition: all 0.15s;
+}
+.ai-chip:hover { background: rgba(6,182,212,0.12); }
+
+.trust-section { border-color: rgba(16,185,129,0.15); }
+.trust-stats { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+
+/* ====== 响应式：平板及以下 ====== */
+@media (max-width: 1100px) {
+  .wall-layout { grid-template-columns: 1fr; padding: 16px; }
+  .wall-left, .wall-right { display: none; }
+  .wall-left { position: static; }
+  .wall-right { position: static; }
+}
+
+/* ====== 响应式：隐藏右侧栏 ====== */
+@media (max-width: 1300px) and (min-width: 1101px) {
+  .wall-layout { grid-template-columns: 220px 1fr; }
+  .wall-right { display: none; }
 }
 
 /* ====== 骨架屏 ====== */
@@ -2956,7 +3361,7 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
 /* ====== 热门标签 ====== */
 .wall-trending {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 8px 16px; margin: 0 auto 12px; max-width: 640px;
+  padding: 8px 0; margin-bottom: 12px;
 }
 .wt-label {
   font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 600;
@@ -2972,6 +3377,16 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.15);
   color: rgba(139,92,246,0.7);
 }
+.wt-tag.active {
+  background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.3);
+  color: #a78bfa;
+}
+.wt-clear {
+  padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(244,63,94,0.15);
+  background: rgba(244,63,94,0.05); color: #f43f5e;
+  font-size: 10px; cursor: pointer; transition: all 0.12s;
+}
+.wt-clear:hover { background: rgba(244,63,94,0.12); }
 .wt-count {
   font-size: 9px; color: rgba(255,255,255,0.15); margin-left: 2px;
 }

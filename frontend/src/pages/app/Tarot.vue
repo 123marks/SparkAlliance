@@ -311,7 +311,7 @@
           <!-- 顶部：卡牌居中展示 -->
           <div class="ri-card-section">
             <div class="result-card-wrap">
-              <div class="rc-card" :class="{ flipped: cardFlipped, reversed: isReversed }">
+              <div class="rc-card" :class="{ flipped: cardFlipped }" :data-reversed="isReversed">
                 <div class="rc-front" :style="{ '--card-glow': pickedCard.glow, '--c1': pickedCard.colors[0], '--c2': pickedCard.colors[1] }">
                   <div class="rcf-frame"></div>
                   <div class="rcf-starfield"></div>
@@ -957,18 +957,19 @@ function toRoman(n: number): string {
 </script>
 
 <style scoped>
-/* ====== 全局基础 - 全屏沉浸模式 ====== */
+/* ====== 全局基础 ====== */
 .tarot-realm {
-  position: fixed;
-  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 56px);
   background: #06030f;
   overflow: hidden;
   color: white;
-  z-index: 200;
+  position: relative;
 }
 
 .bg-particles {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
@@ -976,7 +977,7 @@ function toRoman(n: number): string {
 
 /* ====== 魔法阵背景 ====== */
 .magic-circle-container {
-  position: fixed;
+  position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -1074,13 +1075,13 @@ function toRoman(n: number): string {
 
 /* ====== 历史侧栏 ====== */
 .history-panel {
-  position: fixed;
+  position: absolute;
   top: 0;
   right: 0;
   width: 340px;
   max-width: 85vw;
-  height: 100vh;
-  background: rgba(6,3,15,0.95);
+  height: 100%;
+  background: rgba(6,3,15,0.97);
   backdrop-filter: blur(20px);
   border-left: 1px solid rgba(139,92,246,0.06);
   z-index: 100;
@@ -1214,17 +1215,12 @@ function toRoman(n: number): string {
 .realm-stage {
   position: relative;
   z-index: 1;
-  height: calc(100vh - 72px);
+  min-height: calc(100vh - 130px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 24px 24px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  padding: 0 24px 40px;
 }
-
-.realm-stage::-webkit-scrollbar { width: 4px }
-.realm-stage::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 2px }
 
 /* ====== 阶段1: 开始 ====== */
 .phase-input {
@@ -2029,9 +2025,7 @@ function toRoman(n: number): string {
   transform: rotateY(180deg);
 }
 
-.rc-card.reversed.flipped {
-  transform: rotateY(180deg) rotate(180deg);
-}
+/* 逆位不翻转卡牌，只通过标签和边框颜色区分 */
 
 .rc-front, .rc-back {
   position: absolute;
