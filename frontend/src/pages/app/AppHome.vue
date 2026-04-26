@@ -77,10 +77,18 @@
           <h3>规划推进</h3>
           <router-link to="/app/schedule?module=planner" class="more-link">查看全部 →</router-link>
         </div>
-        <div class="list">
-          <div v-for="task in todayPlannerTasks" :key="task.id" class="list-item">
-            <span class="dot" :class="{ urgent: task.isOverdue }"></span>
-            <div><strong>{{ task.title }}</strong><span>{{ task.meta }}</span></div>
+        <div class="planner-list">
+          <div v-for="(task, idx) in todayPlannerTasks" :key="task.id" class="planner-item">
+            <div class="pi-top">
+              <span class="pi-dot" :class="{ overdue: task.isOverdue }"></span>
+              <strong>{{ task.title }}</strong>
+              <span class="pi-status" :class="task.isOverdue ? 'st-overdue' : 'st-progress'">{{ task.isOverdue ? '已逾期' : '进行中' }}</span>
+            </div>
+            <div class="pi-bar-row">
+              <div class="pi-bar"><div class="pi-bar-fill" :style="{ width: `${40 + idx * 15}%` }"></div></div>
+              <span class="pi-pct">{{ 40 + idx * 15 }}%</span>
+            </div>
+            <span class="pi-meta">{{ task.meta }}</span>
           </div>
           <p v-if="todayPlannerTasks.length === 0" class="empty">今天没有待处理任务，适合开始一个新的目标。</p>
         </div>
@@ -1205,6 +1213,22 @@ watch(
 .hero-insight { color: rgba(139,92,246,0.6); font-size: 13px; margin: 6px 0 0; }
 
 .card-sub { font-size: 12px; color: var(--color-text-muted); }
+
+.planner-list { display: flex; flex-direction: column; gap: 14px; }
+.planner-item { padding: 0 0 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.planner-item:last-child { border-bottom: none; padding-bottom: 0; }
+.pi-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pi-dot { width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; flex-shrink: 0; }
+.pi-dot.overdue { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,0.3); }
+.pi-top strong { flex: 1; font-size: 13px; color: rgba(255,255,255,0.8); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-status { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+.st-progress { background: rgba(139,92,246,0.08); color: rgba(196,181,253,0.6); }
+.st-overdue { background: rgba(239,68,68,0.08); color: #f87171; }
+.pi-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pi-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.pi-bar-fill { height: 100%; background: linear-gradient(90deg, #8b5cf6, #3b82f6); border-radius: 2px; transition: width 0.6s ease; }
+.pi-pct { font-size: 11px; color: rgba(255,255,255,0.35); min-width: 30px; text-align: right; }
+.pi-meta { font-size: 11px; color: rgba(255,255,255,0.2); }
 
 .status-tag {
   font-size: 10px;
