@@ -407,19 +407,46 @@
         <Transition name="wf-pop">
           <div v-if="showWorkflow" class="workflow-panel">
             <div class="wf-head">
-              <div class="wf-title">🚀 一键工作流 <span class="wf-hint">选中后自动填充模板，把 "{光标处}" 补齐即可发送</span></div>
+              <div class="wf-title">🚀 一键工作流 <span class="wf-hint">点击卡片查看详情，再次点击使用</span></div>
               <button class="wf-close" aria-label="关闭" @click="showWorkflow = false">×</button>
             </div>
             <div class="wf-grid">
-              <button v-for="w in WORKFLOW_PRESETS" :key="w.key" class="wf-card" :class="'wf-kind-' + (w.kind || 'productivity')" @click="applyWorkflow(w)">
+              <button
+                v-for="w in WORKFLOW_PRESETS" :key="w.key"
+                class="wf-card"
+                :class="['wf-kind-' + (w.kind || 'productivity'), { 'wf-card-expanded': expandedWorkflow === w.key, 'wf-card-active': activeWorkflow?.key === w.key }]"
+                @click="handleWorkflowClick(w)"
+              >
                 <div class="wf-card-icon">{{ w.icon }}</div>
                 <div class="wf-card-main">
                   <div class="wf-card-label">
                     {{ w.label }}
                     <span v-if="w.suggestedModel" class="wf-tag wf-tag-model">{{ MODEL_OPTIONS[w.suggestedModel].icon }} {{ MODEL_OPTIONS[w.suggestedModel].label }}</span>
                     <span v-if="w.acceptsFiles" class="wf-tag wf-tag-file">📎</span>
+                    <span v-if="activeWorkflow?.key === w.key" class="wf-tag wf-tag-active">✓ 激活中</span>
                   </div>
                   <div v-if="w.hint" class="wf-card-hint">{{ w.hint }}</div>
+                  <Transition name="wf-expand">
+                    <div v-if="expandedWorkflow === w.key" class="wf-card-detail">
+                      <div class="wf-detail-prompt">
+                        <span class="wf-detail-label">模板预览</span>
+                        <div class="wf-detail-text">{{ formatWorkflowPrompt(w.prompt) }}</div>
+                      </div>
+                      <div v-if="w.systemHint" class="wf-detail-sys">
+                        <span class="wf-detail-label">AI 场景设定</span>
+                        <div class="wf-detail-text wf-detail-sys-text">{{ w.systemHint.slice(0, 80) }}...</div>
+                      </div>
+                      <div class="wf-detail-abilities" v-if="w.suggestedAbilities?.length">
+                        <span class="wf-detail-label">联动能力</span>
+                        <div class="wf-detail-abilities-row">
+                          <span v-for="ak in w.suggestedAbilities" :key="ak" class="wf-detail-ability">{{ ABILITY_TOOLS.find(a => a.key === ak)?.icon }} {{ ABILITY_TOOLS.find(a => a.key === ak)?.label }}</span>
+                        </div>
+                      </div>
+                      <div class="wf-detail-action">
+                        <button class="wf-use-btn" @click.stop="applyWorkflow(w)">🚀 使用此工作流</button>
+                      </div>
+                    </div>
+                  </Transition>
                 </div>
               </button>
             </div>
@@ -469,6 +496,39 @@
               <button class="cf-ok" :class="{ 'cf-ok-danger': confirmDialog.kind === 'danger' }" @click="resolveConfirm">
                 {{ confirmDialog.okText || '确认' }}
               </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- 代码沙盒预览 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="sandboxOpen" class="sandbox-overlay" @click.self="closeSandbox" @keydown.esc="closeSandbox">
+          <div class="sandbox-container" @click.stop>
+            <div class="sandbox-header">
+              <div class="sandbox-title">
+                <span class="sandbox-icon">🧪</span>
+                代码沙盒
+                <span class="sandbox-lang-badge">{{ sandboxLang }}</span>
+              </div>
+              <div class="sandbox-actions">
+                <button class="sandbox-btn" @click="rerunSandbox" title="重新运行">🔄 重新运行</button>
+                <button class="sandbox-btn sandbox-btn-edit" @click="sandboxEditing = !sandboxEditing" title="编辑代码">✏️ {{ sandboxEditing ? '预览' : '编辑' }}</button>
+                <button class="sandbox-close" @click="closeSandbox" aria-label="关闭">×</button>
+              </div>
+            </div>
+            <div class="sandbox-body" :class="{ 'sandbox-split': sandboxEditing }">
+              <div v-if="sandboxEditing" class="sandbox-editor">
+                <textarea v-model="sandboxCode" class="sandbox-textarea" spellcheck="false"></textarea>
+              </div>
+              <div class="sandbox-preview" :class="{ 'sandbox-preview-full': !sandboxEditing }">
+                <div v-if="sandboxRunning" class="sandbox-loading">
+                  <span class="sandbox-spinner"></span>运行中...
+                </div>
+                <iframe ref="sandboxIframeRef" class="sandbox-iframe" sandbox="allow-scripts allow-modals allow-same-origin" title="代码运行结果"></iframe>
+              </div>
             </div>
           </div>
         </div>
@@ -627,6 +687,95 @@ function cancelRename() { renamingId.value = null; renameText.value = '' }
 // v9: 工作流面板
 const showWorkflow = ref(false)
 
+// 代码沙盒
+const sandboxOpen = ref(false)
+const sandboxLang = ref('')
+const sandboxCode = ref('')
+const sandboxOutput = ref('')
+const sandboxRunning = ref(false)
+const sandboxEditing = ref(false)
+const sandboxIframeRef = ref<HTMLIFrameElement | null>(null)
+
+function openSandbox(lang: string, code: string) {
+  sandboxLang.value = lang
+  sandboxCode.value = code
+  sandboxOutput.value = ''
+  sandboxRunning.value = true
+  sandboxOpen.value = true
+  nextTick(() => runInSandbox(lang, code))
+}
+function closeSandbox() { sandboxOpen.value = false; sandboxRunning.value = false }
+
+function runInSandbox(lang: string, code: string) {
+  const iframe = sandboxIframeRef.value
+  if (!iframe) { sandboxRunning.value = false; return }
+
+  if (['html'].includes(lang)) {
+    iframe.srcdoc = code
+    sandboxRunning.value = false
+  } else if (['javascript', 'js', 'jsx', 'typescript', 'ts', 'tsx'].includes(lang)) {
+    const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;background:#0f0e1a;color:#e8e9ff;padding:16px;margin:0;font-size:14px;line-height:1.6;}pre{background:#1a1830;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;}.log{color:#9dffc3;}.error{color:#ff5c7c;}.warn{color:#ffb86c;}</style></head><body><pre id="out"></pre><script>
+const _out=document.getElementById('out');
+const _log=(cls,...a)=>{const d=document.createElement('div');d.className=cls;d.textContent=a.map(x=>typeof x==='object'?JSON.stringify(x,null,2):String(x)).join(' ');_out.appendChild(d);};
+console.log=(...a)=>_log('log',...a);
+console.error=(...a)=>_log('error','❌ ',...a);
+console.warn=(...a)=>_log('warn','⚠️ ',...a);
+try{${code.replace(/<\/script>/gi, '<\\/script>')}}catch(e){console.error(e.message)}
+<\/script></body></html>`
+    iframe.srcdoc = wrappedHtml
+    sandboxRunning.value = false
+  } else if (['python', 'py'].includes(lang)) {
+    runPythonSandbox(code, iframe)
+  } else if (['css'].includes(lang)) {
+    const cssPreview = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${code}</style></head><body>
+<div style="padding:20px;font-family:system-ui,sans-serif;">
+<h1>标题一</h1><h2>标题二</h2><h3>标题三</h3>
+<p>这是一段<strong>示例文本</strong>，用于预览你的 CSS 样式。</p>
+<button>按钮</button> <a href="#">链接</a>
+<ul><li>列表项 1</li><li>列表项 2</li><li>列表项 3</li></ul>
+<div class="card" style="border:1px solid #ccc;padding:16px;margin:12px 0;border-radius:8px;"><p>卡片内容</p></div>
+<input type="text" placeholder="输入框"><br><br>
+<table border="1" style="border-collapse:collapse"><tr><th>表头1</th><th>表头2</th></tr><tr><td>单元格1</td><td>单元格2</td></tr></table>
+</div></body></html>`
+    iframe.srcdoc = cssPreview
+    sandboxRunning.value = false
+  }
+}
+
+async function runPythonSandbox(code: string, iframe: HTMLIFrameElement) {
+  const pyHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{font-family:system-ui,sans-serif;background:#0f0e1a;color:#e8e9ff;padding:16px;margin:0;font-size:14px;line-height:1.6;}
+pre{background:#1a1830;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;}
+.loading{color:#c4b5fd;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.error{color:#ff5c7c;}.output{color:#9dffc3;}</style></head><body>
+<pre id="out"><span class="loading">⏳ 正在加载 Python 运行时 (Pyodide)...</span></pre>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"><\/script>
+<script>
+const out=document.getElementById('out');
+async function main(){
+  try{
+    const pyodide=await loadPyodide();
+    out.innerHTML='';
+    pyodide.setStdout({batched:(s)=>{const d=document.createElement('div');d.className='output';d.textContent=s;out.appendChild(d);}});
+    pyodide.setStderr({batched:(s)=>{const d=document.createElement('div');d.className='error';d.textContent=s;out.appendChild(d);}});
+    await pyodide.runPythonAsync(${JSON.stringify(code)});
+    if(!out.children.length){const d=document.createElement('div');d.className='output';d.textContent='(程序执行完毕，无输出)';out.appendChild(d);}
+  }catch(e){
+    out.innerHTML='<div class="error">❌ '+e.message+'</div>';
+  }
+}
+main();
+<\/script></body></html>`
+  iframe.srcdoc = pyHtml
+  sandboxRunning.value = false
+}
+
+function rerunSandbox() {
+  sandboxRunning.value = true
+  nextTick(() => runInSandbox(sandboxLang.value, sandboxCode.value))
+}
+
 // v9: emoji 选择器
 const showEmoji = ref(false)
 const emojiCategory = ref('recent')
@@ -747,6 +896,7 @@ function renderLatex(text: string): string {
 const mdRenderer = new marked.Renderer()
 // v10: 代码块加"星光 + 火苗"装饰层（CSS-only 动画，不影响选择/复制），
 // 装饰元素都带 aria-hidden 和 pointer-events:none，不会干扰可访问性
+const SANDBOX_LANGS = new Set(['html','javascript','js','jsx','typescript','ts','tsx','python','py','css'])
 mdRenderer.code = function({ text, lang }: { text:string; lang?:string }) {
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const hi = hljs.highlight(text, { language }).value
@@ -757,9 +907,9 @@ mdRenderer.code = function({ text, lang }: { text:string; lang?:string }) {
     `<span class="cb-ember e1"></span><span class="cb-ember e2"></span><span class="cb-ember e3"></span>` +
     `<span class="cb-ember e4"></span>` +
   `</span>`
-  // v13: 代码块右上角"下载为源文件"按钮（语言→扩展名映射在 JS 侧处理）
   const downloadBtn = `<button class="cb-dl" data-download-lang="${language}" data-download-text="${encoded}" title="下载为源码文件">⬇</button>`
-  return `<div class="codeblock">${decorationLayer}<div class="cb-head"><span class="cb-lang">${language}</span><span class="cb-actions">${downloadBtn}<button class="cb-copy" data-copy-text="${encoded}">复制</button></span></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
+  const runBtn = SANDBOX_LANGS.has(language) ? `<button class="cb-run" data-run-lang="${language}" data-run-text="${encoded}" title="在沙盒中运行">▶ 运行</button>` : ''
+  return `<div class="codeblock">${decorationLayer}<div class="cb-head"><span class="cb-lang">${language}</span><span class="cb-actions">${runBtn}${downloadBtn}<button class="cb-copy" data-copy-text="${encoded}">复制</button></span></div><pre><code class="hljs language-${language}">${hi}</code></pre></div>`
 }
 // 导航链接渲染为可点击按钮
 mdRenderer.link = function({ href, text }: { href: string; text: string }) {
@@ -919,6 +1069,14 @@ function handleCodeDownload(lang: string, text: string) {
 // 点击导航链接
 function handleMdClick(e: Event) {
   const element = e.target as HTMLElement
+  // 代码沙盒运行按钮
+  const runBtn = element.closest('.cb-run') as HTMLElement | null
+  if (runBtn?.dataset?.runText) {
+    e.preventDefault()
+    const lang = runBtn.dataset.runLang || 'html'
+    openSandbox(lang, decodeURIComponent(runBtn.dataset.runText))
+    return
+  }
   // v13: 代码块下载按钮
   const dlBtn = element.closest('.cb-dl') as HTMLElement | null
   if (dlBtn?.dataset?.downloadText) {
@@ -1916,10 +2074,22 @@ function handleReact(displayIdx: number, r: 'like' | 'dislike') {
   setMessageReaction(msg.id, current === r ? null : r)
 }
 
-// v13: 当前激活的工作流（影响下一次发送的 systemHint / 推荐模型 / 能力高亮）
+// 当前激活的工作流（影响下一次发送的 systemHint / 推荐模型 / 能力高亮）
 const activeWorkflow = ref<(typeof WORKFLOW_PRESETS)[number] | null>(null)
+const expandedWorkflow = ref<string | null>(null)
 
-// v13: 工作流点击 → 填充 prompt + 切模型 + 高亮能力 + 挂载 systemHint
+function formatWorkflowPrompt(prompt: string): string {
+  return prompt.replace(/\{\{cursor\}\}/g, '\u2B1C 在此填写...')
+}
+
+function handleWorkflowClick(preset: (typeof WORKFLOW_PRESETS)[number]) {
+  if (expandedWorkflow.value === preset.key) {
+    applyWorkflow(preset)
+  } else {
+    expandedWorkflow.value = preset.key
+  }
+}
+
 function applyWorkflow(preset: (typeof WORKFLOW_PRESETS)[number]) {
   // 1) 替换 {{cursor}} 占位符为空字符串，记录光标位置
   const rawTpl = preset.prompt
@@ -1927,6 +2097,7 @@ function applyWorkflow(preset: (typeof WORKFLOW_PRESETS)[number]) {
   const cursorAt = rawTpl.indexOf(cursorMarker)
   const tpl = cursorAt >= 0 ? rawTpl.replace(cursorMarker, '') : rawTpl
   inputText.value = tpl
+  expandedWorkflow.value = null
   showWorkflow.value = false
 
   // 2) 推荐模型自动切换（如与当前不同）
@@ -2488,13 +2659,31 @@ async function handleInheritMemory() {
 .wf-hint { font-size:10px; color:rgba(255,255,255,.35); font-weight:400; margin-left:8px; }
 .wf-close { background:none; border:none; color:rgba(255,255,255,.3); font-size:16px; cursor:pointer; padding:0 4px; line-height:1; }
 .wf-close:hover { color:white; }
-.wf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px; }
-.wf-card { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid rgba(255,255,255,.04); border-radius:10px; background:rgba(255,255,255,.015); text-align:left; cursor:pointer; transition:all .18s; }
+.wf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px; max-height:360px; overflow-y:auto; padding-right:4px; }
+.wf-card { display:flex; align-items:flex-start; gap:8px; padding:10px 12px; border:1px solid rgba(255,255,255,.04); border-radius:10px; background:rgba(255,255,255,.015); text-align:left; cursor:pointer; transition:all .22s cubic-bezier(.2,.8,.2,1); }
 .wf-card:hover { background:rgba(139,92,246,.05); border-color:rgba(139,92,246,.15); transform:translateY(-1px); }
-.wf-card-icon { font-size:18px; flex-shrink:0; }
+.wf-card-expanded { background:rgba(139,92,246,.08) !important; border-color:rgba(139,92,246,.3) !important; transform:scale(1) !important; box-shadow:0 4px 20px rgba(139,92,246,.15); grid-column:span 2; }
+.wf-card-active { border-color:rgba(34,197,94,.3) !important; background:rgba(34,197,94,.05) !important; }
+.wf-card-icon { font-size:18px; flex-shrink:0; margin-top:2px; }
 .wf-card-main { flex:1; min-width:0; }
 .wf-card-label { font-size:12px; font-weight:700; color:rgba(255,255,255,.85); margin-bottom:2px; }
 .wf-card-hint { font-size:10px; color:rgba(255,255,255,.3); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wf-card-expanded .wf-card-hint { white-space:normal; overflow:visible; }
+.wf-tag-active { background:rgba(34,197,94,.2); color:rgba(134,239,172,.95); border:1px solid rgba(34,197,94,.35); }
+.wf-card-detail { margin-top:8px; padding-top:8px; border-top:1px solid rgba(139,92,246,.12); }
+.wf-detail-label { display:block; font-size:9px; font-weight:700; color:rgba(139,92,246,.6); text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
+.wf-detail-text { font-size:11px; color:rgba(255,255,255,.5); line-height:1.5; white-space:pre-wrap; word-break:break-word; margin-bottom:8px; }
+.wf-detail-sys-text { font-style:italic; color:rgba(196,181,253,.4); }
+.wf-detail-prompt { background:rgba(0,0,0,.2); border-radius:6px; padding:6px 8px; }
+.wf-detail-abilities-row { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+.wf-detail-ability { display:inline-flex; align-items:center; gap:2px; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; background:rgba(139,92,246,.08); color:rgba(196,181,253,.8); border:1px solid rgba(139,92,246,.15); }
+.wf-detail-action { display:flex; justify-content:flex-end; }
+.wf-use-btn { padding:6px 16px; border-radius:8px; border:none; background:linear-gradient(135deg, rgba(139,92,246,.2), rgba(59,130,246,.15)); color:white; font-size:12px; font-weight:700; cursor:pointer; transition:all .18s; }
+.wf-use-btn:hover { background:linear-gradient(135deg, rgba(139,92,246,.35), rgba(59,130,246,.25)); box-shadow:0 3px 12px rgba(139,92,246,.3); transform:translateY(-1px); }
+.wf-expand-enter-active { transition:all .25s ease-out; }
+.wf-expand-leave-active { transition:all .15s ease-in; }
+.wf-expand-enter-from, .wf-expand-leave-to { opacity:0; max-height:0; margin-top:0; padding-top:0; }
+.wf-expand-enter-to, .wf-expand-leave-from { opacity:1; max-height:300px; }
 .wf-pop-enter-active, .wf-pop-leave-active { transition:all .22s cubic-bezier(.2,.8,.2,1); }
 .wf-pop-enter-from, .wf-pop-leave-to { opacity:0; transform:translateY(10px); }
 
@@ -2740,4 +2929,119 @@ async function handleInheritMemory() {
 .ab-wf-clear { background:rgba(0,0,0,.2); border:none; color:rgba(255,255,255,.85); width:16px; height:16px; border-radius:50%; cursor:pointer; font-size:12px; line-height:1; padding:0; }
 .ab-wf-clear:hover { background:rgba(239,68,68,.4); }
 .ab-tool-active { background:rgba(139,92,246,.12) !important; color:rgba(196,181,253,.95) !important; border-color:rgba(139,92,246,.3) !important; box-shadow:0 0 0 1px rgba(139,92,246,.2) inset; }
+
+/* ============ 代码沙盒 ============ */
+.md-body :deep(.cb-run) {
+  background:linear-gradient(135deg, rgba(34,197,94,.15), rgba(16,185,129,.1));
+  border:1px solid rgba(34,197,94,.35);
+  color:rgba(134,239,172,.95);
+  border-radius:6px;
+  padding:2px 10px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+  transition:all .18s;
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+}
+.md-body :deep(.cb-run:hover) {
+  background:linear-gradient(135deg, rgba(34,197,94,.3), rgba(16,185,129,.22));
+  color:#fff;
+  border-color:rgba(34,197,94,.6);
+  transform:translateY(-1px);
+  box-shadow:0 3px 12px rgba(34,197,94,.35);
+}
+
+.sandbox-overlay {
+  position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.7);
+  backdrop-filter:blur(8px);
+  display:flex; align-items:center; justify-content:center;
+  padding:24px;
+}
+.sandbox-container {
+  width:min(1100px, 95vw);
+  height:min(750px, 88vh);
+  background:linear-gradient(180deg, #13112a 0%, #0d0b1e 100%);
+  border:1px solid rgba(139,92,246,.2);
+  border-radius:16px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 24px 64px rgba(0,0,0,.5), 0 0 0 1px rgba(139,92,246,.08);
+  animation:sandboxIn .22s ease-out;
+}
+@keyframes sandboxIn { from{opacity:0;transform:scale(.96) translateY(12px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+.sandbox-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 18px;
+  border-bottom:1px solid rgba(139,92,246,.12);
+  background:rgba(139,92,246,.03);
+}
+.sandbox-title {
+  display:flex; align-items:center; gap:8px;
+  font-size:14px; font-weight:700; color:white;
+}
+.sandbox-icon { font-size:18px; }
+.sandbox-lang-badge {
+  padding:2px 8px; border-radius:8px;
+  background:rgba(139,92,246,.15); color:rgba(196,181,253,.95);
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  border:1px solid rgba(139,92,246,.25);
+}
+.sandbox-actions { display:flex; align-items:center; gap:8px; }
+.sandbox-btn {
+  padding:5px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.04); color:rgba(255,255,255,.7);
+  font-size:11px; font-weight:600; cursor:pointer; transition:all .15s;
+}
+.sandbox-btn:hover { background:rgba(255,255,255,.1); color:white; border-color:rgba(255,255,255,.18); }
+.sandbox-btn-edit { background:rgba(59,130,246,.08); border-color:rgba(59,130,246,.2); color:rgba(147,197,253,.85); }
+.sandbox-btn-edit:hover { background:rgba(59,130,246,.18); color:white; }
+.sandbox-close {
+  width:32px; height:32px; border-radius:8px; border:none;
+  background:rgba(255,255,255,.04); color:rgba(255,255,255,.5);
+  font-size:20px; cursor:pointer; transition:all .15s;
+  display:flex; align-items:center; justify-content:center;
+}
+.sandbox-close:hover { background:rgba(239,68,68,.15); color:rgba(239,68,68,.9); }
+
+.sandbox-body { flex:1; display:flex; overflow:hidden; }
+.sandbox-body.sandbox-split { }
+.sandbox-editor { flex:0 0 45%; border-right:1px solid rgba(139,92,246,.12); display:flex; }
+.sandbox-textarea {
+  flex:1; resize:none; border:none; outline:none;
+  background:#0d0b1e; color:#e8e9ff; padding:14px 16px;
+  font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;
+  font-size:13px; line-height:1.65; tab-size:2;
+}
+.sandbox-preview { flex:1; position:relative; }
+.sandbox-preview-full { flex:1; }
+.sandbox-iframe {
+  width:100%; height:100%; border:none;
+  background:#fff;
+  border-radius:0 0 16px 0;
+}
+.sandbox-split .sandbox-iframe { border-radius:0 0 16px 0; }
+.sandbox-preview-full .sandbox-iframe { border-radius:0 0 16px 16px; }
+.sandbox-loading {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  display:flex; align-items:center; gap:8px;
+  color:rgba(196,181,253,.7); font-size:13px; font-weight:600;
+  z-index:2;
+}
+.sandbox-spinner {
+  width:18px; height:18px; border:2px solid rgba(139,92,246,.2);
+  border-top-color:rgba(139,92,246,.8); border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+
+@media(max-width:768px) {
+  .sandbox-overlay { padding:8px; }
+  .sandbox-container { width:100%; height:95vh; border-radius:12px; }
+  .sandbox-body.sandbox-split { flex-direction:column; }
+  .sandbox-editor { flex:0 0 40%; border-right:none; border-bottom:1px solid rgba(139,92,246,.12); }
+}
 </style>

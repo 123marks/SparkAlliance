@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import type { ScheduleEvent } from '../../composables/useSchedule'
+import { getScheduleEventDisplayColor, type ScheduleEvent } from '../../composables/useSchedule'
 import { buildTimedEventLayouts, type TimedEventLayout } from './eventLayout'
 
 const props = defineProps<{
@@ -67,15 +67,6 @@ defineEmits<{
 const HOUR_H = props.hourHeight || 60
 const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const bodyRef = ref<HTMLElement | null>(null)
-
-const colorMap: Record<string, string> = {
-  course: '#4f8ef7',
-  exam: '#ef4444',
-  task: '#f97316',
-  life: '#10b981',
-  reminder: '#8b5cf6',
-  holiday: '#fbbf24',
-}
 
 const isToday = (date: Date) => {
   const now = new Date()
@@ -129,7 +120,7 @@ const priorityBadge = (e: ScheduleEvent): string => {
 }
 
 const eventBlockStyle = (layout: TimedEventLayout<ScheduleEvent>) => {
-  const color = layout.event.color || colorMap[layout.event.event_type] || '#4f8ef7'
+  const color = getScheduleEventDisplayColor(layout.event)
   const bw = priorityBar(layout.event)
   return {
     top: `${(layout.startMinutes / 60) * HOUR_H}px`,

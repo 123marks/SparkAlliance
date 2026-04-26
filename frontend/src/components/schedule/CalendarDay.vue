@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { EVENT_TYPES, type ScheduleEvent } from '../../composables/useSchedule'
+import { EVENT_TYPES, getScheduleEventDisplayColor, type ScheduleEvent } from '../../composables/useSchedule'
 import { buildTimedEventLayouts, type TimedEventLayout } from './eventLayout'
 
 const props = defineProps<{
@@ -109,16 +109,7 @@ const formatTime = (iso: string) => {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-const colorMap: Record<string, string> = {
-  course: '#4f8ef7',
-  exam: '#ef4444',
-  task: '#f97316',
-  life: '#10b981',
-  reminder: '#8b5cf6',
-  holiday: '#fbbf24',
-}
-
-const getColor = (event: ScheduleEvent) => event.color || colorMap[event.event_type] || '#4f8ef7'
+const getColor = (event: ScheduleEvent) => getScheduleEventDisplayColor(event)
 
 const priorityBar = (e: ScheduleEvent) => {
   if (e.priority >= 2) return 5

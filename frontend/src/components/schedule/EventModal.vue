@@ -885,4 +885,42 @@ const handleSave = () => {
 .ev-prio-icon { font-size: 18px; line-height: 1; }
 .ev-prio-label { font-size: 13px; font-weight: 600; }
 .ev-prio-hint { font-size: 10px; opacity: 0.75; }
+
+/* 重复日：周几选择（与表单其他控件视觉对齐） */
+.ev-weekday-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+}
+.ev-weekday-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s, transform 0.12s;
+}
+.ev-weekday-btn:hover {
+  border-color: rgba(139,92,246,0.35);
+  color: rgba(255,255,255,0.85);
+  background: rgba(139,92,246,0.08);
+  transform: translateY(-1px);
+}
+.ev-weekday-btn.active {
+  border-color: rgba(79,142,247,0.65);
+  color: white;
+  background: linear-gradient(145deg, rgba(79,142,247,0.35), rgba(139,92,246,0.22));
+  box-shadow:
+    0 0 0 1px rgba(79,142,247,0.25),
+    0 4px 14px rgba(79,142,247,0.18);
+}
 </style>

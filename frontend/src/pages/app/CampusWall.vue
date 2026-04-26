@@ -113,7 +113,7 @@
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
         </div>
         <h3>这里还没有内容</h3>
-        <p>{{ activeTab === '关注' ? '去关注一些同学吧' : '来，成为第一个发布的人！' }}</p>
+        <p>{{ emptyStateHint }}</p>
         <button class="empty-btn" v-if="canPost" @click="toggleComposer">发布动态</button>
       </div>
 
@@ -130,6 +130,7 @@
               <div class="p-info">
                 <h4>{{ getPostAuthorDisplay(post).name }}
                   <span class="tag" :class="post.categoryClass">{{ post.categoryLabel }}</span>
+                  <span v-if="post.mood" class="post-mood-chip" :title="post.mood">{{ post.mood }}</span>
                 </h4>
                 <span class="time">{{ post.time }}</span>
               </div>
@@ -249,6 +250,36 @@
             <!-- 分类选择器 -->
             <div class="category-picker">
               <button v-for="cat in categories" :key="cat.value" class="cat-chip" :class="{ active: selectedCategory === cat.value }" :style="{ '--cat-color': cat.color }" @click="selectedCategory = cat.value">{{ cat.label }}</button>
+            </div>
+            <p v-if="selectedCategory === 'other'" class="composer-hint">自定义类型将显示在帖子标签旁，与下方话题标签不同。</p>
+            <input
+              v-if="selectedCategory === 'other'"
+              v-model="customCategoryText"
+              class="custom-cat-input"
+              maxlength="16"
+              placeholder="输入类型名称，如：组队、寻物、讲座…"
+            />
+
+            <!-- 心情 / 状态 -->
+            <div class="mood-picker">
+              <span class="mood-label">此刻状态</span>
+              <div class="mood-chips">
+                <button
+                  v-for="m in moodPresets"
+                  :key="m.value || 'none'"
+                  type="button"
+                  class="mood-chip"
+                  :class="{ active: selectedMood === m.value }"
+                  @click="selectedMood = m.value; if (m.value !== 'custom') moodCustom = ''"
+                >{{ m.label }}</button>
+              </div>
+              <input
+                v-if="selectedMood === 'custom'"
+                v-model="moodCustom"
+                class="custom-mood-input"
+                maxlength="12"
+                placeholder="自定义状态，如：赶 ddl、在图书馆…"
+              />
             </div>
 
             <!-- 自定义标签输入 -->
@@ -612,8 +643,14 @@ const avatarInitial = computed(() => {
 const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白']
 const activeTab = ref('推荐')
 
+/** 用于本校/同城与资料字段比对（去空白、大小写） */
+function normalizeCampusMeta(s: string | undefined | null): string {
+  return (s || '').trim().toLowerCase().replace(/\s+/g, '')
+}
+
 const switchTab = (tab: string) => {
   activeTab.value = tab
+  if (tab !== '推荐') activeTagFilter.value = null
   // 切换 tab 时强制关闭发布面板并重置
   if (composerExpanded.value) {
     composerExpanded.value = false
@@ -627,6 +664,26 @@ const newPostContent = ref('')
 const isAnonymous = ref(false)
 const isSubmitting = ref(false)
 const selectedCategory = ref('general')
+const customCategoryText = ref('')
+const moodPresets = [
+  { value: '', label: '不展示' },
+  { value: '😊 开心', label: '😊 开心' },
+  { value: '😮‍💨 疲惫', label: '😮‍💨 疲惫' },
+  { value: '💪 奋斗', label: '💪 奋斗' },
+  { value: '😶 放空', label: '😶 放空' },
+  { value: '😰 焦虑', label: '😰 焦虑' },
+  { value: '🤩 兴奋', label: '🤩 兴奋' },
+  { value: '😴 无聊', label: '😴 无聊' },
+  { value: '🥺 思念', label: '🥺 思念' },
+  { value: '🎯 专注', label: '🎯 专注' },
+  { value: '🌟 期待', label: '🌟 期待' },
+  { value: '🍜 干饭中', label: '🍜 干饭中' },
+  { value: '📚 赶ddl', label: '📚 赶ddl' },
+  { value: '🏃 运动中', label: '🏃 运动中' },
+  { value: 'custom', label: '✏️ 自定义' },
+]
+const selectedMood = ref<string>('')
+const moodCustom = ref('')
 const selectedFiles = ref<File[]>([])
 const previewUrls = ref<string[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
@@ -635,22 +692,47 @@ const MAX_MEDIA_FILE_SIZE = 50 * 1024 * 1024
 const MAX_POST_MEDIA_COUNT = 9
 const MAX_COMMENT_MEDIA_COUNT = 4
 
-// 分类定义
+// 分类定义（预设 + 其他=用户自定义类型名写入 category 字段）
 const categories = [
   { value: 'general', label: '动态', color: '#4f8ef7' },
   { value: 'confession', label: '表白', color: '#f43f5e' },
   { value: 'help', label: '求助', color: '#f97316' },
   { value: 'trade', label: '二手', color: '#10b981' },
   { value: 'lost', label: '失物', color: '#8b5cf6' },
+  { value: 'event', label: '活动', color: '#06b6d4' },
+  { value: 'team', label: '组队', color: '#eab308' },
+  { value: 'housing', label: '租房', color: '#ec4899' },
+  { value: 'carpool', label: '拼车', color: '#14b8a6' },
+  { value: 'lecture', label: '讲座', color: '#6366f1' },
+  { value: 'parttime', label: '兼职', color: '#f59e0b' },
+  { value: 'food', label: '美食', color: '#ef4444' },
+  { value: 'rant', label: '吐槽', color: '#a855f7' },
+  { value: 'other', label: '其他', color: '#6b7280' },
 ]
 
-// 分类到中文标签的映射
+// 分类到中文标签的映射（未知 category 文本回退为原样展示）
 const categoryMap: Record<string, { label: string; cls: string }> = {
   general: { label: '动态', cls: 'cat-general' },
   confession: { label: '表白', cls: 'cat-confession' },
   help: { label: '求助', cls: 'cat-help' },
   trade: { label: '二手', cls: 'cat-trade' },
   lost: { label: '失物', cls: 'cat-lost' },
+  event: { label: '活动', cls: 'cat-event' },
+  team: { label: '组队', cls: 'cat-team' },
+  housing: { label: '租房', cls: 'cat-housing' },
+  carpool: { label: '拼车', cls: 'cat-carpool' },
+  lecture: { label: '讲座', cls: 'cat-lecture' },
+  parttime: { label: '兼职', cls: 'cat-parttime' },
+  food: { label: '美食', cls: 'cat-food' },
+  rant: { label: '吐槽', cls: 'cat-rant' },
+  other: { label: '其他', cls: 'cat-other' },
+}
+
+function resolveCategoryDisplay(category: string | null | undefined): { label: string; cls: string } {
+  const c = category || 'general'
+  if (categoryMap[c]) return categoryMap[c]
+  const label = c.trim().slice(0, 14) || '动态'
+  return { label, cls: 'cat-custom' }
 }
 
 // 重置发布面板所有状态
@@ -661,6 +743,9 @@ const resetComposerState = () => {
   previewUrls.value = []
   isAnonymous.value = false
   selectedCategory.value = 'general'
+  customCategoryText.value = ''
+  selectedMood.value = ''
+  moodCustom.value = ''
   isSubmitting.value = false
   customTags.value = []
   tagInput.value = ''
@@ -789,6 +874,9 @@ interface Post {
   comments: number
   liked: boolean
   category: string
+  mood?: string | null
+  school?: string | null
+  region?: string | null
 }
 
 const posts = ref<Post[]>([])
@@ -813,7 +901,23 @@ const getCommentAuthorDisplay = (comment: Pick<Comment, 'id' | 'authorName' | 'a
   })
 }
 const expandedPosts = reactive(new Set<string>())
-const followingIds = ref(new Set<string>()) // 关注用户ID集合（后续接真实数据）
+const followingIds = ref(new Set<string>())
+const activeTagFilter = ref<string | null>(null)
+
+function effectivePostMood(): string | null {
+  if (selectedMood.value === 'custom') {
+    const t = moodCustom.value.trim().slice(0, 12)
+    return t || null
+  }
+  return selectedMood.value ? selectedMood.value : null
+}
+
+function effectivePostCategory(): string {
+  if (selectedCategory.value === 'other') {
+    return customCategoryText.value.trim().slice(0, 16) || 'general'
+  }
+  return selectedCategory.value
+}
 
 // ====== 数据获取 ======
 const fetchPosts = async () => {
@@ -841,7 +945,7 @@ const fetchPosts = async () => {
 
       posts.value = postsData.map(p => {
         const isAnon = inferAnonymousState(p)
-        const catInfo = categoryMap[p.category] || categoryMap.general
+        const catInfo = resolveCategoryDisplay(p.category)
         return {
           id: p.id,
           author: p.author_name,
@@ -850,8 +954,11 @@ const fetchPosts = async () => {
           authorInitial: isAnon ? '' : p.author_name.charAt(0).toUpperCase(),
           avatarBg: isAnon ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple))',
           isAnonymous: isAnon,
-          categoryLabel: isAnon ? '半匿名' : catInfo.label,
-          categoryClass: isAnon ? 'anon' : catInfo.cls,
+          categoryLabel: catInfo.label,
+          categoryClass: catInfo.cls,
+          mood: (p as { mood?: string }).mood || null,
+          school: (p as { school?: string }).school ?? null,
+          region: (p as { region?: string }).region ?? null,
           time: formatTime(p.created_at),
           createdAt: p.created_at,
           content: p.content,
@@ -884,12 +991,27 @@ const formatTime = (dateStr: string): string => {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
+const fetchFollowingIds = async () => {
+  if (!user.value) return
+  try {
+    const { data } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', user.value.id)
+    if (data) {
+      followingIds.value = new Set(data.map(d => d.following_id))
+    }
+  } catch {
+    // follows 表可能尚未创建，静默忽略
+  }
+}
+
 onMounted(() => {
-  // 获取帖子数据
   if (user.value) {
     fetchPosts()
+    fetchFollowingIds()
   } else {
-    setTimeout(fetchPosts, 1000)
+    setTimeout(() => { fetchPosts(); fetchFollowingIds() }, 1000)
   }
 
   // 订阅评论实时更新
@@ -932,17 +1054,39 @@ onBeforeUnmount(() => {
 // ====== 发布权限 ======
 const canPost = computed(() => ['推荐', '最新', '本校', '同城'].includes(activeTab.value))
 
-// ====== 用户学校/地区信息（从 useCompanion 获取） ======
+// ====== 用户学校/地区信息（与发帖快照比对） ======
 const mySchool = computed(() => {
   const meta = user.value?.user_metadata
   return meta?.university || meta?.school || ''
 })
-void mySchool
 const myRegion = computed(() => {
   const meta = user.value?.user_metadata
   return meta?.region || meta?.city || ''
 })
-void myRegion
+
+const emptyStateHint = computed(() => {
+  if (activeTab.value === '关注') {
+    return followingIds.value.size === 0
+      ? '你还没有关注任何同学，去「推荐」看看有趣的人吧'
+      : '你关注的同学还没有发过动态'
+  }
+  if (activeTab.value === '本校') {
+    if (!normalizeCampusMeta(mySchool.value)) {
+      return '请先在个人资料中填写学校信息，才能查看本校同学的动态'
+    }
+    return '暂无本校同学的动态；较早帖子可能未记录学校，可切换「推荐」查看全部'
+  }
+  if (activeTab.value === '同城') {
+    if (!normalizeCampusMeta(myRegion.value)) {
+      return '请先在个人资料中填写地区或城市，才能查看同城同学的动态'
+    }
+    return '暂无同城动态；较早帖子可能未记录地区，可切换「推荐」查看全部'
+  }
+  if (activeTab.value === '热议表白') {
+    return '暂时没有热门内容，发一条表白或动态来引爆话题吧'
+  }
+  return '来，成为第一个发布的人！'
+})
 
 // ====== 热门标签统计 ======
 const trendingTags = computed(() => {
@@ -1040,10 +1184,10 @@ const hourlyActivity = computed(() => {
   return hours
 })
 
-function filterByTag(_tag: string) {
+function filterByTag(tag: string) {
   activeTab.value = '推荐'
+  activeTagFilter.value = activeTagFilter.value === tag ? null : tag
 }
-void filterByTag
 
 // ====== 表情回应系统 ======
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '😮', '😢', '🎉', '💡']
@@ -1095,30 +1239,55 @@ const wallStats = computed(() => ({
 
 // ====== Tab 筛选逻辑 ======
 const filteredPosts = computed(() => {
+  const schoolMe = normalizeCampusMeta(mySchool.value)
+  const regionMe = normalizeCampusMeta(myRegion.value)
+
+  const byTime = (a: Post, b: Post) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+
+  const withTag = (list: Post[]) =>
+    activeTagFilter.value
+      ? list.filter(p => p.tags.includes(activeTagFilter.value!))
+      : list
+
   switch (activeTab.value) {
     case '最新':
-      return [...posts.value].sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-    case '本校':
-      // TODO: 后端添加 school 字段后匹配，当前展示全部
-      return [...posts.value].sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-    case '同城':
-      // TODO: 后端添加 region 字段后匹配，当前展示全部
-      return [...posts.value].sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-    case '热议表白':
-      return posts.value
-        .filter(p => p.category === 'confession' || p.likes > 5)
-        .sort((a, b) => b.likes - a.likes)
+      return [...withTag(posts.value)].sort(byTime)
+    case '本校': {
+      if (!schoolMe) return []
+      const list = posts.value.filter(p => {
+        const ps = normalizeCampusMeta(p.school || '')
+        return ps && ps === schoolMe
+      })
+      return [...withTag(list)].sort(byTime)
+    }
+    case '同城': {
+      if (!regionMe) return []
+      const list = posts.value.filter(p => {
+        const pr = normalizeCampusMeta(p.region || '')
+        return pr && pr === regionMe
+      })
+      return [...withTag(list)].sort(byTime)
+    }
+    case '热议表白': {
+      const heatThreshold = 3
+      return withTag(posts.value)
+        .filter(p =>
+          p.category === 'confession'
+          || (p.likes * 2 + p.comments * 3) >= heatThreshold
+        )
+        .sort((a, b) => {
+          const heatA = a.likes * 2 + a.comments * 3
+          const heatB = b.likes * 2 + b.comments * 3
+          return heatB - heatA
+        })
+    }
     case '关注':
-      return posts.value.filter(p => followingIds.value.has(p.authorId))
+      if (followingIds.value.size === 0) return []
+      return withTag(posts.value).filter(p => followingIds.value.has(p.authorId))
     case '推荐':
     default:
-      return [...posts.value].sort((a, b) => {
+      return [...withTag(posts.value)].sort((a, b) => {
         const heatA = a.likes * 2 + a.comments * 3
         const heatB = b.likes * 2 + b.comments * 3
         if (heatB !== heatA) return heatB - heatA
@@ -1693,26 +1862,97 @@ const isReliableVideoUrl = (url: string): boolean => {
   return reliableExts.some(ext => lower.endsWith(ext))
 }
 
+const isColumnError = (err: { message?: string; code?: string } | null): boolean => {
+  if (!err) return false
+  const s = `${err.message || ''} ${err.code || ''}`
+  return /42703|PGRST204|schema cache|column|undefined/i.test(s)
+}
+
+const tryInsertPost = async (payload: Record<string, unknown>): Promise<{ error: any }> => {
+  const full = { ...payload }
+  let { error } = await supabase.from('posts').insert(full)
+  if (!error) return { error: null }
+
+  // 降级1：去掉 anonymous_seed / is_anonymous（migration_v2 未执行）
+  if (isColumnError(error) || /anonymous_seed|is_anonymous/i.test(error.message || '')) {
+    const p1 = { ...full }
+    delete p1.anonymous_seed
+    delete p1.is_anonymous
+    ;({ error } = await supabase.from('posts').insert(p1))
+    if (!error) return { error: null }
+
+    // 降级2：再去掉 mood / school / region（migration_v3 未执行）
+    if (isColumnError(error) || /mood|school|region/i.test(error.message || '')) {
+      const p2 = { ...p1 }
+      delete p2.mood
+      delete p2.school
+      delete p2.region
+      ;({ error } = await supabase.from('posts').insert(p2))
+      if (!error) return { error: null }
+
+      // 降级3：只保留最基本字段（极端降级）
+      if (isColumnError(error) || /category|tags|media_urls/i.test(error.message || '')) {
+        const p3: Record<string, unknown> = {
+          content: full.content,
+          author_id: full.author_id,
+          author_name: full.author_name,
+        }
+        ;({ error } = await supabase.from('posts').insert(p3))
+      }
+    }
+  }
+  // 降级分支: 从 mood/school/region 开始
+  else if (/mood|school|region/i.test(error.message || '')) {
+    const p2 = { ...full }
+    delete p2.mood
+    delete p2.school
+    delete p2.region
+    ;({ error } = await supabase.from('posts').insert(p2))
+  }
+
+  return { error }
+}
+
 const submitPost = async () => {
-  if (!newPostContent.value.trim() || !user.value) return
+  if (!newPostContent.value.trim()) return
+  if (!user.value) {
+    showToast('请先登录后再发布', 'error')
+    return
+  }
+
+  // 确保 session 有效
+  const { data: sessionData } = await supabase.auth.getSession()
+  if (!sessionData.session) {
+    showToast('登录状态已过期，请重新登录', 'error')
+    return
+  }
+
+  if (selectedCategory.value === 'other' && !customCategoryText.value.trim()) {
+    showToast('选择「其他」时请填写自定义类型，或改选上方预设分类', 'error')
+    return
+  }
 
   if (containsSensitiveWords(newPostContent.value)) {
     showToast('内容包含违规词汇，请修改后重试', 'error')
     return
   }
 
-  const { data: postSanctions } = await supabase
-    .from('user_sanctions')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .in('type', ['post_ban', 'full_ban'])
-    .gt('expires_at', new Date().toISOString())
-    .limit(1)
-  if (postSanctions && postSanctions.length > 0) {
-    const expiresAt = new Date(postSanctions[0].expires_at)
-    const remainDays = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
-    showToast(`发帖权限已被限制，还剩 ${remainDays} 天恢复`, 'error')
-    return
+  try {
+    const { data: postSanctions } = await supabase
+      .from('user_sanctions')
+      .select('*')
+      .eq('user_id', user.value.id)
+      .in('type', ['post_ban', 'full_ban'])
+      .gt('expires_at', new Date().toISOString())
+      .limit(1)
+    if (postSanctions && postSanctions.length > 0) {
+      const expiresAt = new Date(postSanctions[0].expires_at)
+      const remainDays = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
+      showToast(`发帖权限已被限制，还剩 ${remainDays} 天恢复`, 'error')
+      return
+    }
+  } catch {
+    // user_sanctions 表不存在时忽略，不阻塞发帖
   }
 
   isSubmitting.value = true
@@ -1739,32 +1979,53 @@ const submitPost = async () => {
       : (user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '同学')
     const anonymousSeed = isAnonymous.value ? createAnonymousSeed() : null
 
-    const newPostData = {
-      content: newPostContent.value,
+    const meta = user.value.user_metadata || {}
+    const schoolSnapshot = (meta.university || meta.school || '').trim() || null
+    const regionSnapshot = (meta.region || meta.city || '').trim() || null
+    const moodVal = effectivePostMood()
+    const catVal = effectivePostCategory()
+
+    const newPostData: Record<string, unknown> = {
+      content: newPostContent.value.trim(),
       author_id: user.value.id,
       author_name: authorName,
       is_anonymous: isAnonymous.value,
-      anonymous_seed: anonymousSeed,
-      tags: customTags.value,
+      tags: customTags.value.length ? customTags.value : [],
       media_urls: uploadedUrls,
-      category: selectedCategory.value
+      category: catVal,
     }
+    if (isAnonymous.value && anonymousSeed) newPostData.anonymous_seed = anonymousSeed
+    if (moodVal) newPostData.mood = moodVal
+    if (schoolSnapshot) newPostData.school = schoolSnapshot
+    if (regionSnapshot) newPostData.region = regionSnapshot
 
-    let { error } = await supabase.from('posts').insert(newPostData)
-    if (error && /anonymous_seed|is_anonymous/i.test(error.message || '')) {
-      const { anonymous_seed, is_anonymous, ...legacyPostData } = newPostData
-      ;({ error } = await supabase.from('posts').insert(legacyPostData))
-    }
+    const { error } = await tryInsertPost(newPostData)
     if (error) throw error
 
-    // Bug3修复：发布成功后完整重置
     composerExpanded.value = false
     resetComposerState()
     showToast('发布成功！', 'success')
     fetchPosts()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('发布失败:', error)
-    showToast('发布失败，请稍后重试', 'error')
+    const err = error as { message?: string; code?: string }
+    const msg = err?.message || ''
+    const code = err?.code || ''
+    let hint: string
+    if (/JWT|session|expired|refresh/i.test(msg)) {
+      hint = '登录已失效，请重新登录后再试'
+    } else if (/permission|policy|row-level|denied|403|42501/i.test(`${msg}${code}`)) {
+      hint = '无发帖权限，请确认已登录且账号未被限制。如问题持续，请联系管理员检查数据库权限策略'
+    } else if (/42703|column|schema/i.test(`${msg}${code}`)) {
+      hint = '数据库版本与客户端不一致，请联系管理员执行最新迁移脚本'
+    } else if (/network|fetch|timeout|abort/i.test(msg)) {
+      hint = '网络连接异常，请检查网络后重试'
+    } else if (/duplicate|unique|23505/i.test(`${msg}${code}`)) {
+      hint = '帖子可能已发布，请刷新页面查看'
+    } else {
+      hint = `发布失败：${msg.slice(0, 80) || '未知错误，请稍后重试'}`
+    }
+    showToast(hint, 'error')
   } finally {
     isSubmitting.value = false
   }
@@ -1882,6 +2143,25 @@ const submitPost = async () => {
 .tag.cat-help { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.2); color: #f97316; }
 .tag.cat-trade { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.2); color: #10b981; }
 .tag.cat-lost { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.2); color: #8b5cf6; }
+.tag.cat-event { background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.25); color: #06b6d4; }
+.tag.cat-team { background: rgba(234,179,8,0.12); border-color: rgba(234,179,8,0.25); color: #eab308; }
+.tag.cat-housing { background: rgba(236,72,153,0.1); border-color: rgba(236,72,153,0.2); color: #ec4899; }
+.tag.cat-carpool { background: rgba(20,184,166,0.1); border-color: rgba(20,184,166,0.2); color: #14b8a6; }
+.tag.cat-lecture { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.2); color: #6366f1; }
+.tag.cat-parttime { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); color: #f59e0b; }
+.tag.cat-food { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: #ef4444; }
+.tag.cat-rant { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.2); color: #a855f7; }
+.tag.cat-other { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.3); color: #9ca3af; }
+.tag.cat-custom { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.25); color: #a78bfa; }
+.post-mood-chip {
+  font-size: 10px; font-weight: 500;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--color-text-secondary);
+  max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .more-wrapper { position: relative; }
 .more-btn { background: transparent; border: none; color: var(--color-text-muted); cursor: pointer; letter-spacing: 2px; font-size: 16px; padding: 4px 8px; border-radius: 6px; transition: background 0.2s; }
@@ -2087,6 +2367,47 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   background: color-mix(in srgb, var(--cat-color) 12%, transparent);
   border-color: var(--cat-color);
   color: var(--cat-color);
+}
+.composer-hint {
+  font-size: 12px; color: var(--color-text-muted);
+  margin: -8px 0 12px;
+  line-height: 1.4;
+}
+.custom-cat-input, .custom-mood-input {
+  width: 100%;
+  margin-bottom: 12px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  font-size: 14px;
+  outline: none;
+}
+.custom-cat-input:focus, .custom-mood-input:focus { border-color: var(--color-brand-blue); }
+.mood-picker { margin-bottom: 14px; }
+.mood-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+.mood-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mood-chip {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--color-text-secondary);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mood-chip:hover { border-color: rgba(255,255,255,0.2); color: white; }
+.mood-chip.active {
+  border-color: var(--color-brand-purple);
+  color: #e9d5ff;
+  background: rgba(139,92,246,0.12);
 }
 
 /* 文本框 */

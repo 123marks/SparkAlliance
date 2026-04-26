@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ScheduleEvent } from '../../composables/useSchedule'
+import { getScheduleEventDisplayColor, type ScheduleEvent } from '../../composables/useSchedule'
 
 const props = defineProps<{
   year: number
@@ -93,11 +93,7 @@ const getEventsForDate = (date: Date): ScheduleEvent[] => {
   })
 }
 
-const colorMap: Record<string, string> = {
-  course: '#4f8ef7', exam: '#ef4444', task: '#f97316',
-  life: '#10b981', reminder: '#8b5cf6', holiday: '#fbbf24',
-}
-const getEventColor = (e: ScheduleEvent) => e.color || colorMap[e.event_type] || '#4f8ef7'
+const getEventColor = (e: ScheduleEvent) => getScheduleEventDisplayColor(e)
 
 /** v9: 优先级视觉化 —— 高/紧急加粗边框 + 显示徽章 */
 const getPriorityClass = (e: ScheduleEvent): string => {

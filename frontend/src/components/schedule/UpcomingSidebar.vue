@@ -1,9 +1,10 @@
 <!--
   UpcomingSidebar.vue — 右侧栏组件（增强版）
-  迷你日期卡 + 周时间分布 + 日程健康评分 + 即将到来 + 类型筛选 + 本月概览 + AI建议
+  可滚动主区 + 底部固定 AI 建议；即将到来支持整块收起
 -->
 <template>
   <aside class="sidebar">
+  <div class="sidebar-scroll">
     <!-- 迷你日期卡 -->
     <div class="mini-date">
       <div class="mini-num">{{ todayDate }}</div>
@@ -16,7 +17,12 @@
     <!-- 日程健康评分 -->
     <div class="section health-section">
       <div class="health-header">
-        <h4 class="section-title">日程健康度</h4>
+        <div class="health-title-wrap">
+          <h4 class="section-title">日程健康度</h4>
+          <p class="health-sub" title="时间均衡看每日分布方差；类型丰富看事件类型种类；日程密度看本月平均每天事件量。三项加权得到总分。">
+            由本月日程自动计算，会随你增删改事件变化
+          </p>
+        </div>
         <span class="health-score" :class="healthLevel">{{ healthScore }}分</span>
       </div>
       <div class="health-ring-row">
@@ -61,19 +67,30 @@
       </div>
     </div>
 
-    <!-- 即将到来（v7.4: 溢出折叠 + 展开看全部） -->
+    <!-- 即将到来（v7.4: 溢出折叠 + 展开看全部；整块收起节省纵向空间） -->
     <div class="section upcoming-section">
       <div class="upcoming-header">
-        <h4 class="section-title">即将到来</h4>
-        <span v-if="upcomingEvents.length > UPCOMING_INITIAL_COUNT" class="upcoming-count-badge">
-          共 {{ upcomingEvents.length }} 个
-        </span>
+        <div class="upcoming-header-main">
+          <h4 class="section-title">即将到来</h4>
+          <span v-if="upcomingEvents.length > UPCOMING_INITIAL_COUNT" class="upcoming-count-badge">
+            共 {{ upcomingEvents.length }} 个
+          </span>
+        </div>
+        <button
+          type="button"
+          class="upcoming-panel-toggle"
+          @click="upcomingPanelOpen = !upcomingPanelOpen"
+          :title="upcomingPanelOpen ? '收起即将到来整块' : '展开即将到来'"
+        >
+          {{ upcomingPanelOpen ? '收起' : '展开' }}
+        </button>
       </div>
+      <template v-if="upcomingPanelOpen">
       <div v-if="upcomingEvents.length === 0" class="empty-state">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
         <span>暂无近期事件</span>
       </div>
-      <div class="upcoming-list" :class="{ 'is-expanded': upcomingExpanded }">
+      <div v-else class="upcoming-list" :class="{ 'is-expanded': upcomingExpanded }">
         <div
           v-for="evt in displayedUpcoming" :key="evt.id"
           class="upcoming-item"
@@ -100,6 +117,7 @@
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
+      </template>
     </div>
 
     <!-- 类型筛选 -->
@@ -121,23 +139,29 @@
         </label>
       </div>
     </div>
+  </div>
 
-    <!-- AI 智能建议（v7.4: 支持换一换 + 基于本周/本月多维度建议 + 表情包） -->
-    <div class="section ai-suggest-section" v-if="aiSuggestion">
-      <div class="ai-suggest-header">
-        <h4 class="section-title">AI 建议</h4>
-        <button class="ai-suggest-refresh" :class="{ spinning: refreshingSuggest }" @click="rerollSuggestion" title="换一换">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-          </svg>
-        </button>
-      </div>
-      <div class="ai-suggest-card" :key="suggestCycle">
-        <span class="ai-suggest-icon">{{ aiSuggestion.icon }}</span>
-        <div class="ai-suggest-content">
-          <p class="ai-suggest-text">{{ aiSuggestion.text }}</p>
-          <span class="ai-suggest-scope">{{ aiSuggestion.scope }}</span>
+    <!-- 固定在侧栏底部，不随主区滚动被挤出视口 -->
+    <div class="sidebar-ai-footer" v-if="aiSuggestion">
+      <div class="section ai-suggest-section">
+        <div class="ai-suggest-header">
+          <div>
+            <h4 class="section-title ai-footer-title">AI 建议</h4>
+            <p class="ai-suggest-hint">根据本月日程与本周分布自动生成的提示（非聊天输入框）</p>
+          </div>
+          <button class="ai-suggest-refresh" :class="{ spinning: refreshingSuggest }" @click="rerollSuggestion" title="换一换">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+        </div>
+        <div class="ai-suggest-card" :key="suggestCycle">
+          <span class="ai-suggest-icon">{{ aiSuggestion.icon }}</span>
+          <div class="ai-suggest-content">
+            <p class="ai-suggest-text">{{ aiSuggestion.text }}</p>
+            <span class="ai-suggest-scope">{{ aiSuggestion.scope }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -146,7 +170,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { EVENT_TYPES, type ScheduleEvent } from '../../composables/useSchedule'
+import { EVENT_TYPES, getScheduleEventDisplayColor, type ScheduleEvent } from '../../composables/useSchedule'
 import { formatTime, formatDate } from '../../composables/useCalendar'
 import { getHolidayCountForMonth } from '../../data/holidays'
 import { expandRecurringEvents } from '../../composables/useRecurrence'
@@ -154,6 +178,8 @@ import { expandRecurringEvents } from '../../composables/useRecurrence'
 // v7.4: 溢出折叠
 const UPCOMING_INITIAL_COUNT = 3
 const upcomingExpanded = ref(false)
+/** 整块收起「即将到来」，为侧栏腾出空间，避免压住底部 AI */
+const upcomingPanelOpen = ref(true)
 
 // v7.4: AI 建议换一换
 const suggestCycle = ref(0)
@@ -184,8 +210,7 @@ const todayMonth = now.getMonth() + 1
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 const todayWeekday = `星期${weekdays[now.getDay()]}`
 
-const getEventColor = (evt: ScheduleEvent) =>
-  evt.color || EVENT_TYPES[evt.event_type]?.color || '#4f8ef7'
+const getEventColor = (evt: ScheduleEvent) => getScheduleEventDisplayColor(evt)
 
 const toggleType = (type: string) => {
   const current = [...props.modelValue]
@@ -252,11 +277,13 @@ const weekDistribution = computed(() => {
     }).length
   })
 
-  const max = Math.max(...counts, 1)
+  const maxCount = Math.max(...counts, 0)
+  // 纵轴使用 max(本周峰值, 5)，避免「只有 2 件事」也顶满柱形，读图更直观
+  const scaleMax = Math.max(maxCount, 5)
   return labels.map((label, i) => ({
     label,
     count: counts[i],
-    percent: (counts[i] / max) * 100,
+    percent: scaleMax > 0 ? (counts[i] / scaleMax) * 100 : 0,
     isToday: i === todayIdx,
   }))
 })
@@ -446,11 +473,47 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
 <style scoped>
 .sidebar {
   width: 260px; flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 18px;
-  max-height: calc(100vh - 140px); overflow-y: auto;
-  scrollbar-width: none;
+  display: flex; flex-direction: column;
+  align-self: stretch;
+  min-height: 0;
+  max-height: calc(100vh - 120px);
 }
-.sidebar::-webkit-scrollbar { display: none; }
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-padding-bottom: 16px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 5px; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+.sidebar-ai-footer {
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, transparent, rgba(12, 10, 20, 0.35));
+}
+.sidebar-ai-footer .ai-suggest-section { margin-bottom: 0; }
+.ai-footer-title { margin-bottom: 4px !important; }
+.ai-suggest-hint {
+  margin: 0 0 8px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.28);
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
 
 .mini-date {
   display: flex; align-items: center; gap: 14px;
@@ -488,10 +551,20 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
   border-radius: 14px;
 }
 .health-header {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px;
   margin-bottom: 12px;
 }
+.health-title-wrap { min-width: 0; flex: 1; }
 .health-header .section-title { margin: 0; padding: 0; border: none; }
+.health-sub {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.32);
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
 .health-score {
   font-size: 14px; font-weight: 700; padding: 3px 10px;
   border-radius: 10px;
@@ -561,12 +634,34 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
 /* ===== Upcoming (v9: 含溢出折叠 + 展开按钮) ===== */
 .upcoming-section { position: relative; }
 .upcoming-header {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 8px;
   margin-bottom: 10px; padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
+.upcoming-header-main {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  min-width: 0;
+}
 .upcoming-header .section-title {
   margin: 0; padding: 0; border: none;
+}
+.upcoming-panel-toggle {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(167, 139, 250, 0.9);
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.upcoming-panel-toggle:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #ddd6fe;
 }
 .upcoming-count-badge {
   font-size: 10px; font-weight: 700;
@@ -581,7 +676,17 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
   transition: max-height 0.42s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
-.upcoming-list.is-expanded { max-height: 1200px; }
+.upcoming-list.is-expanded {
+  max-height: min(280px, 42vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,92,246,0.35) transparent;
+}
+.upcoming-list.is-expanded::-webkit-scrollbar { width: 4px; }
+.upcoming-list.is-expanded::-webkit-scrollbar-thumb {
+  background: rgba(139,92,246,0.35);
+  border-radius: 4px;
+}
 .upcoming-list:not(.is-expanded)::after {
   content: ''; position: absolute; inset: auto 0 0 0; height: 28px;
   background: linear-gradient(to bottom, transparent, rgba(12,10,24,.8));
@@ -673,10 +778,12 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
 @keyframes aiTopGlow { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
 
 .ai-suggest-header {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px;
   margin-bottom: 10px;
 }
 .ai-suggest-header .section-title { margin: 0; padding: 0; border: none; }
+.ai-suggest-header .ai-suggest-refresh { flex-shrink: 0; margin-top: 2px; }
 .ai-suggest-refresh {
   background: rgba(139,92,246,0.1);
   border: 1px solid rgba(139,92,246,0.2);
@@ -731,7 +838,8 @@ const aiSuggestion = computed<SmartSuggestion>(() => {
 }
 
 @media (max-width: 900px) {
-  .sidebar { width: 100%; max-height: 300px; }
+  /* 侧栏横向铺满；纵向给足空间，底部固定 AI 仍可见 */
+  .sidebar { width: 100%; max-height: min(520px, 62vh); }
   .mini-date { display: none; }
   .week-chart { height: 60px; }
   .health-section { padding: 10px; }

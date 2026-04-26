@@ -240,6 +240,14 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
     hint: '说出你想做的事',
     suggestedAbilities: ['navigate'], kind: 'productivity',
   },
+  {
+    key: 'sandbox', icon: '🧪', label: '代码沙盒',
+    prompt: '请帮我生成一个完整可运行的{{cursor}}，要求：1) 代码完整，复制即可运行；2) 如果是 HTML 页面请包含完整的 <!DOCTYPE html> 结构和内联 CSS/JS；3) 如果是 Python 请确保不依赖外部文件。生成后我会在沙盒中直接运行它。',
+    hint: '描述你想运行的代码（如"一个贪吃蛇 HTML 游戏"）',
+    systemHint: '你是一名全栈工程师。用户会在浏览器代码沙盒里运行你的代码，因此：1) HTML 代码必须是完整的独立页面（含 DOCTYPE/head/body），所有 CSS 和 JS 内联；2) Python 代码用 Pyodide 运行（浏览器 WebAssembly），可用 numpy/pandas 但不能用 requests/文件 I/O；3) JavaScript 代码会在一个独立 iframe 里执行，console.log 会显示在页面上。代码块必须标注正确的语言标识（html/python/javascript）。',
+    suggestedModel: 'thinking',
+    suggestedAbilities: ['code'], acceptsFiles: false, kind: 'coding',
+  },
 ]
 
 export type StreamPhase = 'idle' | 'thinking' | 'streaming' | 'done'

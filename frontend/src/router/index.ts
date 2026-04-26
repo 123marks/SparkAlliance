@@ -96,7 +96,7 @@ const routes: Array<RouteRecordRaw> = [
       { path: 'cocreate', name: 'AppCoCreate', component: () => import('../pages/app/CoCreate.vue') },
       // ===== 旧路由兼容重定向 =====
       { path: 'planner', redirect: '/app/schedule' },
-      { path: 'tarot', redirect: '/app/schedule' },
+      { path: 'tarot', name: 'AppTarot', component: () => import('../pages/app/Tarot.vue') },
       { path: 'study-room', redirect: '/app/learn' },
       { path: 'resources', redirect: '/app/learn' },
       { path: 'mentors', redirect: '/app/legacy' },

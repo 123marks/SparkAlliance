@@ -89,6 +89,32 @@ export const RECURRENCE_OPTIONS = [
   { label: '每月', value: 'monthly' },
 ]
 
+/** 将 #RRGGBB 与另一颜色按比例混合（用于优先级着色） */
+function mixHex(base: string, r2: number, g2: number, b2: number, t: number): string {
+  const h = base.replace('#', '')
+  if (h.length !== 6) return base
+  const r1 = parseInt(h.slice(0, 2), 16)
+  const g1 = parseInt(h.slice(2, 4), 16)
+  const b1 = parseInt(h.slice(4, 6), 16)
+  if ([r1, g1, b1].some(n => Number.isNaN(n))) return base
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const b = Math.round(b1 + (b2 - b1) * t)
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+/**
+ * 日历上显示用颜色：在类型色基础上按优先级偏移，紧急偏红、高优先级偏橙、较低饱和度灰调。
+ */
+export function getScheduleEventDisplayColor(event: ScheduleEvent): string {
+  const base = event.color || EVENT_TYPES[event.event_type]?.color || '#4f8ef7'
+  // 混合比例偏大，避免「同类型任务」在月视图上看起来一片同色
+  if (event.priority >= 2) return mixHex(base, 220, 38, 38, 0.58)
+  if (event.priority === 1) return mixHex(base, 234, 88, 12, 0.48)
+  if (event.priority === -1) return mixHex(base, 100, 116, 139, 0.48)
+  return base
+}
+
 // ====== 模块级单例状态（终审要求：避免多实例不同步） ======
 const events = ref<ScheduleEvent[]>([])
 const loading = ref(false)

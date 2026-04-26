@@ -16,13 +16,23 @@ async function callTarotAI(prompt: string): Promise<string> {
   try {
     const res = await requestAssistantChat({
       assistant: 'spark',
-      mode: 'fast',
+      mode: 'standard',
       messages: [{ role: 'user', content: prompt }],
     })
     return (res.content || '').trim()
   } catch (e: any) {
-    console.warn('AI 服务调用失败:', e?.message)
-    throw e
+    console.warn('AI 服务调用失败，尝试 fast 模式:', e?.message)
+    try {
+      const fallback = await requestAssistantChat({
+        assistant: 'spark',
+        mode: 'fast',
+        messages: [{ role: 'user', content: prompt }],
+      })
+      return (fallback.content || '').trim()
+    } catch (e2: any) {
+      console.warn('fast 模式也失败:', e2?.message)
+      throw e2
+    }
   }
 }
 
@@ -36,19 +46,22 @@ export interface QuestionBreakdown {
 }
 
 export async function analyzeQuestion(question: string): Promise<QuestionBreakdown> {
-  const prompt = `你是"星火校园"卡罗牌的问题理解助手。请深入理解用户的问题，提取核心诉求。
+  const prompt = `你是"星火校园"卡罗牌的灵魂洞察师，擅长从简单的问题中读出深层的心理需求和隐藏的情绪。
 
 用户问题：${question}
 
+你的任务不是复述问题，而是像一个敏锐的心理咨询师一样，看透问题背后的真实渴望。
+
 请严格按以下 JSON 格式返回（不要多余文字）：
 {
-  "core": "一句话概括核心诉求（10字内）",
+  "core": "用一个精准的词或短语揭示问题的本质（不超过8字，要有洞察力，比如'安全感缺失''害怕做错选择''渴望被认可'）",
   "direction": "学业发展/情感社交/选择决策/职业规划/日常生活/自我成长",
-  "mood": "迷茫焦虑/轻松好奇/期待紧张/低落沮丧/平和理性",
-  "refined": "重新组织的清晰问题（20字内）",
+  "mood": "用一个生动的比喻描述用户此刻的状态（如'站在十字路口的旅人''雾中寻路的探险者''等待花开的园丁'）",
+  "refined": "把用户的问题翻译成内心真正想问的话（不超过25字，要触及灵魂，不是简单换个说法。比如用户问'期末能过吗'→'我这学期的努力够不够撑起我的自信'）",
   "options": ["选项A", "选项B"]
 }
-其中 options 仅在问题包含"还是""或者"等选择时提取，否则为空数组。`
+options 仅在问题包含"还是""或者"等明确选择时提取，否则为空数组。
+重点：refined 必须和原问题有质的不同，要深入到情绪和心理层面。`
 
   try {
     const raw = await callTarotAI(prompt)
@@ -60,37 +73,46 @@ export async function analyzeQuestion(question: string): Promise<QuestionBreakdo
   return localAnalyze(question)
 }
 
-// ====== 本地智能分析（V3增强版）======
 function localAnalyze(q: string): QuestionBreakdown {
-  // 提取选项
   const options: string[] = []
   const optMatch = q.match(/(.+?)(?:还是|或者|or)(.+?)(?:[？?。，,！!]|$)/)
   if (optMatch) {
     options.push(optMatch[1].trim(), optMatch[2].trim())
   }
 
-  // 识别方向
-  const dirRules: [RegExp, string, string][] = [
-    [/考试|期末|高数|挂科|复习|论文|作业|考研|英语|成绩/, '学业发展', '紧张焦虑'],
-    [/恋爱|感情|喜欢|暧昧|分手|表白|对象|另一半/, '情感社交', '迷茫期待'],
-    [/还是|选择|该不该|要不要|纠结|到底/, '选择决策', '纠结犹豫'],
-    [/实习|工作|面试|简历|毕业|考公|薪资/, '职业规划', '期待紧张'],
-    [/吃|火锅|烤肉|麻辣烫|奶茶|外卖|零食/, '日常生活', '轻松好奇'],
-    [/睡|失眠|焦虑|压力|心情|开心|难过|累/, '自我成长', '低落沮丧'],
+  const dirRules: [RegExp, string, string, string, string][] = [
+    [/考试|期末|高数|挂科|复习|论文|作业|考研|英语|成绩/, '学业发展', '紧张焦虑', '对自我能力的不确定', '站在考场门前深呼吸的考生'],
+    [/恋爱|感情|喜欢|暧昧|分手|表白|对象|另一半/, '情感社交', '迷茫期待', '渴望被理解和接纳', '月光下等待回应的信使'],
+    [/还是|选择|该不该|要不要|纠结|到底/, '选择决策', '纠结犹豫', '害怕做错选择', '站在十字路口的旅人'],
+    [/实习|工作|面试|简历|毕业|考公|薪资/, '职业规划', '期待紧张', '对未来的掌控感需求', '即将启航却在选港口的水手'],
+    [/吃|火锅|烤肉|麻辣烫|奶茶|外卖|零食/, '日常生活', '轻松好奇', '生活中的小确幸', '在美食地图上寻宝的探险家'],
+    [/睡|失眠|焦虑|压力|心情|开心|难过|累/, '自我成长', '低落沮丧', '内心平衡的失调', '雾中寻路的夜行者'],
   ]
 
   let direction = '自我成长'
-  let mood = '平和理性'
-  for (const [re, dir, mo] of dirRules) {
-    if (re.test(q)) { direction = dir; mood = mo; break }
+  let mood = '等待答案的求知者'
+  let core = '寻找方向感'
+  let refinedBase = q
+
+  for (const [re, dir, , c, m] of dirRules) {
+    if (re.test(q)) { direction = dir; core = c; mood = m; break }
   }
 
-  // 生成核心概括
-  const core = options.length >= 2
-    ? `${options[0]}还是${options[1]}`
-    : q.replace(/[？?！!。，,\s]+/g, '').slice(0, 10)
+  if (options.length >= 2) {
+    core = '害怕做错选择'
+  }
 
-  return { core, direction, mood, refined: q.slice(0, 20), options }
+  const refinedMap: Record<string, string> = {
+    '学业发展': '我付出的努力配得上我期望的结果吗',
+    '情感社交': '我值得拥有我渴望的那份连接吗',
+    '选择决策': options.length >= 2 ? `在${options[0]}和${options[1]}之间，哪个更接近真实的我` : '哪条路更接近我内心的声音',
+    '职业规划': '我有能力掌控自己未来的方向吗',
+    '日常生活': '此刻什么能让我的心真正满足',
+    '自我成长': '我该如何找回内心的平静与力量',
+  }
+
+  const refined = refinedMap[direction] || refinedBase.slice(0, 25)
+  return { core, direction, mood, refined, options }
 }
 
 // ====== 智能选牌：根据问题方向筛选候选牌 ======
@@ -141,24 +163,30 @@ export async function generateReading(
     ? `用户在纠结：${options.join(' vs ')}。你必须结合牌义明确推荐其中一个选项，用"推荐你选 X"这样的语气，给出清晰理由。不要模棱两可。`
     : ''
 
-  const prompt = `你是"星火校园"卡罗牌解读搭子，帮大学生做选择、给行动建议。
+  const prompt = `你是"星火卡罗牌"的灵魂解读师，说话风格像一位温暖而有洞察力的学姐/学长，既能看透本质又不失亲切感。
 
-【核心原则】用户来这里是为了得到一个明确的方向，不是听废话。你必须给出清晰、具体的建议。
+【你的人格】
+- 你有通灵般的敏锐直觉，能从牌面中读出用户没说出口的心事
+- 你说话温暖但不废话，每句话都有分量
+- 你擅长用生动的比喻和意象来传达牌义
+- 你会给出超出预期的具体建议，而不是空洞的鼓励
 
-【输入】
-- 时间：${period}
-- 问题：${question || '（今日指引）'}
-- 卡牌：${card.nameZh}（${orient}）
-- 牌义：${meaning}
-- 场景：${card.campusContext}
+【本次解读】
+- 时间能量：${period}
+- 求问：${question || '（今日指引）'}
+- 抽到：${card.nameZh}（${orient}）
+- 牌义核心：${meaning}
+- 校园映射：${card.campusContext}
+- 关键能量：${card.keywords.join('、')}
 ${optionsHint}
 
-【要求】
-1. 纯中文正文，120-180字，无标题无列表
-2. ${options?.length ? '开头直接说"推荐你选 X"，然后用牌义解释为什么' : '先解释牌义，再给具体行动建议'}
-3. 建议要具体可执行（什么时候做、怎么做）
-4. 结尾一句轻松鼓励
-5. 最后加：（仅供娱乐参考 ✨）`
+【输出要求】
+1. 纯中文正文，150-220字，无标题无列表无emoji
+2. ${options?.length ? '第一句直接亮出你的推荐："这张牌的能量明确指向X"，然后解释为什么牌义支持这个选择' : '开头用一个意象或比喻引入牌义，让人眼前一亮'}
+3. 中段结合用户的具体处境深入解读，说出他们心里想的但没说出来的话
+4. 给一个"今天就能做的微行动"（具体到时间、地点、方式）
+5. 结尾用一句有力量感的话收束（不要"加油"这种空话）
+6. 最后加：（仅供娱乐参考 ✨）`
 
   try {
     return await callTarotAI(prompt)
@@ -199,12 +227,20 @@ export async function generateDailyGuidance(card: TarotCard, isReversed: boolean
 export async function askFollowUp(
   cardName: string, originalReading: string, followUpQuestion: string
 ): Promise<string> {
-  const prompt = `用户之前抽到了"${cardName}"，当时的解读是：
-"${originalReading.slice(0, 200)}"
+  const prompt = `你是星火卡罗牌的灵魂解读师，用户正在追问之前的牌面解读。
 
-现在用户想追问：${followUpQuestion}
+【前情】用户抽到了"${cardName}"，解读为：
+"${originalReading.slice(0, 300)}"
 
-请基于之前的牌面和解读，给出 100-150 字的补充解答。语气温暖，贴近大学生。`
+【追问】${followUpQuestion}
+
+【回答要求】
+1. 100-160字，纯中文正文，无emoji
+2. 不要重复之前的解读，而是从新的角度切入
+3. 像一个睿智的朋友，直接回应追问的核心焦虑
+4. 如果追问涉及选择，给出明确倾向而非模棱两可
+5. 给一个可落地的具体建议
+6. 结尾留一句有回味的话（仅供参考 ✨）`
 
   try {
     return await callTarotAI(prompt)
