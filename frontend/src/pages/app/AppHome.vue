@@ -1,17 +1,13 @@
 <template>
   <div class="app-home">
     <section class="hero">
-      <!-- 星球主体 -->
-      <div class="planet-system">
-        <div class="planet-core"></div>
-        <div class="planet-ring"></div>
-        <div class="planet-glow"></div>
-        <div class="planet-halo"></div>
+      <!-- 真实星球图片 -->
+      <div class="planet-img-wrap">
+        <img src="/hero-planet.png" alt="" class="planet-img" />
       </div>
-      <!-- 三层星云 -->
+      <!-- 星云层 -->
       <div class="hero-nebula-core"></div>
       <div class="hero-nebula-mid"></div>
-      <div class="hero-nebula-outer"></div>
       <!-- 星点 -->
       <div class="hero-stars">
         <span v-for="i in 45" :key="'hs'+i" class="h-star" :class="{ 'h-star-bright': i % 7 === 0 }" :style="{ left: `${((i * 7.3 + 13) % 95) + 2}%`, top: `${((i * 11.1 + 5) % 90) + 3}%`, animationDelay: `${i * 0.28}s`, animationDuration: `${1.8 + (i % 5) * 0.5}s`, width: `${1 + (i % 4)}px`, height: `${1 + (i % 4)}px` }"></span>
@@ -160,9 +156,9 @@
           </div>
         </div>
         <div class="progress-detail">
-          <span>✅ 已完成 {{ dashboardSnapshot.weeklyCompletedTasks }}</span>
-          <span>🔄 进行中 {{ dashboardSnapshot.todayTasks }}</span>
-          <span v-if="dashboardSnapshot.overdueTasks > 0" class="overdue-tag">⚠️ 未开始 {{ dashboardSnapshot.overdueTasks }}</span>
+          <span class="pd-done"><span class="pd-dot done"></span>已完成 {{ dashboardSnapshot.weeklyCompletedTasks }}</span>
+          <span class="pd-prog"><span class="pd-dot prog"></span>进行中 {{ dashboardSnapshot.todayTasks }}</span>
+          <span v-if="dashboardSnapshot.overdueTasks > 0" class="pd-warn"><span class="pd-dot warn"></span>未开始 {{ dashboardSnapshot.overdueTasks }}</span>
         </div>
         <p class="progress-trend">较上周 <span class="trend-up">+12%</span></p>
       </div>
@@ -730,103 +726,31 @@ watch(
   min-height: 150px;
 }
 
-/* 星球系统 — 设计图级别 */
-.planet-system {
+/* 星球图片 */
+.planet-img-wrap {
   position: absolute;
-  top: -65%;
-  right: -2%;
-  width: 380px;
-  height: 380px;
+  top: -80%;
+  right: -12%;
+  width: 480px;
+  height: 340px;
   pointer-events: none;
-  animation: planetFloat 20s ease-in-out infinite alternate;
   z-index: 0;
+  animation: planetFloat 20s ease-in-out infinite alternate;
+  opacity: 0.7;
+  mix-blend-mode: screen;
 }
-.planet-core {
-  position: absolute;
-  inset: 22%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 38% 32%,
-      rgba(220,200,255,0.7) 0%,
-      rgba(160,120,255,0.55) 15%,
-      rgba(110,60,220,0.45) 35%,
-      rgba(70,30,170,0.35) 55%,
-      rgba(30,15,80,0.5) 80%,
-      rgba(10,5,40,0.6) 100%);
-  box-shadow:
-    0 0 50px rgba(139,92,246,0.5),
-    0 0 100px rgba(139,92,246,0.3),
-    0 0 150px rgba(99,102,241,0.15),
-    inset 0 -12px 30px rgba(0,0,0,0.4),
-    inset 0 6px 20px rgba(220,200,255,0.2),
-    inset -6px 0 15px rgba(139,92,246,0.15);
-}
-.planet-core::before {
-  content: '';
-  position: absolute;
-  top: 12%; left: 18%;
-  width: 35%; height: 20%;
-  background: radial-gradient(ellipse, rgba(255,255,255,0.18) 0%, transparent 70%);
-  border-radius: 50%;
-  filter: blur(6px);
-  transform: rotate(-15deg);
-}
-.planet-ring {
-  position: absolute;
-  inset: 12%;
-  border-radius: 50%;
-  border: 2px solid rgba(139,92,246,0.08);
-  animation: planetRingPulse 8s ease-in-out infinite;
-}
-.planet-ring::after {
-  content: '';
-  position: absolute;
-  inset: -12%;
-  border-radius: 50%;
-  border: 1px solid rgba(99,102,241,0.05);
-  animation: planetRingPulse 12s ease-in-out infinite reverse;
-}
-.planet-glow {
-  position: absolute;
-  inset: 5%;
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(139,92,246,0.35) 0%,
-    rgba(99,102,241,0.15) 30%,
-    rgba(59,130,246,0.06) 55%,
-    transparent 75%);
-  filter: blur(25px);
-  animation: planetGlowPulse 6s ease-in-out infinite alternate;
-}
-.planet-halo {
-  position: absolute;
-  inset: -25%;
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(139,92,246,0.1) 0%,
-    rgba(99,102,241,0.06) 25%,
-    rgba(59,130,246,0.03) 45%,
-    transparent 70%);
-  filter: blur(50px);
-  animation: haloBreath 10s ease-in-out infinite alternate;
+.planet-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: brightness(0.8) saturate(1.3);
 }
 
 @keyframes planetFloat {
   0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-5px, 6px) scale(1.02); }
+  50% { transform: translate(-4px, 5px) scale(1.02); }
   100% { transform: translate(3px, -3px) scale(0.99); }
-}
-@keyframes planetRingPulse {
-  0%, 100% { transform: scale(1); opacity: 0.4; }
-  50% { transform: scale(1.04); opacity: 0.7; }
-}
-@keyframes planetGlowPulse {
-  from { opacity: 0.7; transform: scale(1); }
-  to { opacity: 1; transform: scale(1.06); }
-}
-@keyframes haloBreath {
-  from { opacity: 0.5; transform: scale(1); }
-  to { opacity: 0.8; transform: scale(1.08); }
 }
 
 /* 星云层 */
@@ -841,11 +765,6 @@ watch(
   background: radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, rgba(139,92,246,0.03) 40%, transparent 70%);
   filter: blur(50px); pointer-events: none;
   animation: nebulaMid 14s ease-in-out infinite alternate;
-}
-.hero-nebula-outer {
-  position: absolute; top: -20%; right: -15%; width: 500px; height: 500px;
-  background: radial-gradient(ellipse at 40% 40%, rgba(88,28,200,0.04) 0%, transparent 60%);
-  filter: blur(60px); pointer-events: none;
 }
 
 @keyframes nebulaCore { from { transform: translate(0,0) scale(1); opacity: 0.7 } to { transform: translate(-8px,8px) scale(1.05); opacity: 1 } }
@@ -1324,6 +1243,22 @@ watch(
   color: rgba(196,181,253,0.7);
   margin-left: 6px;
   vertical-align: middle;
+}
+
+.pd-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.pd-dot.done { background: #10b981; }
+.pd-dot.prog { background: #6366f1; }
+.pd-dot.warn { background: #f59e0b; }
+.pd-done, .pd-prog, .pd-warn {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
 }
 
 .progress-trend {

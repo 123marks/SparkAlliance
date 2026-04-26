@@ -10,7 +10,7 @@
       <!-- 今日状态 -->
       <section class="rp-card rp-status">
         <div class="rp-card-head">
-          <h4>今日状态</h4>
+          <h4><svg class="rp-h-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> 今日状态</h4>
           <span class="rp-time">更新于 {{ updateTime }}</span>
         </div>
         <div class="rp-energy-ring">
@@ -22,14 +22,20 @@
           </svg>
           <div class="energy-center">
             <strong>{{ energyValue }}%</strong>
-            <span>电量偏低</span>
+            <span>{{ energyValue >= 70 ? '状态良好' : energyValue >= 40 ? '电量偏低' : '需要休息' }}</span>
           </div>
         </div>
         <div class="rp-status-tips">
           <p>{{ energyTip }}</p>
-          <div class="rp-mood-row" v-if="todayMood">
-            <span class="rp-mood-icon">{{ moodMeta?.icon }}</span>
-            <span>心情：{{ moodMeta?.label }}</span>
+          <div class="rp-status-tags">
+            <div class="rp-mood-row" v-if="todayMood">
+              <span class="rp-mood-icon">{{ moodMeta?.icon }}</span>
+              <span>心情：{{ moodMeta?.label }}</span>
+            </div>
+            <div class="rp-mood-row" v-else>
+              <span class="rp-mood-icon">💚</span>
+              <span>心情：{{ energyValue >= 70 ? '精力充沛' : '平静' }}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -37,7 +43,7 @@
       <!-- 今日节奏 -->
       <section class="rp-card rp-schedule">
         <div class="rp-card-head">
-          <h4>今日节奏</h4>
+          <h4><svg class="rp-h-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 今日节奏</h4>
           <router-link to="/app/schedule" class="rp-link">日程视图</router-link>
         </div>
         <div class="rp-timeline">
@@ -51,15 +57,18 @@
           </div>
           <p v-if="todayEvents.length === 0" class="rp-empty">今天暂无日程安排</p>
         </div>
-        <router-link v-if="todayEvents.length > 0" to="/app/schedule" class="rp-view-all">
-          查看完整日程 →
-        </router-link>
+        <div class="rp-schedule-footer">
+          <router-link v-if="todayEvents.length > 0" to="/app/schedule" class="rp-view-all">
+            查看完整日程 →
+          </router-link>
+          <span class="rp-add-event" @click="$emit('send-message', '帮我添加一个今天的日程安排')">+ 添加事项</span>
+        </div>
       </section>
 
       <!-- 记忆胶囊 -->
       <section class="rp-card rp-memory">
         <div class="rp-card-head">
-          <h4>记忆胶囊</h4>
+          <h4><svg class="rp-h-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg> 记忆胶囊</h4>
           <span class="rp-link rp-link-btn" @click="refreshMemory">刷新</span>
         </div>
         <div class="rp-memory-list">
@@ -77,7 +86,7 @@
       <!-- 成长进度 -->
       <section class="rp-card rp-growth">
         <div class="rp-card-head">
-          <h4>成长进度</h4>
+          <h4><svg class="rp-h-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> 成长进度</h4>
         </div>
         <div class="rp-level-row">
           <div class="rp-level-badge">
@@ -99,12 +108,18 @@
             <span>本周活跃</span>
           </div>
         </div>
+        <div class="rp-growth-tags">
+          <span class="rp-gt">📚 专注达人</span>
+          <span class="rp-gt">🎯 学习任务</span>
+          <span class="rp-gt">💬 计数大师</span>
+          <span class="rp-gt rp-gt-more">更多成就 →</span>
+        </div>
       </section>
 
       <!-- 一键开始 -->
       <section class="rp-card rp-actions">
         <div class="rp-card-head">
-          <h4>一键开始</h4>
+          <h4><svg class="rp-h-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> 一键开始</h4>
         </div>
         <div class="rp-action-list">
           <button class="rp-action-btn rp-action-focus" @click="startFocus">
@@ -391,11 +406,37 @@ onMounted(async () => {
   border-radius: 14px;
   background: rgba(12, 10, 24, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.04);
-  transition: border-color 0.2s;
+  transition: all 0.2s;
 }
 
 .rp-card:hover {
   border-color: rgba(139, 92, 246, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.rp-status {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(12, 10, 24, 0.5));
+  border-color: rgba(16, 185, 129, 0.06);
+}
+
+.rp-schedule {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04), rgba(12, 10, 24, 0.5));
+  border-color: rgba(139, 92, 246, 0.06);
+}
+
+.rp-memory {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.03), rgba(12, 10, 24, 0.5));
+  border-color: rgba(245, 158, 11, 0.05);
+}
+
+.rp-growth {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.03), rgba(12, 10, 24, 0.5));
+  border-color: rgba(236, 72, 153, 0.05);
+}
+
+.rp-actions {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03), rgba(12, 10, 24, 0.5));
+  border-color: rgba(59, 130, 246, 0.05);
 }
 
 .rp-card-head {
@@ -410,7 +451,12 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+
+.rp-h-icon { flex-shrink: 0; }
 
 .rp-time {
   font-size: 10px;
@@ -565,19 +611,32 @@ onMounted(async () => {
   color: rgba(255, 255, 255, 0.2);
 }
 
-.rp-view-all {
-  display: block;
-  text-align: center;
-  font-size: 11px;
-  color: rgba(196, 181, 253, 0.4);
-  text-decoration: none;
+.rp-schedule-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.rp-view-all {
+  font-size: 11px;
+  color: rgba(196, 181, 253, 0.4);
+  text-decoration: none;
   transition: color 0.15s;
 }
 
 .rp-view-all:hover { color: #c4b5fd; }
+
+.rp-add-event {
+  font-size: 10px;
+  color: rgba(139, 92, 246, 0.4);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.rp-add-event:hover { color: rgba(139, 92, 246, 0.7); }
 
 /* 记忆胶囊 */
 .rp-memory-list {
@@ -701,6 +760,36 @@ onMounted(async () => {
 .rp-gs-item span {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.25);
+}
+
+.rp-growth-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.rp-gt {
+  font-size: 9px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+}
+
+.rp-gt-more {
+  color: rgba(139, 92, 246, 0.4);
+  cursor: pointer;
+  border-color: rgba(139, 92, 246, 0.08);
+}
+
+.rp-gt-more:hover {
+  color: rgba(139, 92, 246, 0.7);
+  background: rgba(139, 92, 246, 0.04);
 }
 
 /* 一键开始 */
