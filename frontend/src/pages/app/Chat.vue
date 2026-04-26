@@ -117,20 +117,56 @@
 
       <!-- 侧边栏底部功能区 -->
       <div class="sb-bottom">
+        <!-- 收藏区 -->
+        <div class="sb-section">
+          <div class="sb-section-head" @click="sbShowFavorites = !sbShowFavorites">
+            <span>⭐ 收藏</span>
+            <div class="sb-section-right">
+              <span class="sb-section-all" @click.stop="showFavorites = true">全部</span>
+              <span class="sb-section-toggle">{{ sbShowFavorites ? '▼' : '▶' }}</span>
+            </div>
+          </div>
+          <Transition name="sb-fold">
+            <div v-if="sbShowFavorites" class="sb-section-body">
+              <div v-for="fav in favorites.slice(0, 3)" :key="fav.id" class="sb-fav-item" @click="openFavorite(fav)">
+                <span class="sb-fav-text">{{ fav.content.slice(0, 20) }}</span>
+                <span class="sb-fav-time">{{ formatRelativeTime(fav.savedAt) }}</span>
+              </div>
+              <div v-if="favorites.length === 0" class="sb-section-empty">暂无收藏</div>
+            </div>
+          </Transition>
+        </div>
+
         <!-- 工作流快捷入口 -->
         <div class="sb-section">
           <div class="sb-section-head" @click="sbShowWorkflows = !sbShowWorkflows">
             <span>🚀 工作流</span>
-            <span class="sb-section-toggle">{{ sbShowWorkflows ? '▼' : '▶' }}</span>
+            <div class="sb-section-right">
+              <span class="sb-section-all" @click.stop="showWorkflow = true">全部</span>
+              <span class="sb-section-toggle">{{ sbShowWorkflows ? '▼' : '▶' }}</span>
+            </div>
           </div>
           <Transition name="sb-fold">
             <div v-if="sbShowWorkflows" class="sb-section-body">
-              <button v-for="w in WORKFLOW_PRESETS.slice(0, 6)" :key="w.key" class="sb-wf-item" @click="showWorkflow = true; expandedWorkflow = w.key">
+              <button v-for="w in WORKFLOW_PRESETS.slice(0, 4)" :key="w.key" class="sb-wf-item" @click="showWorkflow = true; expandedWorkflow = w.key">
                 <span>{{ w.icon }}</span>{{ w.label }}
               </button>
-              <button class="sb-wf-item sb-wf-more" @click="showWorkflow = true">
-                <span>⋯</span>全部工作流
-              </button>
+            </div>
+          </Transition>
+        </div>
+
+        <!-- 学习专题 -->
+        <div class="sb-section">
+          <div class="sb-section-head" @click="sbShowTopics = !sbShowTopics">
+            <span>🎓 学习专题</span>
+            <span class="sb-section-toggle">{{ sbShowTopics ? '▼' : '▶' }}</span>
+          </div>
+          <Transition name="sb-fold">
+            <div v-if="sbShowTopics" class="sb-section-body">
+              <div v-for="topic in studyTopics" :key="topic.label" class="sb-topic-item" @click="handleQuick(topic.prompt)">
+                <span class="sb-topic-icon">{{ topic.icon }}</span>
+                <span>{{ topic.label }}</span>
+              </div>
             </div>
           </Transition>
         </div>
@@ -147,12 +183,22 @@
           </div>
         </div>
 
-        <!-- 用户资料卡 -->
-        <div class="sb-user-card">
-          <div class="sb-user-avatar">⚡</div>
-          <div class="sb-user-info">
-            <div class="sb-user-name">{{ userName || '星火同学' }}</div>
-            <div class="sb-user-meta">{{ conversations.length }} 次对话 · {{ favorites.length }} 条收藏</div>
+        <!-- 用户资料卡（精装版） -->
+        <div class="sb-user-card-v2">
+          <div class="sb-uc-avatar">
+            <span class="sb-uc-avatar-icon">⚡</span>
+          </div>
+          <div class="sb-uc-info">
+            <div class="sb-uc-name-row">
+              <span class="sb-uc-name">{{ userName || '星火同学' }}</span>
+              <span class="sb-uc-level">● Lv.{{ userLevelComputed }}</span>
+            </div>
+            <div class="sb-uc-detail">连续陪伴 {{ streakDaysComputed }} 天</div>
+            <div class="sb-uc-school">🏫 星火大学</div>
+            <div class="sb-uc-xp-row">
+              <div class="sb-uc-xp-bar"><div class="sb-uc-xp-fill" :style="{ width: xpPercentComputed + '%' }"></div></div>
+              <span class="sb-uc-xp-text">{{ userXPComputed }} / 2500 XP</span>
+            </div>
           </div>
         </div>
       </div>
@@ -673,7 +719,7 @@ import { readCache, writeCache, makeCacheKey, fingerprintContext, replayCachedSt
 import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } from '../../utils/emojiPack'
 
 const router = useRouter()
-const { checkinToday, isCheckedInToday: checkinDone } = useCheckin()
+const { checkinToday, isCheckedInToday: checkinDone, currentStreak: checkinStreak } = useCheckin()
 
 const showCheckinModal = ref(false)
 
@@ -716,6 +762,31 @@ const sidebarOpen = ref(false)
 const chatMode = ref<'general' | 'study' | 'creative'>('general')
 const memoryEnabled = ref(true)
 const focusModeOn = ref(false)
+const sbShowFavorites = ref(true)
+const sbShowTopics = ref(false)
+
+const studyTopics = [
+  { icon: '📐', label: '高数知识点总结', prompt: '帮我整理高等数学核心知识点，按章节分类总结' },
+  { icon: '💻', label: '操作系统复习专题', prompt: '帮我制定操作系统的复习计划和重点内容梳理' },
+  { icon: '🔧', label: '数据结构专题', prompt: '帮我总结数据结构与算法的核心考点' },
+]
+
+const streakDaysComputed = computed(() => checkinStreak.value || 0)
+const userLevelComputed = computed(() => {
+  const base = streakDaysComputed.value * 15 + 50
+  return Math.max(1, Math.min(99, Math.floor(base / 100) + 1))
+})
+const userXPComputed = computed(() => (streakDaysComputed.value * 15 + 50) % 2500)
+const xpPercentComputed = computed(() => Math.min(100, Math.round((userXPComputed.value / 2500) * 100)))
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const days = Math.floor(diff / 86400000)
+  if (days === 0) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days}天前`
+  return '上周'
+}
 const inputText = ref('')
 const iFocus = ref(false)
 const scrollRef = ref<HTMLElement|null>(null)
@@ -2318,10 +2389,33 @@ async function handleInheritMemory() {
 .sb-ability-chip:hover { background:rgba(139,92,246,.04); color:rgba(139,92,246,.5); border-color:rgba(139,92,246,.1); }
 .sb-ability-active { background:rgba(139,92,246,.1) !important; color:rgba(139,92,246,.8) !important; border-color:rgba(139,92,246,.25) !important; }
 
-.sb-user-card { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background:rgba(139,92,246,.02); border:1px solid rgba(139,92,246,.04); margin-top:4px; }
-.sb-user-avatar { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1)); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
-.sb-user-info { flex:1; min-width:0; }
-.sb-user-name { font-size:12px; font-weight:700; color:rgba(255,255,255,.5); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-section-right { display:flex; align-items:center; gap:6px; }
+.sb-section-all { font-size:9px; color:rgba(139,92,246,.4); cursor:pointer; transition:color .15s; }
+.sb-section-all:hover { color:rgba(139,92,246,.7); }
+.sb-section-empty { font-size:10px; color:rgba(255,255,255,.1); padding:6px 8px; text-align:center; }
+
+.sb-fav-item { display:flex; align-items:center; justify-content:space-between; padding:4px 8px; border-radius:5px; cursor:pointer; transition:all .15s; }
+.sb-fav-item:hover { background:rgba(255,255,255,.02); }
+.sb-fav-text { font-size:11px; color:rgba(255,255,255,.25); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+.sb-fav-time { font-size:9px; color:rgba(255,255,255,.1); flex-shrink:0; margin-left:6px; }
+
+.sb-topic-item { display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:5px; font-size:11px; color:rgba(255,255,255,.2); cursor:pointer; transition:all .15s; }
+.sb-topic-item:hover { background:rgba(255,255,255,.02); color:rgba(255,255,255,.4); }
+.sb-topic-icon { font-size:13px; }
+
+.sb-user-card-v2 { display:flex; gap:10px; padding:10px; border-radius:12px; background:linear-gradient(135deg, rgba(139,92,246,.04), rgba(59,130,246,.02)); border:1px solid rgba(139,92,246,.06); margin-top:6px; }
+.sb-uc-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #6d28d9, #8b5cf6); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(139,92,246,.3); }
+.sb-uc-avatar-icon { font-size:16px; }
+.sb-uc-info { flex:1; min-width:0; }
+.sb-uc-name-row { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
+.sb-uc-name { font-size:12px; font-weight:700; color:rgba(255,255,255,.65); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-uc-level { font-size:9px; font-weight:700; color:rgba(139,92,246,.7); white-space:nowrap; }
+.sb-uc-detail { font-size:9px; color:rgba(255,255,255,.2); margin-bottom:1px; }
+.sb-uc-school { font-size:9px; color:rgba(255,255,255,.15); margin-bottom:4px; }
+.sb-uc-xp-row { display:flex; align-items:center; gap:6px; }
+.sb-uc-xp-bar { flex:1; height:4px; background:rgba(255,255,255,.04); border-radius:2px; overflow:hidden; }
+.sb-uc-xp-fill { height:100%; background:linear-gradient(90deg, #8b5cf6, #f59e0b); border-radius:2px; transition:width .6s ease; }
+.sb-uc-xp-text { font-size:8px; color:rgba(255,255,255,.15); white-space:nowrap; }
 .sb-user-meta { font-size:9px; color:rgba(255,255,255,.12); margin-top:1px; }
 
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; position:relative; z-index:1; }
