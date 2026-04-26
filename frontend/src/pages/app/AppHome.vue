@@ -1,6 +1,10 @@
 <template>
   <div class="app-home">
     <section class="hero">
+      <div class="hero-nebula"></div>
+      <div class="hero-stars">
+        <span v-for="i in 12" :key="'s'+i" class="hero-star" :style="{ left: `${8 + (i * 7.2) % 85}%`, top: `${10 + (i * 13.5) % 75}%`, animationDelay: `${i * 0.4}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px` }"></span>
+      </div>
       <div class="hero-content">
         <h1>{{ greeting }}，{{ userName }} ✦</h1>
         <p class="hero-date">{{ currentDate }}</p>
@@ -23,8 +27,8 @@
       </div>
     </section>
 
-    <!-- 第三行：闭环行动 + 今日日程 -->
-    <section class="row-2col">
+    <!-- 第三行：闭环行动 + 今日日程 + 规划推进（三栏） -->
+    <section class="row-3col">
       <div class="card">
         <div class="card-head">
           <h3>今日优先处理</h3>
@@ -62,10 +66,6 @@
           <router-link v-if="todaySchedule.length > 0" to="/app/schedule" class="card-bottom-link">查看完整日程 →</router-link>
         </div>
       </div>
-    </section>
-
-    <!-- 第四行：规划推进 + 购物动态 -->
-    <section class="row-2col">
       <div class="card">
         <div class="card-head">
           <h3>规划推进</h3>
@@ -95,8 +95,8 @@
       </div>
     </section>
 
-    <!-- 第五行：快速笔记 + 本周执行率 -->
-    <section class="row-2col">
+    <!-- 第四行：购物动态 + 快速笔记 + 本周执行率 + AI建议（四栏） -->
+    <section class="row-4col">
       <div class="card note-card">
         <div class="card-head">
           <h3>快速笔记</h3>
@@ -139,10 +139,48 @@
           <span v-if="dashboardSnapshot.overdueTasks > 0" class="overdue-tag">逾期 {{ dashboardSnapshot.overdueTasks }}</span>
         </div>
       </div>
+      <!-- AI今日建议 -->
+      <div class="card ai-card">
+        <div class="card-head">
+          <h3>AI 今日建议</h3>
+          <button class="more-link plain-btn" type="button" @click="refreshQuote">换一批</button>
+        </div>
+        <div class="ai-tips">
+          <div class="ai-tip"><span class="ai-bullet">•</span><span>建议在 16:00 - 17:30 安排专注学习，效率更高</span></div>
+          <div class="ai-tip"><span class="ai-bullet">•</span><span>你有 {{ dashboardSnapshot.overdueTasks }} 个任务即将截止，建议优先处理</span></div>
+          <div class="ai-tip"><span class="ai-bullet">•</span><span>本周专注时长提升明显，继续保持！</span></div>
+        </div>
+      </div>
     </section>
 
-    <!-- 第六行：每日灵感 + 校园热榜 -->
-    <section class="row-2col">
+    <!-- 第五行：成长 + 徽章 + 灵感 + 热榜（四栏） -->
+    <section class="row-4col">
+      <!-- 成长进度 -->
+      <div class="card growth-card">
+        <div class="card-head"><h3>成长进度</h3></div>
+        <div class="growth-level">
+          <div class="gl-avatar"><span class="gl-icon">🔥</span></div>
+          <div class="gl-info">
+            <div class="gl-name">Lv.{{ userLevel }} <span class="gl-title">星火探索者</span></div>
+            <div class="gl-xp">{{ userXP }} / {{ nextLevelXP }} XP</div>
+            <div class="gl-bar"><div class="gl-bar-fill" :style="{ width: xpPercent + '%' }"></div></div>
+          </div>
+        </div>
+        <div class="gl-stats">
+          <div><strong>🔥 {{ dashboardSnapshot.streakDays }} 天</strong><span>连续天数</span></div>
+          <div><strong>📅 14 天</strong><span>最长连续</span></div>
+        </div>
+      </div>
+      <!-- 成就徽章 -->
+      <div class="card badge-card">
+        <div class="card-head"><h3>成就徽章</h3><router-link to="/app/profile" class="more-link">查看全部</router-link></div>
+        <div class="badge-grid">
+          <div class="badge-item earned"><span class="badge-icon">🏆</span><span class="badge-name">高效达人</span></div>
+          <div class="badge-item earned"><span class="badge-icon">⭐</span><span class="badge-name">学习之星</span></div>
+          <div class="badge-item earned"><span class="badge-icon">🤝</span><span class="badge-name">交流先锋</span></div>
+          <div class="badge-item locked"><span class="badge-icon">🌟</span><span class="badge-name">探索之星</span></div>
+        </div>
+      </div>
       <div class="card quote-card">
         <div class="card-head">
           <h3>每日灵感</h3>
@@ -651,6 +689,46 @@ watch(
   box-shadow: 0 4px 30px rgba(139, 92, 246, 0.06);
 }
 
+.hero-nebula {
+  position: absolute;
+  top: -60%;
+  right: -20%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(ellipse, rgba(139,92,246,0.2) 0%, rgba(59,130,246,0.08) 40%, transparent 70%);
+  filter: blur(40px);
+  pointer-events: none;
+  animation: nebulaFloat 12s ease-in-out infinite alternate;
+}
+
+@keyframes nebulaFloat {
+  from { transform: translate(0, 0) scale(1); opacity: 0.7; }
+  to { transform: translate(-20px, 15px) scale(1.1); opacity: 1; }
+}
+
+.hero-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hero-star {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.6);
+  animation: starTwinkle 3s ease-in-out infinite;
+}
+
+@keyframes starTwinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 0.8; transform: scale(1.2); }
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
 .hero::before {
   content: '';
   position: absolute;
@@ -788,9 +866,16 @@ watch(
   font-size: 11px;
 }
 
-.row-2col {
+.row-3col {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 5fr 4fr 3fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.row-4col {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -1319,8 +1404,7 @@ watch(
 .stats-strip .stat-chip:nth-child(2) { animation: cardEnter 0.4s ease 0.15s backwards; }
 .stats-strip .stat-chip:nth-child(3) { animation: cardEnter 0.4s ease 0.2s backwards; }
 .stats-strip .stat-chip:nth-child(4) { animation: cardEnter 0.4s ease 0.25s backwards; }
-.row-2col .card:first-child { animation: cardEnter 0.4s ease 0.3s backwards; }
-.row-2col .card:last-child { animation: cardEnter 0.4s ease 0.35s backwards; }
+.row-3col .card, .row-4col .card { animation: cardEnter 0.4s ease 0.3s backwards; }
 
 @keyframes cardEnter {
   from { opacity: 0; transform: translateY(12px); }
@@ -1349,8 +1433,12 @@ watch(
 }
 
 @media (max-width: 1024px) {
-  .row-2col {
+  .row-3col {
     grid-template-columns: 1fr;
+  }
+
+  .row-4col {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .shortcut-grid {
@@ -1383,7 +1471,7 @@ watch(
     grid-template-columns: 1fr;
   }
 
-  .row-2col {
+  .row-3col, .row-4col {
     grid-template-columns: 1fr;
   }
 
