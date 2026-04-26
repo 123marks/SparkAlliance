@@ -24,14 +24,15 @@
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="搜索功能、日程、好友..."
+          placeholder="搜索功能、内容或任务..."
           class="search-input"
           @keydown.enter="handleSearch"
         />
+        <kbd class="search-kbd">⌘ K</kbd>
       </div>
 
       <div class="topbar-right">
-        <!-- 通知铃铛 — 点击展开通知面板 -->
+        <!-- 通知铃铛 -->
         <div class="notif-wrap" ref="notifRef">
           <button class="topbar-icon-btn" @click.stop="toggleNotifPanel" title="通知">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -66,10 +67,21 @@
           </Transition>
         </div>
 
+        <!-- 校区选择器 -->
+        <div class="campus-selector">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          <select v-model="selectedCampus" class="campus-select">
+            <option value="default">星火大学（默认校区）</option>
+            <option value="east">星火大学（东校区）</option>
+            <option value="south">星火大学（南校区）</option>
+          </select>
+        </div>
+
         <!-- 用户头像 — click-outside 关闭 -->
         <div class="user-dropdown" ref="dropdownRef">
           <div class="u-avatar-wrap" @click.stop="showDropdown = !showDropdown">
             <SparkAvatar :avatar-url="userAvatarUrl" :name="userName" size="sm" />
+            <span class="user-level-badge">Lv.12</span>
           </div>
           <Transition name="dd">
             <div class="dd-menu" v-if="showDropdown" @click.stop>
@@ -105,93 +117,95 @@
       <!-- 侧边栏 — 唯一导航源，可折叠 -->
       <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
         <nav class="sidebar-nav">
-          <!-- 核心功能（4项） -->
-          <div class="nav-group">
-            <span class="nav-group-label" v-show="!sidebarCollapsed">核心功能</span>
-            <router-link to="/app/home" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-              <span class="nav-label">主控台</span>
-              <span class="nav-tooltip">主控台</span>
-            </router-link>
-            <router-link to="/app/chat" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>
-              <span class="nav-label">星火助手</span>
-              <span class="nav-tooltip">AI 智能对话</span>
-            </router-link>
-            <router-link to="/app/companion" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-              <span class="nav-label">星火伴侣</span>
-              <span class="nav-tooltip">好友 · 动态 · 广场</span>
-            </router-link>
-            <router-link to="/app/schedule" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-              <span class="nav-label">智能日程</span>
-              <span class="nav-tooltip">日历 · 规划 · 灵感</span>
-            </router-link>
-          </div>
+          <router-link to="/app/home" class="nav-link nav-link-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span class="nav-label">主控台</span>
+            <span class="nav-link-arrow" v-show="!sidebarCollapsed">›</span>
+            <span class="nav-tooltip">主控台</span>
+          </router-link>
 
-          <!-- 校园生活（3项） -->
-          <div class="nav-group">
-            <span class="nav-group-label" v-show="!sidebarCollapsed">校园生活</span>
-            <router-link to="/app/wall" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              <span class="nav-label">星火墙</span>
-              <span class="nav-tooltip">校园动态墙</span>
-            </router-link>
-            <router-link to="/app/shop" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              <span class="nav-label">星火购物</span>
-              <span class="nav-tooltip">校园二手交易</span>
-            </router-link>
-            <router-link to="/app/health" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-              <span class="nav-label">健康生活</span>
-              <span class="nav-tooltip">运动健康追踪</span>
-            </router-link>
-          </div>
+          <div class="nav-spacer"></div>
 
-          <!-- 学习成长（5项） -->
-          <div class="nav-group">
-            <span class="nav-group-label" v-show="!sidebarCollapsed">学习成长</span>
-            <router-link to="/app/learn" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
-              <span class="nav-label">学习中心</span>
-              <span class="nav-tooltip">自习室 · 学习资源</span>
-            </router-link>
-            <router-link to="/app/legacy" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-              <span class="nav-label">星火传承</span>
-              <span class="nav-tooltip">经验分享 · 寄语留言</span>
-            </router-link>
-            <router-link to="/app/talent" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 7V5a4 4 0 0 0-8 0v2"></path></svg>
-              <span class="nav-label">星火人才</span>
-              <span class="nav-tooltip">人才市场</span>
-            </router-link>
-            <router-link to="/app/news" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 10h2"></path><rect x="17" y="4" width="4" height="16" rx="1"></rect></svg>
-              <span class="nav-label">星火资讯</span>
-              <span class="nav-tooltip">校园资讯</span>
-            </router-link>
-            <router-link to="/app/cocreate" class="nav-link">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
-              <span class="nav-label">星火共创</span>
-              <span class="nav-tooltip">共创平台 · 开发者社区</span>
-            </router-link>
-          </div>
+          <router-link to="/app/chat" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a9 9 0 0 0-9 9c0 3.7 2.3 6.9 5.5 8.2L7 22l3.5-1.5A9 9 0 1 0 12 2z"></path></svg>
+            <span class="nav-label">AI 助手</span>
+            <span class="nav-tooltip">AI 智能对话</span>
+          </router-link>
+          <router-link to="/app/wall" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <span class="nav-label">星火墙</span>
+            <span class="nav-tooltip">校园动态墙</span>
+          </router-link>
+          <router-link to="/app/schedule" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <span class="nav-label">智能日程</span>
+            <span class="nav-tooltip">日历 · 规划 · 灵感</span>
+          </router-link>
+          <router-link to="/app/schedule?module=planner" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            <span class="nav-label">星火规划</span>
+            <span class="nav-tooltip">目标拆分与激励</span>
+          </router-link>
+          <router-link to="/app/shop" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+            <span class="nav-label">星火购物</span>
+            <span class="nav-tooltip">校园二手交易</span>
+          </router-link>
+          <router-link to="/app/learn" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            <span class="nav-label">学习资源</span>
+            <span class="nav-tooltip">自习室 · 学习资源</span>
+          </router-link>
+          <router-link to="/app/cocreate" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+            <span class="nav-label">星火共创</span>
+            <span class="nav-tooltip">共创平台 · 开发者社区</span>
+          </router-link>
         </nav>
+
+        <!-- 一键专注模块 -->
+        <div class="focus-widget" v-show="!sidebarCollapsed">
+          <div class="focus-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span class="focus-title">一键专注</span>
+          </div>
+          <p class="focus-desc">沉浸当下，提升专注力</p>
+          <button class="focus-start-btn" type="button" @click="startFocusMode">开始专注</button>
+          <div class="focus-timer-select">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <select v-model="focusDuration" class="focus-select">
+              <option :value="5">5 分钟</option>
+              <option :value="15">15 分钟</option>
+              <option :value="25">25 分钟</option>
+              <option :value="45">45 分钟</option>
+              <option :value="60">60 分钟</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 今日能量值 -->
+        <div class="energy-widget" v-show="!sidebarCollapsed">
+          <div class="energy-header">
+            <span class="energy-label">今日能量值</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:rgba(255,255,255,0.25);cursor:help"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          </div>
+          <div class="energy-display">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+            <span class="energy-value">{{ energyValue }}</span>
+            <span class="energy-max">/ 100</span>
+          </div>
+          <div class="energy-bar">
+            <div class="energy-bar-fill" :style="{ width: energyValue + '%' }"></div>
+          </div>
+          <p class="energy-hint">{{ energyValue >= 80 ? '状态良好，继续保持！' : energyValue >= 50 ? '精力充沛，可以挑战更多！' : '适当休息，恢复能量' }}</p>
+        </div>
 
         <!-- 侧边栏底部 -->
         <div class="sidebar-bottom">
           <router-link to="/app/settings" class="nav-link">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            <span class="nav-label">设置</span>
+            <span class="nav-label">设置中心</span>
             <span class="nav-tooltip">个人设置</span>
-          </router-link>
-          <router-link to="/app/feedback" class="nav-link">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-            <span class="nav-label">反馈</span>
-            <span class="nav-tooltip">用户反馈</span>
           </router-link>
         </div>
       </aside>
@@ -232,7 +246,22 @@ const showDropdown = ref(false)
 const showNotifPanel = ref(false)
 const sidebarCollapsed = ref(false)
 const searchQuery = ref('')
+const focusDuration = ref(25)
+const selectedCampus = ref('default')
 const { user } = useAuth()
+
+const energyValue = computed(() => {
+  const hour = new Date().getHours()
+  if (hour >= 6 && hour < 10) return 92
+  if (hour >= 10 && hour < 14) return 78
+  if (hour >= 14 && hour < 17) return 86
+  if (hour >= 17 && hour < 21) return 65
+  return 45
+})
+
+function startFocusMode() {
+  router.push('/app/learn')
+}
 
 // 引用 — 用于 click-outside 检测
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -526,14 +555,56 @@ const handleLogout = async () => {
 }
 .notif-footer:hover { background: var(--color-bg-card-hover); }
 
+/* 搜索快捷键提示 */
+.search-kbd {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+/* 校区选择器 */
+.campus-selector {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 32px;
+  color: var(--color-text-muted);
+}
+.campus-select {
+  background: transparent; border: none; outline: none;
+  color: var(--color-text-secondary);
+  font-size: 12px; font-family: inherit;
+  cursor: pointer;
+}
+.campus-select option { background: #1a1625; color: #ccc; }
+
 /* ====== 头像下拉 ====== */
 .user-dropdown { position: relative; cursor: pointer; }
 .u-avatar-wrap {
+  display: flex; align-items: center; gap: 6px;
   cursor: pointer;
   transition: box-shadow 0.2s;
-  border-radius: 50%;
+  border-radius: 8px;
+  padding: 2px 4px;
 }
-.u-avatar-wrap:hover { box-shadow: 0 0 0 2px var(--theme-color, rgba(79,142,247,0.3)); border-radius: 8px; }
+.u-avatar-wrap:hover { box-shadow: 0 0 0 2px var(--theme-color, rgba(79,142,247,0.3)); }
+
+.user-level-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #c4b5fd;
+  background: rgba(139,92,246,0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
 
 .dd-menu {
   position: absolute; top: 44px; right: 0;
@@ -601,17 +672,21 @@ const handleLogout = async () => {
   background: var(--color-bg-card-hover); border-radius: 3px;
 }
 
-/* 导航分组 */
-.nav-group { margin-bottom: 16px; }
-.nav-group-label {
-  display: block;
-  font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 1.5px;
-  color: var(--color-text-muted);
-  padding: 8px 12px 6px;
-  white-space: nowrap;
-  overflow: hidden;
+/* 主控台高亮链接 */
+.nav-link-primary.router-link-active {
+  background: linear-gradient(135deg, rgba(79,142,247,0.15), rgba(139,92,246,0.1));
+  border: 1px solid rgba(79,142,247,0.15);
 }
+.nav-link-arrow {
+  margin-left: auto;
+  font-size: 16px;
+  color: rgba(255,255,255,0.2);
+  transition: color 0.15s;
+}
+.nav-link-primary.router-link-active .nav-link-arrow {
+  color: var(--theme-color, #4f8ef7);
+}
+.nav-spacer { height: 8px; }
 
 /* 导航链接 */
 .nav-link {
@@ -640,7 +715,7 @@ const handleLogout = async () => {
   opacity: 1; transition: opacity 0.2s;
 }
 .collapsed .nav-label { opacity: 0; width: 0; }
-.collapsed .nav-group-label { opacity: 0; height: 0; padding: 0; margin: 0; }
+.collapsed .nav-link-arrow { display: none; }
 
 /* 收起时 tooltip */
 .nav-tooltip {
@@ -661,9 +736,90 @@ const handleLogout = async () => {
   transform: translateY(-50%) translateX(0);
 }
 
+/* 一键专注模块 */
+.focus-widget {
+  margin: 8px 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.04));
+  border: 1px solid rgba(139,92,246,0.1);
+}
+.focus-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.focus-title {
+  font-size: 13px; font-weight: 700; color: var(--color-text-primary);
+}
+.focus-desc {
+  font-size: 11px; color: var(--color-text-muted); margin: 0 0 10px;
+}
+.focus-start-btn {
+  width: 100%; height: 34px;
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  color: white; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 12px rgba(139,92,246,0.25);
+}
+.focus-start-btn:hover {
+  box-shadow: 0 4px 20px rgba(139,92,246,0.4);
+  transform: translateY(-1px);
+}
+.focus-timer-select {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px;
+  color: var(--color-text-muted);
+}
+.focus-select {
+  background: transparent; border: none; outline: none;
+  color: var(--color-text-muted); font-size: 12px;
+  font-family: inherit; cursor: pointer;
+}
+.focus-select option { background: #1a1625; color: #ccc; }
+
+/* 今日能量值 */
+.energy-widget {
+  margin: 8px 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(12,10,24,0.5);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.energy-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.energy-label {
+  font-size: 12px; font-weight: 600; color: var(--color-text-muted);
+}
+.energy-display {
+  display: flex; align-items: baseline; gap: 4px; margin-bottom: 8px;
+}
+.energy-value {
+  font-size: 32px; font-weight: 800; color: var(--color-text-primary);
+  line-height: 1;
+}
+.energy-max {
+  font-size: 14px; color: var(--color-text-muted); font-weight: 500;
+}
+.energy-bar {
+  height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px;
+  overflow: hidden; margin-bottom: 8px;
+}
+.energy-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+.energy-hint {
+  font-size: 11px; color: var(--color-text-muted); margin: 0;
+  opacity: 0.7;
+}
+
 /* 侧边栏底部 */
 .sidebar-bottom {
-  padding: 12px 10px;
+  padding: 8px 10px;
   border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;

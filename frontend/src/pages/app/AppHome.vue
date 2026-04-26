@@ -1,13 +1,26 @@
 <template>
   <div class="app-home">
     <section class="hero">
+      <!-- 星球主体 -->
+      <div class="planet-system">
+        <div class="planet-core"></div>
+        <div class="planet-ring"></div>
+        <div class="planet-glow"></div>
+        <div class="planet-halo"></div>
+      </div>
       <!-- 三层星云 -->
       <div class="hero-nebula-core"></div>
       <div class="hero-nebula-mid"></div>
       <div class="hero-nebula-outer"></div>
-      <!-- 微粒 -->
-      <div class="hero-particles">
-        <span v-for="i in 18" :key="'hp'+i" class="h-particle" :style="{ left: `${5 + ((i * 5.3 + 7) % 90)}%`, top: `${8 + ((i * 11.7 + 3) % 80)}%`, animationDelay: `${i * 0.5}s`, animationDuration: `${2.5 + (i % 4) * 0.8}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px`, opacity: `${0.15 + (i % 5) * 0.1}` }"></span>
+      <!-- 星点 -->
+      <div class="hero-stars">
+        <span v-for="i in 35" :key="'hs'+i" class="h-star" :style="{ left: `${((i * 7.3 + 13) % 95) + 2}%`, top: `${((i * 11.1 + 5) % 90) + 3}%`, animationDelay: `${i * 0.35}s`, animationDuration: `${2 + (i % 5) * 0.6}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px` }"></span>
+      </div>
+      <!-- 流星 -->
+      <div class="hero-meteors">
+        <span class="meteor" style="top:18%;left:60%;animation-delay:0s"></span>
+        <span class="meteor" style="top:35%;left:75%;animation-delay:3.5s"></span>
+        <span class="meteor" style="top:10%;left:45%;animation-delay:7s"></span>
       </div>
       <!-- 内容 -->
       <div class="hero-left">
@@ -37,7 +50,7 @@
     <section class="row-3col">
       <div class="card">
         <div class="card-head">
-          <h3>今日优先处理</h3>
+          <h3>今日优先处理 <span class="card-badge">闭环行动</span></h3>
           <router-link to="/app/schedule?module=planner" class="more-link">查看全部 →</router-link>
         </div>
         <router-link v-for="action in dashboardActions" :key="action.id" :to="action.to" class="action-card" :class="`tone-${action.emphasis}`">
@@ -66,7 +79,7 @@
               <span>{{ event.time }}</span>
             </div>
             <span v-if="idx === 0" class="status-tag active">进行中</span>
-            <span v-else-if="idx === 1" class="status-tag upcoming">即将</span>
+            <span v-else-if="idx === 1" class="status-tag upcoming">即将开始</span>
           </router-link>
           <p v-if="todaySchedule.length === 0" class="empty">今天还没有安排，去日程页规划一下吧。</p>
           <router-link v-if="todaySchedule.length > 0" to="/app/schedule" class="card-bottom-link">查看完整日程 →</router-link>
@@ -87,36 +100,37 @@
             <div class="pi-bar-row">
               <div class="pi-bar"><div class="pi-bar-fill" :style="{ width: `${40 + idx * 15}%` }"></div></div>
               <span class="pi-pct">{{ 40 + idx * 15 }}%</span>
+              <span class="pi-eta">剩余 {{ 29 - idx * 7 }} 天</span>
             </div>
             <span class="pi-meta">{{ task.meta }}</span>
           </div>
           <p v-if="todayPlannerTasks.length === 0" class="empty">今天没有待处理任务，适合开始一个新的目标。</p>
         </div>
       </div>
+    </section>
+
+    <!-- 第四行：购物动态 + 快速笔记 + 本周执行率 + AI建议（四栏） -->
+    <section class="row-4col">
       <div class="card">
         <div class="card-head">
           <h3>购物动态</h3>
           <router-link to="/app/shop" class="more-link">去处理 →</router-link>
         </div>
         <div class="shop-stats">
-          <div><strong>{{ dashboardSnapshot.activeListings }}</strong><span>在售商品</span></div>
-          <div><strong>{{ dashboardSnapshot.pendingTransactions }}</strong><span>待处理交易</span></div>
-          <div><strong>{{ dashboardSnapshot.unreadShopMessages }}</strong><span>未读消息</span></div>
+          <div><span class="shop-stat-icon" style="color:#8b5cf6">🛍️</span><strong>{{ dashboardSnapshot.activeListings }}</strong><span>在售商品</span></div>
+          <div><span class="shop-stat-icon" style="color:#10b981">📦</span><strong>{{ dashboardSnapshot.pendingTransactions }}</strong><span>待处理交易</span></div>
+          <div><span class="shop-stat-icon" style="color:#f87171">❤️</span><strong>{{ dashboardSnapshot.unreadShopMessages }}</strong><span>未读消息</span></div>
         </div>
         <div class="signal-list">
           <div v-for="signal in shopSignals" :key="signal" class="signal">{{ signal }}</div>
         </div>
       </div>
-    </section>
-
-    <!-- 第四行：购物动态 + 快速笔记 + 本周执行率 + AI建议（四栏） -->
-    <section class="row-4col">
       <div class="card note-card">
         <div class="card-head">
           <h3>快速笔记</h3>
           <span v-if="noteSaved" class="saved">已保存</span>
         </div>
-        <textarea v-model="quickNote" class="note-textarea" rows="4" placeholder="随时记录你的想法、灵感与待办..." @input="saveNote"></textarea>
+        <textarea v-model="quickNote" class="note-textarea" rows="3" placeholder="随时记录你的想法、灵感与待办..." @input="saveNote"></textarea>
         <div class="note-actions">
           <span>{{ quickNote.length }} 字 · 已自动保存</span>
           <div class="note-buttons">
@@ -128,32 +142,30 @@
       <div class="card progress-card">
         <div class="card-head">
           <h3>本周执行率</h3>
-          <strong class="progress-pct">{{ weeklyProgress.percent }}%</strong>
         </div>
         <div class="ring-wrap">
           <svg viewBox="0 0 120 120" class="ring">
             <defs>
               <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8b5cf6" />
-                <stop offset="100%" stop-color="#3b82f6" />
+                <stop offset="100%" stop-color="#10b981" />
               </linearGradient>
             </defs>
             <circle class="ring-bg" cx="60" cy="60" r="50" />
             <circle class="ring-fg" cx="60" cy="60" r="50" :stroke-dashoffset="ringOffset" />
           </svg>
           <div class="ring-label">
-            <strong>{{ dashboardSnapshot.streakDays }}</strong>
-            <span>连续天数</span>
+            <strong>{{ weeklyProgress.percent }}%</strong>
+            <span>执行率</span>
           </div>
         </div>
-        <p class="progress-summary">{{ weeklyProgress.summary }}</p>
         <div class="progress-detail">
-          <span>已完成 {{ dashboardSnapshot.weeklyCompletedTasks }}</span>
-          <span>进行中 {{ dashboardSnapshot.todayTasks }}</span>
-          <span v-if="dashboardSnapshot.overdueTasks > 0" class="overdue-tag">逾期 {{ dashboardSnapshot.overdueTasks }}</span>
+          <span>✅ 已完成 {{ dashboardSnapshot.weeklyCompletedTasks }}</span>
+          <span>🔄 进行中 {{ dashboardSnapshot.todayTasks }}</span>
+          <span v-if="dashboardSnapshot.overdueTasks > 0" class="overdue-tag">⚠️ 未开始 {{ dashboardSnapshot.overdueTasks }}</span>
         </div>
+        <p class="progress-trend">较上周 <span class="trend-up">+12%</span></p>
       </div>
-      <!-- AI今日建议 -->
       <div class="card ai-card">
         <div class="card-head">
           <h3>AI 今日建议</h3>
@@ -189,10 +201,10 @@
       <div class="card badge-card">
         <div class="card-head"><h3>成就徽章</h3><router-link to="/app/profile" class="more-link">查看全部</router-link></div>
         <div class="badge-grid">
-          <div class="badge-item earned"><span class="badge-icon">🏆</span><span class="badge-name">高效达人</span></div>
-          <div class="badge-item earned"><span class="badge-icon">⭐</span><span class="badge-name">学习之星</span></div>
-          <div class="badge-item earned"><span class="badge-icon">🤝</span><span class="badge-name">交流先锋</span></div>
-          <div class="badge-item locked"><span class="badge-icon">🌟</span><span class="badge-name">探索之星</span></div>
+          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"><span class="badge-icon">🏆</span></div><span class="badge-name">高效达人</span></div>
+          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#8b5cf6,#3b82f6)"><span class="badge-icon">⭐</span></div><span class="badge-name">学习之星</span></div>
+          <div class="badge-item earned"><div class="badge-icon-wrap" style="background:linear-gradient(135deg,#10b981,#06b6d4)"><span class="badge-icon">🤝</span></div><span class="badge-name">交流先锋</span></div>
+          <div class="badge-item locked"><div class="badge-icon-wrap" style="background:rgba(255,255,255,0.06)"><span class="badge-icon">🌟</span></div><span class="badge-name">探索之星</span></div>
         </div>
       </div>
       <div class="card quote-card">
@@ -708,38 +720,127 @@ watch(
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 80% 15%, rgba(139,92,246,0.15) 0%, transparent 45%),
+    radial-gradient(ellipse at 75% 20%, rgba(139,92,246,0.18) 0%, transparent 50%),
     radial-gradient(ellipse at 20% 85%, rgba(59,130,246,0.08) 0%, transparent 40%),
-    rgba(12, 10, 24, 0.75);
-  border: 1px solid rgba(139,92,246,0.06);
-  box-shadow: 0 4px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.02);
-  min-height: 120px;
+    radial-gradient(ellipse at 90% 50%, rgba(88,28,200,0.12) 0%, transparent 45%),
+    rgba(10, 8, 22, 0.82);
+  border: 1px solid rgba(139,92,246,0.08);
+  box-shadow: 0 4px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03);
+  min-height: 140px;
 }
 
+/* 星球系统 */
+.planet-system {
+  position: absolute;
+  top: -45%;
+  right: 8%;
+  width: 260px;
+  height: 260px;
+  pointer-events: none;
+  animation: planetFloat 16s ease-in-out infinite alternate;
+}
+.planet-core {
+  position: absolute;
+  inset: 25%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(180,140,255,0.6) 0%, rgba(110,60,220,0.4) 30%, rgba(60,30,140,0.3) 60%, rgba(20,10,60,0.5) 100%);
+  box-shadow:
+    0 0 30px rgba(139,92,246,0.4),
+    0 0 60px rgba(139,92,246,0.2),
+    inset 0 -8px 20px rgba(0,0,0,0.3),
+    inset 0 4px 12px rgba(200,180,255,0.15);
+}
+.planet-ring {
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(139,92,246,0.12);
+  animation: planetRingPulse 8s ease-in-out infinite;
+}
+.planet-glow {
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,92,246,0.2) 0%, rgba(99,102,241,0.08) 40%, transparent 70%);
+  filter: blur(20px);
+  animation: planetGlowPulse 6s ease-in-out infinite alternate;
+}
+.planet-halo {
+  position: absolute;
+  inset: -10%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, rgba(59,130,246,0.03) 40%, transparent 65%);
+  filter: blur(40px);
+}
+
+@keyframes planetFloat {
+  0% { transform: translate(0,0) scale(1); }
+  50% { transform: translate(-6px, 8px) scale(1.03); }
+  100% { transform: translate(4px, -4px) scale(0.98); }
+}
+@keyframes planetRingPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.06); opacity: 0.6; }
+}
+@keyframes planetGlowPulse {
+  from { opacity: 0.6; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.05); }
+}
+
+/* 星云层 */
 .hero-nebula-core {
-  position: absolute; top: -40%; right: 5%; width: 220px; height: 220px;
-  background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, rgba(99,102,241,0.12) 35%, transparent 65%);
-  filter: blur(30px); pointer-events: none;
+  position: absolute; top: -35%; right: 2%; width: 240px; height: 240px;
+  background: radial-gradient(circle, rgba(139,92,246,0.2) 0%, rgba(99,102,241,0.1) 35%, transparent 65%);
+  filter: blur(35px); pointer-events: none;
   animation: nebulaCore 10s ease-in-out infinite alternate;
 }
 .hero-nebula-mid {
-  position: absolute; top: -60%; right: -5%; width: 350px; height: 350px;
-  background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.04) 40%, transparent 70%);
-  filter: blur(45px); pointer-events: none;
+  position: absolute; top: -50%; right: -8%; width: 380px; height: 380px;
+  background: radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, rgba(139,92,246,0.03) 40%, transparent 70%);
+  filter: blur(50px); pointer-events: none;
   animation: nebulaMid 14s ease-in-out infinite alternate;
 }
 .hero-nebula-outer {
-  position: absolute; top: -30%; right: -15%; width: 500px; height: 500px;
-  background: radial-gradient(ellipse at 40% 40%, rgba(139,92,246,0.03) 0%, transparent 60%);
+  position: absolute; top: -20%; right: -15%; width: 500px; height: 500px;
+  background: radial-gradient(ellipse at 40% 40%, rgba(88,28,200,0.04) 0%, transparent 60%);
   filter: blur(60px); pointer-events: none;
 }
 
 @keyframes nebulaCore { from { transform: translate(0,0) scale(1); opacity: 0.7 } to { transform: translate(-8px,8px) scale(1.05); opacity: 1 } }
 @keyframes nebulaMid { from { transform: translate(0,0) scale(1); opacity: 0.5 } to { transform: translate(-15px,10px) scale(1.08); opacity: 0.8 } }
 
-.hero-particles { position: absolute; inset: 0; pointer-events: none; }
-.h-particle { position: absolute; border-radius: 50%; background: white; animation: hpTwinkle ease-in-out infinite; }
-@keyframes hpTwinkle { 0%,100% { opacity: 0.1; transform: scale(0.7) } 50% { opacity: 0.6; transform: scale(1.3) } }
+/* 星点 */
+.hero-stars { position: absolute; inset: 0; pointer-events: none; }
+.h-star {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(200,180,255,0.4) 50%, transparent 100%);
+  animation: starTwinkle ease-in-out infinite;
+}
+@keyframes starTwinkle {
+  0%, 100% { opacity: 0.1; transform: scale(0.6); }
+  30% { opacity: 0.8; transform: scale(1.4); }
+  70% { opacity: 0.3; transform: scale(0.9); }
+}
+
+/* 流星 */
+.hero-meteors { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.meteor {
+  position: absolute;
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.6), transparent);
+  transform: rotate(-35deg);
+  animation: meteorShoot 8s linear infinite;
+  opacity: 0;
+}
+@keyframes meteorShoot {
+  0% { opacity: 0; transform: rotate(-35deg) translateX(0); }
+  5% { opacity: 0.8; }
+  15% { opacity: 0; transform: rotate(-35deg) translateX(-200px); }
+  100% { opacity: 0; }
+}
 
 .hero-left { position: relative; z-index: 1; flex: 1; }
 .hero-greeting { margin: 0 0 6px; color: rgba(255,255,255,0.95); font-size: 28px; font-weight: 800; letter-spacing: 1.5px; line-height: 1.3; }
@@ -859,7 +960,7 @@ watch(
 
 .row-3col {
   display: grid;
-  grid-template-columns: 5fr 4fr 3fr;
+  grid-template-columns: 1.2fr 1fr 1fr;
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -1161,6 +1262,41 @@ watch(
   color: rgba(248,113,113,0.6);
 }
 
+.card-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(139,92,246,0.1);
+  color: rgba(196,181,253,0.7);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.progress-trend {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.3);
+  margin: 8px 0 0;
+}
+.trend-up {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.shop-stat-icon {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.pi-eta {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
 .ring-wrap {
   position: relative;
   width: 120px;
@@ -1296,7 +1432,12 @@ watch(
 .badge-item.earned { border-color: rgba(245,197,94,0.15); }
 .badge-item.locked { opacity: 0.35; }
 .badge-item:hover { transform: translateY(-2px); }
-.badge-icon { font-size: 24px; }
+.badge-icon-wrap {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.badge-icon { font-size: 20px; }
 .badge-name { font-size: 10px; color: var(--color-text-muted); }
 
 .quote-card {
