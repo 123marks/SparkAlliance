@@ -898,23 +898,43 @@ watch(
   gap: 12px;
   align-items: center;
   padding: 14px 16px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   text-decoration: none;
-  transition: 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 14px;
 }
 
 .action-card:last-child {
   margin-bottom: 0;
 }
 
+.action-card:hover {
+  transform: translateX(3px);
+}
+
 .action-card.tone-high {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(139, 92, 246, 0.05));
-  border-color: rgba(239, 68, 68, 0.14);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(139, 92, 246, 0.03));
+  border: 1px solid rgba(239, 68, 68, 0.12);
+}
+
+.action-card.tone-high:hover {
+  border-color: rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.06);
 }
 
 .action-card.tone-medium {
-  background: linear-gradient(135deg, rgba(79, 142, 247, 0.08), rgba(139, 92, 246, 0.04));
-  border-color: rgba(79, 142, 247, 0.12);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(139, 92, 246, 0.03));
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.action-card.tone-medium:hover {
+  border-color: rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.05);
+}
+
+.action-card.tone-low {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
 }
 
 .action-icon {
@@ -1002,12 +1022,14 @@ watch(
 .list-item-link {
   text-decoration: none;
   border-radius: 10px;
-  padding: 8px 10px;
-  margin: -8px -10px;
-  transition: background 0.15s;
+  padding: 10px 12px;
+  margin: -4px -6px;
+  transition: all 0.2s;
+  border: 1px solid transparent;
 }
 .list-item-link:hover {
-  background: var(--color-bg-card-hover);
+  background: rgba(255,255,255,0.02);
+  border-color: rgba(255,255,255,0.04);
 }
 
 .dot {
