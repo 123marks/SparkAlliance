@@ -63,6 +63,7 @@
               <div v-else class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
                 <span v-if="c.isPinned" class="pin-dot" title="已置顶">⭐</span>
                 <span class="sb-text">{{ c.title }}</span>
+                <span class="sb-time" v-if="c.updatedAt">{{ formatConvTime(c.updatedAt) }}</span>
                 <button class="sb-more" aria-label="会话操作菜单" @click.stop="toggleMenu(c.id)">⋯</button>
                 <!-- v9: 浮层菜单 -->
                 <div v-if="openMenuId === c.id" class="sb-menu" @click.stop>
@@ -208,7 +209,7 @@
     <main class="chat-main">
       <header class="top-bar">
         <button class="menu-btn" aria-label="切换侧边栏" @click="sidebarOpen = !sidebarOpen">☰</button>
-        <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span></div>
+        <div class="top-brand"><span class="top-icon pulse">⚡</span><span class="top-title">星火助手</span><span class="top-subtitle">你的智能学习搭子</span></div>
 
         <!-- 顶栏中部控件组 -->
         <div class="top-center">
@@ -576,6 +577,9 @@
       @send-message="handleQuick"
     />
 
+    <!-- 小精灵 -->
+    <SparkMascot />
+
     <!-- 签到弹窗 -->
     <CheckinModal
       :visible="showCheckinModal"
@@ -703,6 +707,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } 
 import { useRouter } from 'vue-router'
 import ChatRightPanel from '../../components/chat/ChatRightPanel.vue'
 import CheckinModal from '../../components/chat/CheckinModal.vue'
+import SparkMascot from '../../components/chat/SparkMascot.vue'
 import { useCheckin } from '../../composables/useCheckin'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, WORKFLOW_PRESETS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode, Conversation } from '../../composables/useSparkAI'
@@ -785,6 +790,20 @@ function formatRelativeTime(dateStr: string): string {
   if (days === 0) return '今天'
   if (days === 1) return '昨天'
   if (days < 7) return `${days}天前`
+  return '上周'
+}
+
+function formatConvTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+  if (diffDays === 1) return '昨天'
+  if (diffDays < 7) return `${diffDays}天前`
   return '上周'
 }
 const inputText = ref('')
@@ -2421,7 +2440,8 @@ async function handleInheritMemory() {
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; position:relative; z-index:1; }
 .top-bar { height:42px; border-bottom:1px solid rgba(255,255,255,.03); display:flex; align-items:center; padding:0 16px; flex-shrink:0; }
 .menu-btn { display:none; background:none; border:none; font-size:18px; color:white; cursor:pointer; }
-.top-brand { display:flex; align-items:center; gap:5px; } .top-icon { font-size:15px; } .top-icon.pulse { animation:iconPulse 3s ease-in-out infinite; } @keyframes iconPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.4) drop-shadow(0 0 4px rgba(139,92,246,.3))} } .top-title { font-size:13px; font-weight:700; color:white; }
+.top-brand { display:flex; align-items:center; gap:5px; flex-shrink:0; } .top-icon { font-size:15px; } .top-icon.pulse { animation:iconPulse 3s ease-in-out infinite; } @keyframes iconPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.4) drop-shadow(0 0 4px rgba(139,92,246,.3))} } .top-title { font-size:13px; font-weight:700; color:white; }
+.top-subtitle { font-size:10px; color:rgba(255,255,255,.2); font-weight:400; margin-left:6px; white-space:nowrap; }
 .top-right { margin-left:auto; display:flex; align-items:center; }
 .sync-badge { display:flex; align-items:center; gap:3px; padding:3px 8px; border-radius:6px; background:rgba(139,92,246,.03); color:rgba(139,92,246,.3); font-size:10px; font-weight:500; }
 
@@ -2830,6 +2850,8 @@ async function handleInheritMemory() {
 
 .sb-item { position:relative; }
 .pin-dot { font-size:10px; margin-right:4px; flex-shrink:0; }
+.sb-time { font-size:9px; color:rgba(255,255,255,.1); flex-shrink:0; margin-left:4px; font-variant-numeric:tabular-nums; }
+.sb-item:hover .sb-time { display:none; }
 .sb-more { opacity:0; background:none; border:none; color:rgba(255,255,255,.25); font-size:13px; cursor:pointer; padding:0 4px; border-radius:4px; }
 .sb-item:hover .sb-more { opacity:1; }
 .sb-item.active .sb-more { opacity:1; }

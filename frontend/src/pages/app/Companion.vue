@@ -228,11 +228,12 @@
                     <span v-else-if="activeChat?.type==='group' && getGroupMsgRole(msg)==='admin'" class="cp-role-tag admin">管理员</span>
                     <span class="cp-msg-name">{{ resolveSenderInfo(msg.sender_id, msg.sender_avatar, msg.sender_avatar_url, msg.sender_name).name }}</span>
                   </div>
-                  <!-- v11 修复：自己作为群主/管理员时也要显示角色 tag（气泡右上方） -->
+                  <!-- 自己消息：群主/管理员角色 tag + 昵称 -->
                   <div
                     v-else-if="activeChat?.type==='group' && (getGroupMsgRole(msg)==='owner' || getGroupMsgRole(msg)==='admin')"
                     class="cp-msg-meta mine"
                   >
+                    <span class="cp-msg-name">{{ myProfile?.nickname || '我' }}</span>
                     <span v-if="getGroupMsgRole(msg)==='owner'" class="cp-role-tag owner">群主</span>
                     <span v-else class="cp-role-tag admin">管理员</span>
                   </div>
@@ -4072,7 +4073,7 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-msg-body{display:flex;flex-direction:column;gap:2px;min-width:0}.cp-msg-meta{display:flex;align-items:center;gap:4px;padding:0 4px}
 /* v11: 自己消息的 role tag（群主/管理员）贴在气泡右上方 */
 .cp-msg-meta.mine{justify-content:flex-end;padding:0 4px 0 0}
-.cp-msg-name{font-size:9px;color:rgba(255,255,255,.15)}
+.cp-msg-name{font-size:10px;color:rgba(255,255,255,.55);font-weight:500}
 .cp-bubble-row{display:flex;align-items:flex-end;gap:4px}.cp-bubble-row.reverse{flex-direction:row-reverse}
 .cp-bubble{padding:8px 12px;border-radius:14px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.75);word-break:break-word;white-space:pre-wrap}
 .cp-msg:not(.mine):not(.sys) .cp-bubble{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-top-left-radius:4px}
@@ -4093,8 +4094,9 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-msg-footer{display:flex;align-items:center;gap:4px;padding:1px 4px}.cp-msg.mine .cp-msg-footer{flex-direction:row-reverse;justify-content:flex-start}
 
 /* 聊天区域布局(消息+设置面板并排) */
-.cp-chat-body{flex:1;display:flex;overflow:hidden}
-.cp-chat-body .cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px}
+.cp-chat-body{flex:1;display:flex;overflow:hidden;position:relative}
+.cp-chat-body::before{content:'';position:absolute;inset:0;background:url('/chatBackground.png') center/cover no-repeat;opacity:.12;pointer-events:none;z-index:0}
+.cp-chat-body .cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px;position:relative;z-index:1}
 /* 聊天设置面板(仿微信) */
 .cp-chat-settings{width:260px;flex-shrink:0;border-left:1px solid rgba(255,255,255,.04);background:rgba(8,6,18,.85);backdrop-filter:blur(16px);padding:16px;overflow-y:auto}
 .cs-members{display:flex;flex-wrap:wrap;gap:10px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.03);margin-bottom:10px}
