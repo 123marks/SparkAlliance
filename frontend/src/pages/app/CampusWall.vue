@@ -20,55 +20,89 @@
           </button>
         </nav>
 
+        <!-- 快速筛选 -->
+        <div class="quick-filter-row">
+          <button v-for="f in quickFilterList" :key="f" class="qf-chip" :class="{ active: activeQuickFilter === f }" @click="activeQuickFilter = f">{{ f }}</button>
+        </div>
+
         <!-- 用户档案卡 -->
         <div v-if="user" class="profile-card">
           <div class="pc-header">
-            <SparkAvatar
-              :avatar-url="myProfile.avatar_url"
-              :name="displayName"
-              size="lg"
-              class="pc-avatar-comp"
-            />
+            <div class="pc-avatar-ring">
+              <SparkAvatar
+                :avatar-url="myProfile.avatar_url"
+                :name="displayName"
+                size="lg"
+                class="pc-avatar-comp"
+              />
+            </div>
             <div class="pc-info">
-              <span class="pc-name">{{ displayName }}</span>
-              <span class="pc-school" v-if="myProfile.university || mySchool">{{ myProfile.university || mySchool }}</span>
+              <span class="pc-name">{{ displayName }} ✨</span>
+              <div class="pc-level-badge">
+                <span class="level-icon">⚡</span>
+                <span>Lv.{{ myProfile.level || 12 }}</span>
+                <span class="level-title">星火守护者</span>
+              </div>
+              <div class="pc-xp-row">
+                <div class="xp-bar"><div class="xp-fill" :style="{ width: `${(1680/2500)*100}%` }"></div></div>
+                <span class="xp-text">1680 / 2500 经验值</span>
+              </div>
             </div>
           </div>
           <div class="pc-stats">
-            <div class="pc-stat"><span class="pc-num">{{ myPostCount }}</span><span class="pc-label">帖子</span></div>
-            <div class="pc-stat"><span class="pc-num">{{ wallStats.totalLikes }}</span><span class="pc-label">获赞</span></div>
-            <div class="pc-stat"><span class="pc-num">{{ followingIds.size }}</span><span class="pc-label">关注</span></div>
+            <div class="pc-stat">
+              <span class="pc-num">{{ activityIndex }}</span>
+              <span class="pc-label">活跃指数</span>
+            </div>
+            <div class="pc-stat">
+              <span class="pc-num">{{ activityStreak }}<small>天</small></span>
+              <span class="pc-label">连续活跃</span>
+            </div>
+            <div class="pc-stat">
+              <span class="pc-num">{{ myPostCount }}</span>
+              <span class="pc-label">发帖</span>
+            </div>
           </div>
           <!-- 连续活跃 -->
           <div class="streak-row">
             <span class="streak-icon">🔥</span>
             <span class="streak-text">连续活跃 <strong>{{ activityStreak }}</strong> 天</span>
           </div>
+          <div class="streak-hint">再连续 {{ Math.max(1, 7 - (activityStreak % 7)) }} 天可获得奖章道具</div>
           <!-- 活跃日历迷你版 -->
           <div class="mini-calendar">
             <div
-              v-for="d in last14Days"
+              v-for="d in last14Days.slice(-7)"
               :key="d.date"
               class="cal-dot"
               :class="{ active: d.hasPost }"
               :title="d.label"
-            ></div>
+            >
+              <span class="cal-day">{{ d.label.split('/')[1] }}</span>
+            </div>
           </div>
         </div>
 
         <!-- 今日任务 -->
         <div class="left-section">
-          <h4 class="ls-title">📋 今日任务</h4>
+          <div class="ls-header">
+            <h4 class="ls-title">📋 今日任务</h4>
+            <button class="ls-action" @click="refreshDailyTasks">刷新</button>
+          </div>
           <div class="task-item" v-for="task in dailyTasks" :key="task.id">
             <span class="task-check" :class="{ done: task.done }">{{ task.done ? '✓' : '' }}</span>
             <span class="task-text" :class="{ done: task.done }">{{ task.label }}</span>
-            <span class="task-progress">{{ task.current }}/{{ task.target }}</span>
+            <span class="task-progress">({{ task.current }}/{{ task.target }})</span>
+            <span v-if="!task.done" class="task-go">去完成</span>
           </div>
+          <p class="task-footer">完成任务可获得经验和徽章道具</p>
         </div>
 
         <!-- 校园热度值 -->
         <div class="heat-card">
-          <span class="heat-label">校园热度值</span>
+          <div class="heat-top">
+            <span class="heat-label">校园热度值</span>
+          </div>
           <div class="heat-row">
             <span class="heat-num">{{ campusHeatScore.toLocaleString() }}</span>
             <span class="heat-badge" :class="trendDirection">
@@ -76,23 +110,33 @@
               {{ trendDelta }}
             </span>
           </div>
+          <span class="heat-sub">校苑日</span>
         </div>
       </div>
     </aside>
 
     <!-- ========== 中间 Feed 主区域 ========== -->
     <main class="wall-main">
-      <!-- Feed 顶栏（搜索 + 快捷操作） -->
+      <!-- Feed 顶栏（发布入口 + 快捷操作） -->
       <div class="feed-topbar">
-        <div class="topbar-search">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input v-model="searchQuery" class="search-input" placeholder="搜索动态、话题、用户…" @input="onSearchInput" />
+        <div class="compose-entry" @click="toggleComposer">
+          <div class="compose-avatar">
+            <SparkAvatar
+              :avatar-url="myProfile.avatar_url"
+              :name="displayName"
+              size="sm"
+              class="compose-avatar-img"
+            />
+          </div>
+          <span class="compose-placeholder">分享你的校园新鲜事，问题或活动...</span>
         </div>
         <div class="quick-actions">
           <button class="qa-btn qa-primary" @click="toggleComposer"><span>✏️</span> 发动态</button>
           <button class="qa-btn" @click="openQuickPost('event')"><span>📅</span> 发活动</button>
+          <button class="qa-btn" @click="openQuickPost('vote')"><span>📊</span> 发投票</button>
+          <button class="qa-btn" @click="openQuickPost('confession')"><span>🕳️</span> 匿名树洞</button>
           <button class="qa-btn" @click="openQuickPost('help')"><span>🙋</span> 求助</button>
-          <button class="qa-btn" @click="openQuickPost('lost')"><span>🔍</span> 失物</button>
+          <button class="qa-btn" @click="toggleComposer"><span>🖼️</span> 图片/视频</button>
         </div>
       </div>
 
@@ -247,7 +291,8 @@
       <div class="right-inner">
         <!-- 发布入口 -->
         <button class="right-publish-btn" @click="toggleComposer">
-          <span>✏️</span> 发布动态
+          <span class="rpb-icon">✏️</span>
+          <span>发布动态</span>
         </button>
 
         <!-- 今日热榜 -->
@@ -271,15 +316,56 @@
               <span class="circle-icon">{{ c.icon }}</span>
               <div class="circle-info">
                 <span class="circle-name">{{ c.name }}</span>
-                <span class="circle-count">{{ c.members }} 人</span>
+                <span class="circle-count">{{ c.members }}</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 本周活动日历 -->
+        <div class="right-section">
+          <h4 class="rs-title">📅 本周活动日历</h4>
+          <div class="activity-calendar">
+            <div v-for="evt in weeklyEvents" :key="evt.date" class="cal-event">
+              <span class="cal-date">{{ evt.date }}</span>
+              <div class="cal-detail">
+                <span class="cal-event-name">{{ evt.name }}</span>
+                <span class="cal-event-info">{{ evt.info }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 校园热搜 -->
+        <div class="right-section">
+          <h4 class="rs-title">🔍 校园热搜</h4>
+          <div class="hot-search-chips">
+            <button v-for="kw in campusHotSearch" :key="kw" class="hs-chip" @click="searchQuery = kw">{{ kw }}</button>
           </div>
         </div>
 
         <!-- 实时动态 -->
         <div class="right-section">
           <h4 class="rs-title">⚡ 实时动态</h4>
+          <div class="rt-stats-row">
+            <span class="rt-stat">👥 在线 <strong>{{ onlineCount.toLocaleString() }}</strong> 人</span>
+            <span class="rt-stat">今日 <strong>{{ wallStats.todayPosts.toLocaleString() }}</strong> 条</span>
+          </div>
+          <div class="rt-chart">
+            <svg viewBox="0 0 240 60" class="rt-chart-svg">
+              <defs>
+                <linearGradient id="rtGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+                  <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path :d="rtChartAreaPath" fill="url(#rtGrad)" />
+              <path :d="rtChartLinePath" fill="none" stroke="#8b5cf6" stroke-width="2" />
+            </svg>
+            <div class="rt-chart-labels">
+              <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span>
+            </div>
+          </div>
           <div class="realtime-list">
             <div v-for="item in realtimeFeed" :key="item.id" class="rt-item">
               <span class="rt-avatar">{{ item.initial }}</span>
@@ -295,7 +381,7 @@
         <!-- AI 话题助手 -->
         <div class="right-section ai-helper">
           <h4 class="rs-title">🤖 AI 话题助手</h4>
-          <p class="ai-desc">生成一条关于对应校园热议话题的动态吧</p>
+          <p class="ai-desc">生成一篇关于时间管理的校园段落分析</p>
           <div class="ai-suggestions">
             <button v-for="s in aiSuggestions" :key="s" class="ai-chip" @click="applyAiSuggestion(s)">{{ s }}</button>
           </div>
@@ -304,9 +390,10 @@
         <!-- 校园信任与安全 -->
         <div class="right-section trust-section">
           <h4 class="rs-title">🛡️ 校园信任与安全</h4>
-          <div class="trust-stats">
-            <span>👥 {{ wallStats.totalPosts }} 条动态</span>
-            <span>✅ 社区内容安全审核中</span>
+          <div class="trust-chips">
+            <span class="trust-chip"><span class="tc-icon">👤</span> 校园认证</span>
+            <span class="trust-chip"><span class="tc-icon">📋</span> 内容审核</span>
+            <span class="trust-chip"><span class="tc-icon">🔒</span> 隐私保护</span>
           </div>
         </div>
       </div>
@@ -771,14 +858,16 @@ const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白
 const sideTabList = [
   { key: '推荐', icon: '🌟' },
   { key: '关注', icon: '👥' },
-  { key: '本校', icon: '🏫' },
-  { key: '热议表白', icon: '🔥' },
+  { key: '同校', icon: '🏫' },
+  { key: '热榜', icon: '🔥' },
   { key: '活动', icon: '📅' },
   { key: '求助', icon: '🙋' },
-  { key: '最新', icon: '🕐' },
-  { key: '同城', icon: '📍' },
-  { key: '失物', icon: '🔍' },
+  { key: '树洞', icon: '🕳️' },
+  { key: '圈子', icon: '💬' },
+  { key: '失物招领', icon: '🔍' },
 ]
+const quickFilterList = ['最新', '最热', '附近', 'AI总结']
+const activeQuickFilter = ref('最新')
 const activeTab = ref('推荐')
 const searchQuery = ref('')
 const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -1296,24 +1385,20 @@ const emptyStateHint = computed(() => {
       ? '你还没有关注任何同学，去「推荐」看看有趣的人吧'
       : '你关注的同学还没有发过动态'
   }
-  if (activeTab.value === '本校') {
+  if (activeTab.value === '同校') {
     if (!normalizeCampusMeta(mySchool.value)) {
       return '请先在个人资料中填写学校信息，才能查看本校同学的动态'
     }
     return '暂无本校同学的动态；较早帖子可能未记录学校，可切换「推荐」查看全部'
   }
-  if (activeTab.value === '同城') {
-    if (!normalizeCampusMeta(myRegion.value)) {
-      return '请先在个人资料中填写地区或城市，才能查看同城同学的动态'
-    }
-    return '暂无同城动态；较早帖子可能未记录地区，可切换「推荐」查看全部'
-  }
-  if (activeTab.value === '热议表白') {
-    return '暂时没有热门内容，发一条表白或动态来引爆话题吧'
+  if (activeTab.value === '热榜') {
+    return '暂时没有热门内容，发一条动态来引爆话题吧'
   }
   if (activeTab.value === '活动') return '暂无活动信息，发布一个校园活动召集同学吧'
   if (activeTab.value === '求助') return '暂无求助帖，有问题尽管发出来，同学们会帮你的'
-  if (activeTab.value === '失物') return '暂无失物招领信息'
+  if (activeTab.value === '树洞') return '暂无树洞帖，匿名倾诉你的心声吧'
+  if (activeTab.value === '圈子') return '暂无圈子动态'
+  if (activeTab.value === '失物招领') return '暂无失物招领信息'
   return '来，成为第一个发布的人！'
 })
 
@@ -1514,10 +1599,21 @@ const dailyTasks = computed(() => {
   const todayMyComments = 0
   const todayMyLikes = uid ? posts.value.filter(p => p.liked && new Date(p.createdAt).toDateString() === today).length : 0
   return [
+    { id: 'discuss', label: '参与 1 次讨论', current: Math.min(todayMyComments, 1), target: 1, done: todayMyComments >= 1 },
     { id: 'post', label: '发布 1 条动态', current: Math.min(todayMyPosts, 1), target: 1, done: todayMyPosts >= 1 },
-    { id: 'like', label: '点赞 3 次', current: Math.min(todayMyLikes, 3), target: 3, done: todayMyLikes >= 3 },
-    { id: 'comment', label: '评论 1 次', current: Math.min(todayMyComments, 1), target: 1, done: todayMyComments >= 1 },
+    { id: 'like', label: '点赞 3 条动态', current: Math.min(todayMyLikes, 3), target: 3, done: todayMyLikes >= 3 },
   ]
+})
+
+function refreshDailyTasks() {
+  fetchPosts()
+}
+
+const activityIndex = computed(() => {
+  const streak = activityStreak.value
+  const postCount = myPostCount.value
+  const base = Math.min(streak * 5 + postCount * 2.3, 100)
+  return base > 0 ? base.toFixed(1) : '87.6'
 })
 
 const campusHeatScore = computed(() => {
@@ -1537,11 +1633,36 @@ const hotRankList = computed(() => {
 })
 
 const recommendedCircles = [
-  { name: '学术交流圈', icon: '📚', members: '1.2K' },
-  { name: '摄影爱好者', icon: '📸', members: '876' },
-  { name: '美食探店', icon: '🍜', members: '1.5K' },
-  { name: '运动打卡', icon: '🏃', members: '943' },
+  { name: '清华读书会', icon: '📖', members: '1.2w 书香四溢' },
+  { name: 'AI 学术交流', icon: '🤖', members: '8500 探索前沿' },
+  { name: '摄影爱好者', icon: '📸', members: '3200' },
+  { name: '校园跑团', icon: '🏃', members: '5178 一起出发' },
 ]
+
+const weeklyEvents = [
+  { date: '5/25 · 周六', name: '《人类简史》共读', info: '清华读书会 · 204人 · 86 人报名' },
+  { date: '5/26 · 09:00', name: '紧凑星期计划', info: '42 人参加' },
+  { date: '5/27 · 14:00', name: 'AI 前沿讲座：大模型与教育', info: '主楼C厅 · 120 人报名' },
+]
+
+const campusHotSearch = ['研究生', '保研经验', '实习推荐', '实习内推', '二手交易', '健身打卡']
+
+const onlineCount = ref(2845)
+
+const rtChartLinePath = computed(() => {
+  const points = [0,8,15,22,18,25,40,55,48,42,35,30]
+  const w = 240, h = 55
+  const step = w / (points.length - 1)
+  return points.map((v, i) => `${i === 0 ? 'M' : 'L'}${i * step},${h - (v / 60) * h}`).join(' ')
+})
+
+const rtChartAreaPath = computed(() => {
+  const points = [0,8,15,22,18,25,40,55,48,42,35,30]
+  const w = 240, h = 55
+  const step = w / (points.length - 1)
+  const linePart = points.map((v, i) => `${i === 0 ? 'M' : 'L'}${i * step},${h - (v / 60) * h}`).join(' ')
+  return `${linePart} L${w},${h} L0,${h} Z`
+})
 
 const realtimeFeed = computed(() => {
   return [...posts.value]
@@ -1599,7 +1720,7 @@ const filteredPosts = computed(() => {
   switch (activeTab.value) {
     case '最新':
       return [...applyFilters(posts.value)].sort(byTime)
-    case '本校': {
+    case '同校': {
       if (!schoolMe) return []
       const list = posts.value.filter(p => {
         const ps = normalizeCampusMeta(p.school || '')
@@ -1607,20 +1728,11 @@ const filteredPosts = computed(() => {
       })
       return [...applyFilters(list)].sort(byTime)
     }
-    case '同城': {
-      if (!regionMe) return []
-      const list = posts.value.filter(p => {
-        const pr = normalizeCampusMeta(p.region || '')
-        return pr && pr === regionMe
-      })
-      return [...applyFilters(list)].sort(byTime)
-    }
-    case '热议表白': {
+    case '热榜': {
       const heatThreshold = 3
       return applyFilters(posts.value)
         .filter(p =>
-          p.category === 'confession'
-          || (p.likes * 2 + p.comments * 3) >= heatThreshold
+          (p.likes * 2 + p.comments * 3) >= heatThreshold
         )
         .sort((a, b) => {
           const heatA = a.likes * 2 + a.comments * 3
@@ -1635,7 +1747,11 @@ const filteredPosts = computed(() => {
       return [...applyFilters(posts.value.filter(p => p.category === 'event'))].sort(byTime)
     case '求助':
       return [...applyFilters(posts.value.filter(p => p.category === 'help'))].sort(byTime)
-    case '失物':
+    case '树洞':
+      return [...applyFilters(posts.value.filter(p => p.isAnonymous || p.category === 'confession'))].sort(byTime)
+    case '圈子':
+      return [...applyFilters(posts.value)].sort(byTime)
+    case '失物招领':
       return [...applyFilters(posts.value.filter(p => p.category === 'lost'))].sort(byTime)
     case '推荐':
     default:
@@ -2443,7 +2559,10 @@ const submitPost = async () => {
   background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
   border-radius: 14px; padding: 14px;
 }
-.ls-title { font-size: 13px; font-weight: 600; color: white; margin: 0 0 10px; }
+.ls-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ls-title { font-size: 13px; font-weight: 600; color: white; margin: 0; }
+.ls-action { background: none; border: none; color: var(--color-text-muted); font-size: 11px; cursor: pointer; }
+.ls-action:hover { color: white; }
 .task-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
 .task-check {
   width: 18px; height: 18px; border-radius: 50%;
@@ -2455,6 +2574,57 @@ const submitPost = async () => {
 .task-text { flex: 1; font-size: 12px; color: var(--color-text-secondary); }
 .task-text.done { text-decoration: line-through; opacity: 0.5; }
 .task-progress { font-size: 11px; color: var(--color-text-muted); }
+.task-go { font-size: 11px; color: #4f8ef7; cursor: pointer; margin-left: auto; }
+.task-go:hover { text-decoration: underline; }
+.task-footer { font-size: 10px; color: var(--color-text-muted); margin: 8px 0 0; opacity: 0.7; }
+
+/* 快速筛选行 */
+.quick-filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.qf-chip {
+  padding: 5px 14px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  color: var(--color-text-secondary); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+}
+.qf-chip:hover { border-color: rgba(255,255,255,0.15); color: white; }
+.qf-chip.active { background: rgba(79,142,247,0.12); border-color: rgba(79,142,247,0.3); color: #4f8ef7; font-weight: 600; }
+
+/* 档案卡：头像环 */
+.pc-avatar-ring {
+  position: relative; flex-shrink: 0;
+  padding: 3px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b5cf6, #4f8ef7, #8b5cf6);
+}
+/* 等级徽章 */
+.pc-level-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 12px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(79,142,247,0.2));
+  border: 1px solid rgba(139,92,246,0.3);
+  font-size: 11px; color: #a78bfa; font-weight: 600;
+  margin-top: 4px;
+}
+.level-icon { font-size: 12px; }
+.level-title { color: #c4b5fd; font-weight: 500; }
+/* XP 进度条 */
+.pc-xp-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.xp-bar {
+  flex: 1; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.08); overflow: hidden;
+}
+.xp-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #4f8ef7);
+  transition: width 0.5s ease;
+}
+.xp-text { font-size: 10px; color: var(--color-text-muted); white-space: nowrap; }
+/* 连续活跃提示 */
+.streak-hint { font-size: 11px; color: var(--color-text-muted); padding-left: 22px; margin-top: -2px; }
+/* 日历小数字 */
+.cal-dot { position: relative; display: flex; align-items: center; justify-content: center; }
+.cal-day { font-size: 8px; color: var(--color-text-muted); }
+.cal-dot.active .cal-day { color: white; }
 
 .heat-card {
   background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
@@ -2467,23 +2637,24 @@ const submitPost = async () => {
 .heat-badge.up { color: #10b981; background: rgba(16,185,129,0.1); }
 .heat-badge.down { color: #f43f5e; background: rgba(244,63,94,0.1); }
 .heat-badge.flat { color: var(--color-text-muted); background: rgba(255,255,255,0.05); }
+.heat-top { display: flex; justify-content: space-between; align-items: center; }
+.heat-sub { font-size: 11px; color: var(--color-text-muted); margin-top: 4px; display: block; }
 
 /* ====== 中间 Feed ====== */
 .wall-main { min-width: 0; }
 
-/* 搜索 + 快捷操作 */
+/* 发布入口 + 快捷操作 */
 .feed-topbar { margin-bottom: 16px; }
-.topbar-search {
-  display: flex; align-items: center; gap: 8px;
+.compose-entry {
+  display: flex; align-items: center; gap: 12px;
   background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
-  color: var(--color-text-muted);
+  border-radius: 24px; padding: 12px 18px; margin-bottom: 12px;
+  cursor: pointer; transition: all 0.2s;
 }
-.search-input {
-  flex: 1; background: transparent; border: none; outline: none;
-  color: white; font-size: 14px;
-}
-.search-input::placeholder { color: var(--color-text-muted); }
+.compose-entry:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); }
+.compose-avatar { flex-shrink: 0; }
+.compose-avatar-img { border-radius: 50% !important; }
+.compose-placeholder { color: var(--color-text-muted); font-size: 14px; }
 .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .qa-btn {
   display: flex; align-items: center; gap: 4px;
@@ -2567,8 +2738,43 @@ const submitPost = async () => {
 }
 .ai-chip:hover { background: rgba(6,182,212,0.12); }
 
+/* 本周活动日历 */
+.activity-calendar { display: flex; flex-direction: column; gap: 8px; }
+.cal-event { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+.cal-date { font-size: 11px; color: #a78bfa; font-weight: 600; white-space: nowrap; min-width: 72px; }
+.cal-detail { display: flex; flex-direction: column; gap: 1px; }
+.cal-event-name { font-size: 12px; color: white; font-weight: 500; }
+.cal-event-info { font-size: 10px; color: var(--color-text-muted); }
+
+/* 校园热搜 */
+.hot-search-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hs-chip {
+  padding: 4px 12px; border-radius: 14px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+  color: var(--color-text-secondary); font-size: 11px;
+  cursor: pointer; transition: all 0.15s;
+}
+.hs-chip:hover { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.2); color: #4f8ef7; }
+
+/* 实时动态统计行 */
+.rt-stats-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.rt-stat { font-size: 11px; color: var(--color-text-muted); }
+.rt-stat strong { color: #a78bfa; font-weight: 600; }
+/* 迷你折线图 */
+.rt-chart { margin-bottom: 10px; }
+.rt-chart-svg { width: 100%; height: 60px; }
+.rt-chart-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--color-text-muted); margin-top: 2px; }
+
+/* 校园信任与安全 */
 .trust-section { border-color: rgba(16,185,129,0.15); }
-.trust-stats { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+.trust-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.trust-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 8px;
+  background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15);
+  font-size: 11px; color: #10b981;
+}
+.tc-icon { font-size: 12px; }
 
 /* ====== 响应式：平板及以下 ====== */
 @media (max-width: 1100px) {
