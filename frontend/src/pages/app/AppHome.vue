@@ -1,18 +1,23 @@
 <template>
   <div class="app-home">
     <section class="hero">
-      <div class="hero-nebula"></div>
-      <div class="hero-stars">
-        <span v-for="i in 12" :key="'s'+i" class="hero-star" :style="{ left: `${8 + (i * 7.2) % 85}%`, top: `${10 + (i * 13.5) % 75}%`, animationDelay: `${i * 0.4}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px` }"></span>
+      <!-- 三层星云 -->
+      <div class="hero-nebula-core"></div>
+      <div class="hero-nebula-mid"></div>
+      <div class="hero-nebula-outer"></div>
+      <!-- 微粒 -->
+      <div class="hero-particles">
+        <span v-for="i in 18" :key="'hp'+i" class="h-particle" :style="{ left: `${5 + ((i * 5.3 + 7) % 90)}%`, top: `${8 + ((i * 11.7 + 3) % 80)}%`, animationDelay: `${i * 0.5}s`, animationDuration: `${2.5 + (i % 4) * 0.8}s`, width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px`, opacity: `${0.15 + (i % 5) * 0.1}` }"></span>
       </div>
-      <div class="hero-content">
-        <h1>{{ greeting }}，{{ userName }} ✦</h1>
+      <!-- 内容 -->
+      <div class="hero-left">
+        <h1 class="hero-greeting">{{ greeting }}，SparkAlliance ✦</h1>
         <p class="hero-date">{{ currentDate }}</p>
         <p class="hero-insight">AI 洞察：{{ aiInsight }}</p>
       </div>
-      <div class="hero-actions">
-        <button class="btn ghost" type="button" @click="loadDashboard">刷新主控台</button>
-        <router-link to="/app/schedule?module=planner" class="btn primary">去完成规划 →</router-link>
+      <div class="hero-right">
+        <button class="btn hero-ghost" type="button" @click="loadDashboard">🔄 刷新主控台</button>
+        <router-link to="/app/schedule?module=planner" class="btn hero-primary">去完成规划 →</router-link>
       </div>
     </section>
 
@@ -685,83 +690,47 @@ watch(
     radial-gradient(ellipse at 80% 15%, rgba(139,92,246,0.15) 0%, transparent 45%),
     radial-gradient(ellipse at 20% 85%, rgba(59,130,246,0.08) 0%, transparent 40%),
     rgba(12, 10, 24, 0.75);
-  border: 1px solid rgba(139,92,246,0.08);
-  box-shadow: 0 4px 30px rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139,92,246,0.06);
+  box-shadow: 0 4px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.02);
+  min-height: 120px;
 }
 
-.hero-nebula {
-  position: absolute;
-  top: -60%;
-  right: -20%;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(ellipse, rgba(139,92,246,0.2) 0%, rgba(59,130,246,0.08) 40%, transparent 70%);
-  filter: blur(40px);
-  pointer-events: none;
-  animation: nebulaFloat 12s ease-in-out infinite alternate;
+.hero-nebula-core {
+  position: absolute; top: -40%; right: 5%; width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, rgba(99,102,241,0.12) 35%, transparent 65%);
+  filter: blur(30px); pointer-events: none;
+  animation: nebulaCore 10s ease-in-out infinite alternate;
+}
+.hero-nebula-mid {
+  position: absolute; top: -60%; right: -5%; width: 350px; height: 350px;
+  background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.04) 40%, transparent 70%);
+  filter: blur(45px); pointer-events: none;
+  animation: nebulaMid 14s ease-in-out infinite alternate;
+}
+.hero-nebula-outer {
+  position: absolute; top: -30%; right: -15%; width: 500px; height: 500px;
+  background: radial-gradient(ellipse at 40% 40%, rgba(139,92,246,0.03) 0%, transparent 60%);
+  filter: blur(60px); pointer-events: none;
 }
 
-@keyframes nebulaFloat {
-  from { transform: translate(0, 0) scale(1); opacity: 0.7; }
-  to { transform: translate(-20px, 15px) scale(1.1); opacity: 1; }
-}
+@keyframes nebulaCore { from { transform: translate(0,0) scale(1); opacity: 0.7 } to { transform: translate(-8px,8px) scale(1.05); opacity: 1 } }
+@keyframes nebulaMid { from { transform: translate(0,0) scale(1); opacity: 0.5 } to { transform: translate(-15px,10px) scale(1.08); opacity: 0.8 } }
 
-.hero-stars {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
+.hero-particles { position: absolute; inset: 0; pointer-events: none; }
+.h-particle { position: absolute; border-radius: 50%; background: white; animation: hpTwinkle ease-in-out infinite; }
+@keyframes hpTwinkle { 0%,100% { opacity: 0.1; transform: scale(0.7) } 50% { opacity: 0.6; transform: scale(1.3) } }
 
-.hero-star {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.6);
-  animation: starTwinkle 3s ease-in-out infinite;
-}
+.hero-left { position: relative; z-index: 1; flex: 1; }
+.hero-greeting { margin: 0 0 6px; color: rgba(255,255,255,0.95); font-size: 28px; font-weight: 800; letter-spacing: 1.5px; line-height: 1.3; }
+.hero-date { color: rgba(255,255,255,0.3); font-size: 13px; margin: 0 0 6px; }
+.hero-insight { color: rgba(139,92,246,0.55); font-size: 13px; margin: 0; line-height: 1.6; max-width: 520px; }
 
-@keyframes starTwinkle {
-  0%, 100% { opacity: 0.2; transform: scale(0.8); }
-  50% { opacity: 0.8; transform: scale(1.2); }
-}
+.hero-right { position: relative; z-index: 1; display: flex; gap: 10px; flex-shrink: 0; }
+.btn.hero-ghost { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08); height: 40px; padding: 0 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn.hero-ghost:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+.btn.hero-primary { background: linear-gradient(135deg, #6d28d9, #8b5cf6); color: white; height: 40px; padding: 0 20px; border-radius: 10px; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; box-shadow: 0 2px 16px rgba(139,92,246,0.25); transition: all 0.2s; }
+.btn.hero-primary:hover { box-shadow: 0 4px 24px rgba(139,92,246,0.4); transform: translateY(-1px); }
 
-.hero-content {
-  position: relative;
-  z-index: 1;
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  top: -30px;
-  right: -10px;
-  width: 180px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 65%);
-  pointer-events: none;
-  filter: blur(25px);
-  animation: heroGlow 8s ease-in-out infinite alternate;
-}
-
-@keyframes heroGlow {
-  from { opacity: 0.6; transform: translate(0, 0); }
-  to { opacity: 1; transform: translate(-10px, 10px); }
-}
-
-.hero h1 {
-  margin: 0 0 4px;
-  color: var(--color-text-primary);
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.hero p {
-  margin: 0;
-  line-height: 1.6;
-  max-width: 620px;
-}
-
-.hero-actions,
 .note-buttons {
   display: flex;
   gap: 10px;
