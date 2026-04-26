@@ -12,9 +12,10 @@
       </div>
     </section>
 
+    <!-- 第二行：统计卡片 -->
     <section class="stats-strip">
-      <div v-for="stat in miniStats" :key="stat.label" class="stat-chip">
-        <div class="stat-icon" :style="{ color: stat.color }" v-html="stat.svg"></div>
+      <div v-for="stat in miniStats.slice(0, 4)" :key="stat.label" class="stat-chip">
+        <div class="stat-icon" :style="{ color: stat.color, background: stat.color + '18' }" v-html="stat.svg"></div>
         <div>
           <strong>{{ stat.value }}</strong>
           <span>{{ stat.label }}</span>
@@ -22,19 +23,14 @@
       </div>
     </section>
 
-    <section class="grid">
-      <div class="card command-card">
+    <!-- 第三行：闭环行动 + 今日日程 -->
+    <section class="row-2col">
+      <div class="card">
         <div class="card-head">
           <h3>闭环行动</h3>
-          <span>把主控台变成下一步行动入口</span>
+          <span class="card-sub">把主控台变成下一步行动入口</span>
         </div>
-        <router-link
-          v-for="action in dashboardActions"
-          :key="action.id"
-          :to="action.to"
-          class="action-card"
-          :class="`tone-${action.emphasis}`"
-        >
+        <router-link v-for="action in dashboardActions" :key="action.id" :to="action.to" class="action-card" :class="`tone-${action.emphasis}`">
           <span class="action-icon">{{ action.icon }}</span>
           <div class="action-copy">
             <strong>{{ action.title }}</strong>
@@ -43,94 +39,69 @@
           <span class="action-cta">{{ action.cta }}</span>
         </router-link>
       </div>
-
-      <div class="card span-5">
+      <div class="card">
         <div class="card-head">
           <h3>今日日程</h3>
-          <router-link to="/app/schedule" class="more-link">管理 →</router-link>
+          <router-link to="/app/schedule" class="more-link">管理日程 →</router-link>
         </div>
         <div class="list">
-          <router-link
-            v-for="event in todaySchedule"
-            :key="event.id"
-            :to="`/app/schedule?view=day&date=${getLocalDate()}`"
-            class="list-item list-item-link"
-          >
+          <router-link v-for="event in todaySchedule" :key="event.id" :to="`/app/schedule?view=day&date=${getLocalDate()}`" class="list-item list-item-link">
             <span class="dot" :class="event.kind"></span>
-            <div>
-              <strong>{{ event.title }}</strong>
-              <span>{{ event.time }}</span>
-            </div>
+            <div><strong>{{ event.title }}</strong><span>{{ event.time }}</span></div>
           </router-link>
           <p v-if="todaySchedule.length === 0" class="empty">今天还没有安排，去日程页规划一下吧。</p>
         </div>
       </div>
+    </section>
 
-      <div class="card span-5">
+    <!-- 第四行：规划推进 + 购物动态 -->
+    <section class="row-2col">
+      <div class="card">
         <div class="card-head">
           <h3>规划推进</h3>
-          <router-link to="/app/planner" class="more-link">查看全部 →</router-link>
+          <router-link to="/app/schedule?module=planner" class="more-link">查看全部 →</router-link>
         </div>
         <div class="list">
           <div v-for="task in todayPlannerTasks" :key="task.id" class="list-item">
             <span class="dot" :class="{ urgent: task.isOverdue }"></span>
-            <div>
-              <strong>{{ task.title }}</strong>
-              <span>{{ task.meta }}</span>
-            </div>
+            <div><strong>{{ task.title }}</strong><span>{{ task.meta }}</span></div>
           </div>
           <p v-if="todayPlannerTasks.length === 0" class="empty">今天没有待处理任务，适合开始一个新的目标。</p>
         </div>
       </div>
-
-      <div class="card span-4">
+      <div class="card">
         <div class="card-head">
           <h3>购物动态</h3>
           <router-link to="/app/shop" class="more-link">去处理 →</router-link>
         </div>
         <div class="shop-stats">
-          <div>
-            <strong>{{ dashboardSnapshot.activeListings }}</strong>
-            <span>在售商品</span>
-          </div>
-          <div>
-            <strong>{{ dashboardSnapshot.pendingTransactions }}</strong>
-            <span>待处理交易</span>
-          </div>
-          <div>
-            <strong>{{ dashboardSnapshot.unreadShopMessages }}</strong>
-            <span>未读消息</span>
-          </div>
+          <div><strong>{{ dashboardSnapshot.activeListings }}</strong><span>在售商品</span></div>
+          <div><strong>{{ dashboardSnapshot.pendingTransactions }}</strong><span>待处理交易</span></div>
+          <div><strong>{{ dashboardSnapshot.unreadShopMessages }}</strong><span>未读消息</span></div>
         </div>
         <div class="signal-list">
           <div v-for="signal in shopSignals" :key="signal" class="signal">{{ signal }}</div>
         </div>
       </div>
+    </section>
 
-      <div class="card note-card span-8">
+    <!-- 第五行：快速笔记 + 本周执行率 -->
+    <section class="row-2col">
+      <div class="card note-card">
         <div class="card-head">
           <h3>快速笔记</h3>
           <span v-if="noteSaved" class="saved">已保存</span>
         </div>
-        <textarea
-          v-model="quickNote"
-          class="note-textarea"
-          rows="5"
-          placeholder="把想法先记下来，再决定是否转成今日任务。"
-          @input="saveNote"
-        ></textarea>
+        <textarea v-model="quickNote" class="note-textarea" rows="4" placeholder="随时记录你的想法、灵感与待办..." @input="saveNote"></textarea>
         <div class="note-actions">
-          <span>{{ quickNote.length }} 字 · 自动保存到本地</span>
+          <span>{{ quickNote.length }} 字 · 已自动保存</span>
           <div class="note-buttons">
             <button class="btn ghost" type="button" @click="clearNote" :disabled="!quickNote.trim()">清空</button>
-            <button class="btn primary" type="button" @click="convertNoteToTask" :disabled="!quickNote.trim() || convertingNote">
-              {{ convertingNote ? '转换中...' : '转为今日任务' }}
-            </button>
+            <button class="btn primary" type="button" @click="convertNoteToTask" :disabled="!quickNote.trim() || convertingNote">{{ convertingNote ? '...' : '转为今日任务' }}</button>
           </div>
         </div>
       </div>
-
-      <div class="card progress-card span-4">
+      <div class="card progress-card">
         <div class="card-head">
           <h3>本周执行率</h3>
           <strong class="progress-pct">{{ weeklyProgress.percent }}%</strong>
@@ -147,78 +118,11 @@
         </div>
         <p class="progress-summary">{{ weeklyProgress.summary }}</p>
       </div>
-
-      <div class="card ai-card span-4">
-        <div class="card-head">
-          <h3>AI 今日建议</h3>
-          <button class="more-link plain-btn" type="button" @click="refreshQuote">换一批</button>
-        </div>
-        <div class="ai-tips">
-          <div class="ai-tip">
-            <span class="ai-bullet">•</span>
-            <span>建议在 16:00 - 17:30 安排专注学习，效率更高</span>
-          </div>
-          <div class="ai-tip">
-            <span class="ai-bullet">•</span>
-            <span>你有 {{ dashboardSnapshot.overdueTasks }} 个任务即将截止，建议优先处理</span>
-          </div>
-          <div class="ai-tip">
-            <span class="ai-bullet">•</span>
-            <span>本周专注时长提升明显，继续保持！</span>
-          </div>
-        </div>
-      </div>
     </section>
 
-    <!-- ====== 第四层：成长 / 徽章 / 灵感 / 热榜 ====== -->
-    <section class="grid">
-      <div class="card growth-card span-3">
-        <div class="card-head">
-          <h3>成长进度</h3>
-        </div>
-        <div class="growth-level">
-          <div class="gl-avatar">
-            <span class="gl-icon">🔥</span>
-          </div>
-          <div class="gl-info">
-            <div class="gl-name">Lv.{{ userLevel }} <span class="gl-title">星火探索者</span></div>
-            <div class="gl-xp">{{ userXP }} / {{ nextLevelXP }} XP</div>
-            <div class="gl-bar"><div class="gl-bar-fill" :style="{ width: xpPercent + '%' }"></div></div>
-          </div>
-        </div>
-        <div class="gl-stats">
-          <div><strong>🔥 {{ dashboardSnapshot.streakDays }} 天</strong><span>连续天数</span></div>
-          <div><strong>📅 14 天</strong><span>最长连续</span></div>
-        </div>
-        <p class="gl-hint">再获得 {{ nextLevelXP - userXP }} XP 升级！</p>
-      </div>
-
-      <div class="card badge-card span-3">
-        <div class="card-head">
-          <h3>成就徽章</h3>
-          <router-link to="/app/profile" class="more-link">查看全部</router-link>
-        </div>
-        <div class="badge-grid">
-          <div class="badge-item earned">
-            <span class="badge-icon">🏆</span>
-            <span class="badge-name">高效达人</span>
-          </div>
-          <div class="badge-item earned">
-            <span class="badge-icon">⭐</span>
-            <span class="badge-name">学习之星</span>
-          </div>
-          <div class="badge-item earned">
-            <span class="badge-icon">🤝</span>
-            <span class="badge-name">交流先锋</span>
-          </div>
-          <div class="badge-item locked">
-            <span class="badge-icon">🌟</span>
-            <span class="badge-name">学习之星</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card quote-card span-3">
+    <!-- 第六行：每日灵感 + 校园热榜 -->
+    <section class="row-2col">
+      <div class="card quote-card">
         <div class="card-head">
           <h3>每日灵感</h3>
           <button class="more-link plain-btn" type="button" @click="refreshQuote">换一条</button>
@@ -226,22 +130,18 @@
         <blockquote>{{ currentQuote.text }}</blockquote>
         <cite>— {{ currentQuote.author }}</cite>
       </div>
-
-      <div class="card campus-card span-3">
+      <div class="card campus-card">
         <div class="card-head">
           <h3>校园热榜</h3>
-          <router-link to="/app/wall" class="more-link">查看全部</router-link>
+          <router-link to="/app/wall" class="more-link">查看全部 →</router-link>
         </div>
         <div v-if="campusHighlights.length > 0" class="campus-list">
           <div v-for="(post, idx) in campusHighlights.slice(0, 3)" :key="post.id" class="campus-hot-item">
             <span class="hot-rank">{{ idx + 1 }}</span>
-            <div class="hot-info">
-              <strong>{{ post.preview.slice(0, 20) }}</strong>
-              <span>{{ post.heat }}</span>
-            </div>
+            <div class="hot-info"><strong>{{ post.preview.slice(0, 22) }}</strong><span>{{ post.heat }}</span></div>
           </div>
         </div>
-        <p v-else class="empty">暂无热榜</p>
+        <p v-else class="empty">暂无热榜数据</p>
       </div>
     </section>
 
@@ -776,9 +676,9 @@ watch(
 
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .stat-chip {
@@ -812,32 +712,16 @@ watch(
   font-size: 11px;
 }
 
-.grid {
+.row-2col {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 40px;
+  margin-bottom: 16px;
 }
 
 .card {
-  grid-column: span 4;
   padding: 20px 22px;
-}
-
-.command-card {
-  grid-column: span 7;
-}
-
-.span-4 {
-  grid-column: span 4;
-}
-
-.span-5 {
-  grid-column: span 5;
-}
-
-.span-8 {
-  grid-column: span 8;
+  border-radius: 18px;
 }
 
 .card-head {
@@ -1100,7 +984,7 @@ watch(
 .hero-date { color: var(--color-text-muted); font-size: 13px; margin: 4px 0 0; }
 .hero-insight { color: rgba(139,92,246,0.6); font-size: 13px; margin: 6px 0 0; }
 
-.span-3 { grid-column: span 3; }
+.card-sub { font-size: 12px; color: var(--color-text-muted); }
 
 /* AI 今日建议 */
 .ai-card {
@@ -1266,17 +1150,8 @@ watch(
 }
 
 @media (max-width: 1024px) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .command-card,
-  .span-3,
-  .span-4,
-  .span-5,
-  .span-8,
-  .card {
-    grid-column: span 1;
+  .row-2col {
+    grid-template-columns: 1fr;
   }
 
   .shortcut-grid {
@@ -1284,7 +1159,7 @@ watch(
   }
 
   .stats-strip {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -1305,8 +1180,11 @@ watch(
   }
 
   .shortcut-grid,
-  .shop-stats,
-  .grid {
+  .shop-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .row-2col {
     grid-template-columns: 1fr;
   }
 
