@@ -679,9 +679,9 @@ watch(
 
 <style scoped>
 .app-home {
-  max-width: 1200px;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: 32px 40px 48px;
+  padding: 28px 36px 48px;
 }
 
 .hero,
@@ -713,43 +713,43 @@ watch(
 .hero {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   gap: 24px;
-  padding: 36px 40px;
+  padding: 40px 40px 32px;
   margin-bottom: 20px;
   border-radius: 20px;
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 72% 25%, rgba(139,92,246,0.22) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 40%, rgba(88,28,200,0.16) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 30%, rgba(139,92,246,0.25) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 50%, rgba(88,28,200,0.18) 0%, transparent 50%),
     radial-gradient(ellipse at 15% 80%, rgba(59,130,246,0.1) 0%, transparent 45%),
-    radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 60%),
-    linear-gradient(180deg, rgba(15,10,35,0.9) 0%, rgba(8,6,20,0.95) 100%);
+    radial-gradient(ellipse at 40% 10%, rgba(99,102,241,0.1) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(12,8,30,0.92) 0%, rgba(8,6,20,0.96) 100%);
   border: 1px solid rgba(139,92,246,0.1);
   box-shadow: 0 4px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
-  min-height: 150px;
+  min-height: 180px;
 }
 
-/* 星球图片 */
+/* 星球图片 — 大面积铺满 hero 右侧 */
 .planet-img-wrap {
   position: absolute;
-  top: -60%;
-  right: -8%;
-  width: 420px;
-  height: 300px;
+  top: -40%;
+  right: -5%;
+  width: 65%;
+  height: 200%;
   pointer-events: none;
   z-index: 0;
-  animation: planetFloat 20s ease-in-out infinite alternate;
-  opacity: 0.55;
+  animation: planetFloat 24s ease-in-out infinite alternate;
+  opacity: 0.65;
   mix-blend-mode: screen;
 }
 .planet-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center right;
-  filter: brightness(0.75) saturate(1.4) contrast(1.1);
+  object-fit: contain;
+  object-position: center;
+  filter: brightness(0.85) saturate(1.3);
 }
 
 @keyframes planetFloat {
@@ -760,14 +760,14 @@ watch(
 
 /* 星云层 */
 .hero-nebula-core {
-  position: absolute; top: -35%; right: 2%; width: 240px; height: 240px;
-  background: radial-gradient(circle, rgba(139,92,246,0.2) 0%, rgba(99,102,241,0.1) 35%, transparent 65%);
-  filter: blur(35px); pointer-events: none;
+  position: absolute; top: -20%; right: 15%; width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(139,92,246,0.15) 0%, rgba(99,102,241,0.08) 35%, transparent 65%);
+  filter: blur(40px); pointer-events: none;
   animation: nebulaCore 10s ease-in-out infinite alternate;
 }
 .hero-nebula-mid {
-  position: absolute; top: -50%; right: -8%; width: 380px; height: 380px;
-  background: radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, rgba(139,92,246,0.03) 40%, transparent 70%);
+  position: absolute; top: -30%; left: 20%; width: 400px; height: 400px;
+  background: radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, rgba(139,92,246,0.03) 40%, transparent 70%);
   filter: blur(50px); pointer-events: none;
   animation: nebulaMid 14s ease-in-out infinite alternate;
 }
