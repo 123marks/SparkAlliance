@@ -180,9 +180,22 @@ export function buildDashboardStats(snapshot: DashboardSnapshot): DashboardStat[
     },
     {
       value: String(snapshot.pendingTransactions),
-      label: '待处理交易',
+      label: '待处理交流',
       color: '#10b981',
       svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"></path><path d="M8 21H3v-5"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>',
+    },
+    {
+      value: '12.4',
+      label: '本周专注时长',
+      sub: 'h',
+      color: '#3b82f6',
+      svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+    },
+    {
+      value: String(snapshot.streakDays),
+      label: '连续执行天数',
+      color: '#ec4899',
+      svg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>',
     },
   ]
 }

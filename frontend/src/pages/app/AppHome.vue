@@ -2,13 +2,13 @@
   <div class="app-home">
     <section class="hero">
       <div>
-        <span class="hero-kicker">SparkAlliance 主控台</span>
-        <h1>{{ greeting }}，{{ userName }}</h1>
-        <p>{{ currentDate }} · {{ heroSubtitle }}</p>
+        <h1>{{ greeting }}，{{ userName }} ✦</h1>
+        <p class="hero-date">{{ currentDate }}</p>
+        <p class="hero-insight">AI 洞察：{{ heroSubtitle }}</p>
       </div>
       <div class="hero-actions">
-        <button class="btn ghost" type="button" @click="loadDashboard">刷新主控台</button>
-        <router-link to="/app/planner" class="btn primary">去完成规划</router-link>
+        <button class="btn ghost" type="button" @click="loadDashboard">🔄 刷新主控台</button>
+        <router-link to="/app/schedule?module=planner" class="btn primary">去完成规划 →</router-link>
       </div>
     </section>
 
@@ -148,31 +148,100 @@
         <p class="progress-summary">{{ weeklyProgress.summary }}</p>
       </div>
 
-      <div class="card quote-card span-4">
+      <div class="card ai-card span-4">
+        <div class="card-head">
+          <h3>AI 今日建议</h3>
+          <button class="more-link plain-btn" type="button" @click="refreshQuote">换一批</button>
+        </div>
+        <div class="ai-tips">
+          <div class="ai-tip">
+            <span class="ai-bullet">•</span>
+            <span>建议在 16:00 - 17:30 安排专注学习，效率更高</span>
+          </div>
+          <div class="ai-tip">
+            <span class="ai-bullet">•</span>
+            <span>你有 {{ dashboardSnapshot.overdueTasks }} 个任务即将截止，建议优先处理</span>
+          </div>
+          <div class="ai-tip">
+            <span class="ai-bullet">•</span>
+            <span>本周专注时长提升明显，继续保持！</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== 第四层：成长 / 徽章 / 灵感 / 热榜 ====== -->
+    <section class="grid">
+      <div class="card growth-card span-3">
+        <div class="card-head">
+          <h3>成长进度</h3>
+        </div>
+        <div class="growth-level">
+          <div class="gl-avatar">
+            <span class="gl-icon">🔥</span>
+          </div>
+          <div class="gl-info">
+            <div class="gl-name">Lv.{{ userLevel }} <span class="gl-title">星火探索者</span></div>
+            <div class="gl-xp">{{ userXP }} / {{ nextLevelXP }} XP</div>
+            <div class="gl-bar"><div class="gl-bar-fill" :style="{ width: xpPercent + '%' }"></div></div>
+          </div>
+        </div>
+        <div class="gl-stats">
+          <div><strong>🔥 {{ dashboardSnapshot.streakDays }} 天</strong><span>连续天数</span></div>
+          <div><strong>📅 14 天</strong><span>最长连续</span></div>
+        </div>
+        <p class="gl-hint">再获得 {{ nextLevelXP - userXP }} XP 升级！</p>
+      </div>
+
+      <div class="card badge-card span-3">
+        <div class="card-head">
+          <h3>成就徽章</h3>
+          <router-link to="/app/profile" class="more-link">查看全部</router-link>
+        </div>
+        <div class="badge-grid">
+          <div class="badge-item earned">
+            <span class="badge-icon">🏆</span>
+            <span class="badge-name">高效达人</span>
+          </div>
+          <div class="badge-item earned">
+            <span class="badge-icon">⭐</span>
+            <span class="badge-name">学习之星</span>
+          </div>
+          <div class="badge-item earned">
+            <span class="badge-icon">🤝</span>
+            <span class="badge-name">交流先锋</span>
+          </div>
+          <div class="badge-item locked">
+            <span class="badge-icon">🌟</span>
+            <span class="badge-name">学习之星</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card quote-card span-3">
         <div class="card-head">
           <h3>每日灵感</h3>
           <button class="more-link plain-btn" type="button" @click="refreshQuote">换一条</button>
         </div>
-        <span class="quote-tag">{{ currentQuote.tag }}</span>
         <blockquote>{{ currentQuote.text }}</blockquote>
         <cite>— {{ currentQuote.author }}</cite>
       </div>
 
-      <div class="card campus-card span-8">
+      <div class="card campus-card span-3">
         <div class="card-head">
           <h3>校园热榜</h3>
-          <router-link to="/app/wall" class="more-link">去围观 →</router-link>
+          <router-link to="/app/wall" class="more-link">查看全部</router-link>
         </div>
         <div v-if="campusHighlights.length > 0" class="campus-list">
-          <router-link v-for="post in campusHighlights" :key="post.id" :to="post.to" class="campus-item">
-            <div class="campus-meta">
-              <strong>{{ post.author }}</strong>
+          <div v-for="(post, idx) in campusHighlights.slice(0, 3)" :key="post.id" class="campus-hot-item">
+            <span class="hot-rank">{{ idx + 1 }}</span>
+            <div class="hot-info">
+              <strong>{{ post.preview.slice(0, 20) }}</strong>
               <span>{{ post.heat }}</span>
             </div>
-            <p>{{ post.preview }}</p>
-          </router-link>
+          </div>
         </div>
-        <p v-else class="empty">校园墙还没有形成热榜，去发布第一条动态，把社区气氛点起来。</p>
+        <p v-else class="empty">暂无热榜</p>
       </div>
     </section>
 
@@ -344,6 +413,11 @@ const quotes = [
 ]
 const quoteIndex = ref(Math.floor(Math.random() * quotes.length))
 const currentQuote = computed(() => quotes[quoteIndex.value])
+
+const userLevel = computed(() => Math.floor(dashboardSnapshot.value.streakDays * 1.5 + dashboardSnapshot.value.weeklyCompletedTasks * 10) > 0 ? Math.min(99, Math.floor((dashboardSnapshot.value.streakDays * 15 + dashboardSnapshot.value.weeklyCompletedTasks * 50) / 100)) + 1 : 1)
+const userXP = computed(() => (dashboardSnapshot.value.streakDays * 15 + dashboardSnapshot.value.weeklyCompletedTasks * 50) % 2000)
+const nextLevelXP = 2000
+const xpPercent = computed(() => Math.min(100, Math.round((userXP.value / nextLevelXP) * 100)))
 
 let noteTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -695,7 +769,7 @@ watch(
 
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -1007,64 +1081,100 @@ watch(
   color: var(--color-text-muted);
 }
 
+.hero-date { color: var(--color-text-muted); font-size: 13px; margin: 4px 0 0; }
+.hero-insight { color: rgba(139,92,246,0.6); font-size: 13px; margin: 6px 0 0; }
+
+.span-3 { grid-column: span 3; }
+
+/* AI 今日建议 */
+.ai-card {
+  background: linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.04));
+  border-color: rgba(59,130,246,0.08);
+}
+.ai-tips { display: flex; flex-direction: column; gap: 10px; }
+.ai-tip { display: flex; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.6; }
+.ai-bullet { color: #3b82f6; font-weight: bold; flex-shrink: 0; }
+
+/* 成长进度 */
+.growth-card { background: linear-gradient(135deg, rgba(245,158,11,0.06), rgba(139,92,246,0.04)); }
+.growth-level { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.gl-avatar { width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #8b5cf6, #f59e0b); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.gl-icon { font-size: 22px; }
+.gl-info { flex: 1; min-width: 0; }
+.gl-name { font-size: 14px; font-weight: 700; color: var(--color-text-primary); }
+.gl-title { font-weight: 400; color: var(--color-text-muted); font-size: 12px; margin-left: 4px; }
+.gl-xp { font-size: 11px; color: var(--color-text-muted); margin: 2px 0 6px; }
+.gl-bar { height: 6px; background: var(--color-border); border-radius: 3px; overflow: hidden; }
+.gl-bar-fill { height: 100%; background: linear-gradient(90deg, #8b5cf6, #f59e0b); border-radius: 3px; transition: width 0.6s ease; }
+.gl-stats { display: flex; gap: 16px; margin-bottom: 8px; }
+.gl-stats > div { display: flex; flex-direction: column; }
+.gl-stats strong { font-size: 13px; color: var(--color-text-primary); }
+.gl-stats span { font-size: 10px; color: var(--color-text-muted); }
+.gl-hint { font-size: 11px; color: rgba(245,158,11,0.5); margin: 0; }
+
+/* 成就徽章 */
+.badge-card { background: linear-gradient(135deg, rgba(236,72,153,0.05), rgba(139,92,246,0.04)); }
+.badge-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.badge-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; border-radius: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); transition: transform 0.2s; }
+.badge-item.earned { border-color: rgba(245,197,94,0.15); }
+.badge-item.locked { opacity: 0.35; }
+.badge-item:hover { transform: translateY(-2px); }
+.badge-icon { font-size: 24px; }
+.badge-name { font-size: 10px; color: var(--color-text-muted); }
+
 .quote-card {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(79, 142, 247, 0.04));
   border-color: rgba(139, 92, 246, 0.1);
 }
 
-.quote-tag {
-  display: inline-flex;
-  margin-bottom: 12px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(139, 92, 246, 0.14);
-  color: #ddd6fe;
-  font-size: 11px;
-  font-weight: 600;
-}
-
 .quote-card blockquote {
   margin: 0;
-  color: rgba(255, 255, 255, 0.75);
-  line-height: 1.7;
-  font-size: 15px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.8;
+  font-size: 14px;
   font-style: italic;
 }
 
 .quote-card cite {
   display: block;
   margin-top: 14px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
+/* 校园热榜 */
 .campus-card {
-  background:
-    radial-gradient(circle at top right, rgba(244, 63, 94, 0.08), transparent 26%),
-    linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(244, 63, 94, 0.04));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(244, 63, 94, 0.04));
 }
 
-.campus-item {
-  display: block;
-  padding: 14px 16px;
-  text-decoration: none;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.campus-item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(96, 165, 250, 0.18);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.campus-meta {
+.campus-hot-item {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
 }
+.campus-hot-item:last-child { border-bottom: none; }
 
-.campus-item p {
-  margin: 0;
+.hot-rank {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-muted);
 }
+.campus-hot-item:first-child .hot-rank { background: rgba(239,68,68,0.12); color: #f87171; }
+.campus-hot-item:nth-child(2) .hot-rank { background: rgba(245,158,11,0.1); color: #f59e0b; }
+
+.hot-info { flex: 1; min-width: 0; }
+.hot-info strong { display: block; font-size: 13px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hot-info span { font-size: 11px; color: var(--color-text-muted); }
 
 .shortcuts h2 {
   margin: 0 0 20px;
@@ -1137,6 +1247,7 @@ watch(
   }
 
   .command-card,
+  .span-3,
   .span-4,
   .span-5,
   .span-8,
@@ -1145,6 +1256,10 @@ watch(
   }
 
   .shortcut-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .stats-strip {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -1161,7 +1276,10 @@ watch(
     align-items: stretch;
   }
 
-  .stats-strip,
+  .stats-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .shortcut-grid,
   .shop-stats,
   .grid {
