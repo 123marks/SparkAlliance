@@ -764,9 +764,9 @@ watch(
 
 <style scoped>
 .app-home {
-  max-width: 1320px;
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 28px 36px 48px;
+  padding: 16px 24px 40px;
 }
 
 .hero,
@@ -1453,13 +1453,13 @@ watch(
 .ring-fg {
   fill: none;
   stroke: url(#ringGradient);
-  stroke-width: 8;
+  stroke-width: 9;
   stroke-linecap: round;
   stroke-dasharray: 314.16;
   transform: rotate(-90deg);
   transform-origin: center;
   transition: stroke-dashoffset 0.8s ease;
-  filter: drop-shadow(0 0 6px rgba(139,92,246,0.3));
+  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.45)) drop-shadow(0 0 4px rgba(124, 58, 237, 0.3));
 }
 
 .ring-label {
@@ -1592,8 +1592,8 @@ watch(
   animation: badgeGlow 3s ease-in-out infinite alternate;
 }
 @keyframes badgeGlow {
-  from { filter: brightness(1); }
-  to { filter: brightness(1.15); }
+  from { filter: brightness(1); box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2); }
+  to { filter: brightness(1.2); box-shadow: 0 4px 28px rgba(139, 92, 246, 0.35); }
 }
 .badge-item-v2:hover .badge-circle {
   transform: scale(1.12);
@@ -1667,8 +1667,9 @@ watch(
   background: var(--color-bg-card-hover);
   color: var(--color-text-muted);
 }
-.campus-hot-item:first-child .hot-rank { background: rgba(239,68,68,0.12); color: #f87171; }
-.campus-hot-item:nth-child(2) .hot-rank { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.campus-hot-item:first-child .hot-rank { background: linear-gradient(135deg, rgba(245,197,94,0.3), rgba(239,68,68,0.2)); color: #f5c55e; font-weight: 800; box-shadow: 0 0 10px rgba(245,197,94,0.2); }
+.campus-hot-item:nth-child(2) .hot-rank { background: linear-gradient(135deg, rgba(148,163,184,0.25), rgba(100,116,139,0.15)); color: #94a3b8; font-weight: 800; box-shadow: 0 0 8px rgba(148,163,184,0.15); }
+.campus-hot-item:nth-child(3) .hot-rank { background: linear-gradient(135deg, rgba(249,115,22,0.25), rgba(234,88,12,0.15)); color: #f97316; font-weight: 800; box-shadow: 0 0 8px rgba(249,115,22,0.15); }
 
 .hot-info { flex: 1; min-width: 0; }
 .hot-info strong { display: block; font-size: 13px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1714,19 +1715,27 @@ watch(
 }
 
 .stat-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 16px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.15);
-  transition: box-shadow 0.2s, transform 0.2s;
+  box-shadow: 0 0 24px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.25), inset 0 0 12px rgba(255,255,255,0.05);
+  transition: box-shadow 0.25s, transform 0.25s;
+  font-size: 20px;
+  animation: iconGlow 3s ease-in-out infinite alternate;
+  border: 1px solid rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.15);
+}
+@keyframes iconGlow {
+  0% { box-shadow: 0 0 20px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.2), inset 0 0 12px rgba(255,255,255,0.05); }
+  100% { box-shadow: 0 0 30px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.35), inset 0 0 16px rgba(255,255,255,0.08); }
 }
 .stat-chip:hover .stat-icon {
-  box-shadow: 0 0 24px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.25);
-  transform: scale(1.05);
+  box-shadow: 0 0 40px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.45), inset 0 0 16px rgba(255,255,255,0.1);
+  transform: scale(1.1);
+  animation: none;
 }
 
 .stat-text { min-width: 0; }
@@ -1849,8 +1858,20 @@ watch(
 .home-footer {
   margin-top: 48px;
   padding: 28px 0 16px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(139, 92, 246, 0.08);
   text-align: center;
+  position: relative;
+}
+.home-footer::before {
+  content: '✦';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 12, 41, 0.9);
+  padding: 0 12px;
+  color: rgba(139, 92, 246, 0.4);
+  font-size: 14px;
 }
 .footer-links {
   display: flex;

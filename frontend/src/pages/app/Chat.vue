@@ -175,14 +175,17 @@
 
         <!-- 快捷能力 -->
         <div class="sb-section">
-          <div class="sb-section-head">
+          <div class="sb-section-head" @click="sbShowAbilities = !sbShowAbilities">
             <span>⚡ 快捷能力</span>
+            <span class="sb-section-toggle">{{ sbShowAbilities ? '▼' : '▶' }}</span>
           </div>
-          <div class="sb-abilities">
-            <button v-for="t in ABILITY_TOOLS" :key="t.key" class="sb-ability-chip" :class="{ 'sb-ability-active': activeAbilityKey === t.key }" @click="activateAbility(t)">
-              {{ t.icon }} {{ t.label }}
-            </button>
-          </div>
+          <Transition name="sb-fold">
+            <div v-if="sbShowAbilities" class="sb-abilities">
+              <button v-for="t in ABILITY_TOOLS" :key="t.key" class="sb-ability-chip" :class="{ 'sb-ability-active': activeAbilityKey === t.key }" @click="activateAbility(t)">
+                {{ t.icon }} {{ t.label }}
+              </button>
+            </div>
+          </Transition>
         </div>
 
         <!-- 用户资料卡（精装版） -->
@@ -196,9 +199,12 @@
           <div class="sb-uc-info">
             <div class="sb-uc-name-row">
               <span class="sb-uc-name">{{ userName || '星火同学' }}</span>
-              <span class="sb-uc-level">● Lv.{{ userLevelComputed }}</span>
+              <span class="sb-uc-level" :class="'sb-lvl-' + Math.min(3, Math.floor(userLevelComputed / 10))">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Lv.{{ userLevelComputed }}
+              </span>
             </div>
-            <div class="sb-uc-detail">连续陪伴 {{ streakDaysComputed }} 天</div>
+            <div class="sb-uc-detail">🔥 连续陪伴 {{ streakDaysComputed }} 天</div>
             <div class="sb-uc-school">🏫 星火大学 · 计算机学院</div>
             <div class="sb-uc-xp-row">
               <div class="sb-uc-xp-bar"><div class="sb-uc-xp-fill" :style="{ width: xpPercentComputed + '%' }"></div></div>
@@ -237,6 +243,11 @@
           <div class="top-pill top-pill-toggle" :class="{ active: focusModeOn }" @click="focusModeOn = !focusModeOn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
             <span>专注模式</span>
+          </div>
+          <!-- 工具协同 -->
+          <div class="top-pill top-pill-toggle" :class="{ active: false }" title="联动日程、规划、学习资源、星火伴侣">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+            <span>工具协同</span>
           </div>
         </div>
 
@@ -293,7 +304,7 @@
 
         <template v-for="(msg, idx) in displayMsgs" :key="idx">
           <div class="msg-row" :class="msg.role" :title="msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : ''">
-            <div v-if="msg.role === 'assistant'" class="av">⚡</div>
+            <div v-if="msg.role === 'assistant'" class="av"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L14.09 8.26L20.18 9.27L15.54 13.14L16.82 19.02L12 16.27L7.18 19.02L8.46 13.14L3.82 9.27L9.91 8.26L12 2Z" fill="url(#starGrad)" stroke="rgba(139,92,246,0.5)" stroke-width="0.5"/><defs><linearGradient id="starGrad" x1="3" y1="2" x2="21" y2="20"><stop offset="0%" stop-color="#c084fc"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs></svg></div>
             <div class="msg-content">
               <div v-if="msg.attachments?.length" class="file-cards">
                 <div v-for="(a, i) in msg.attachments" :key="i" class="file-card" :class="{ 'file-card-img': a.type === 'image' }" @click="openPreview(a)" :title="a.type === 'image' ? '点击查看大图' : '点击预览内容'">
@@ -331,6 +342,14 @@
               <!-- v9: 命中缓存徽章 -->
               <span v-if="msg.role === 'assistant' && msg.fromCache" class="cache-badge" title="此回复来自本地响应缓存，内容与最新请求一致">⚡ 来自缓存</span>
               <span v-if="msg.role === 'assistant' && msg.pending && streamingInCurrentView && !!(msg.content && msg.content.trim())" class="cursor"></span>
+              <!-- AI 回答后续建议按钮行 -->
+              <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="ai-followup-row">
+                <button class="followup-btn" @click="handleQuick('请深入讲解上面的内容')">🔍 深入讲解</button>
+                <button class="followup-btn" @click="handleQuick('请延展思路，给我更多角度')">💡 延展思路</button>
+                <button class="followup-btn" @click="handleQuick('请提取上面回答的亮点和关键知识')">✨ 提取亮点</button>
+                <button class="followup-btn" @click="handleQuick('请扩展相关知识点')">📚 扩展知识点</button>
+                <button class="followup-btn" @click="handleQuick('请给我相关的练习题或实践建议')">🎯 相关知识</button>
+              </div>
               <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="msg-acts">
                 <button @click="copyText(msg.content)" title="复制" aria-label="复制回复">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
@@ -362,6 +381,14 @@
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 14V2M9 18.12L10 14H4.17a2 2 0 01-1.92-2.56l2.33-8A2 2 0 016.5 2H20a2 2 0 012 2v8a2 2 0 01-2 2h-2.76a2 2 0 00-1.79 1.11L12 22a3.13 3.13 0 01-3-3.88z"/></svg>
                 </button>
+                <!-- AI 回复后续建议按钮 -->
+                <div class="prompt-suggestions" v-if="!streamingInCurrentView">
+                  <button class="ps-btn" @click="handleQuick('请深入讲解这个主题')">✨ 深入讲解</button>
+                  <button class="ps-btn" @click="handleQuick('请延展思路，给我更多角度')">🔀 延展思路</button>
+                  <button class="ps-btn" @click="handleQuick('提取这段回答的亮点和核心要点')">💡 提取亮点</button>
+                  <button class="ps-btn" @click="handleQuick('扩展相关知识点')">📚 扩展知识点</button>
+                  <button class="ps-btn" @click="handleQuick('给我推荐相关的学习资源')">🔗 相关知识</button>
+                </div>
                 <!-- v13: 单条导出菜单 -->
                 <div class="msg-export">
                   <button class="msg-export-btn" :class="{ active: msgExportOpen === idx }" title="导出本条" aria-label="导出本条回复" @click.stop="msgExportOpen = msgExportOpen === idx ? -1 : idx">
@@ -376,6 +403,14 @@
                     <button class="mx-item" @click="exportSingleMessage(idx, 'json'); msgExportOpen = -1">🧾 JSON</button>
                   </div>
                 </div>
+              <!-- AI 后续建议按钮行 -->
+              <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="suggest-row">
+                <button class="suggest-btn" @click="handleQuick('深入讲解上面的内容')">🔍 深入讲解</button>
+                <button class="suggest-btn" @click="handleQuick('延展思路，从不同角度分析')">💡 延展思路</button>
+                <button class="suggest-btn" @click="handleQuick('提取上面回答的亮点和关键要素')">✨ 提取亮点</button>
+                <button class="suggest-btn" @click="handleQuick('扩展相关知识点')">📚 扩展知识点</button>
+                <button class="suggest-btn" @click="handleQuick('推荐相关知识和学习资源')">🔗 相关知识</button>
+              </div>
               </div>
             </div>
           </div>
@@ -475,6 +510,14 @@
           </button>
         </div>
 
+        <!-- 快捷提示行 -->
+        <div class="input-hints-row">
+          <button class="input-hint-btn" @click="handleQuick('解释量子计算的基本原理')">解释量子计算的基本原理</button>
+          <button class="input-hint-btn" @click="handleQuick('帮我写一份周计划表')">帮我写一份周计划表</button>
+          <button class="input-hint-btn" @click="handleQuick('总结这篇论文的创新点')">总结这篇论文的创新点</button>
+          <button class="input-hint-btn" @click="handleQuick('推荐几本高质量的学习书籍')">推荐几本高质量的学习书籍</button>
+        </div>
+
         <!-- v9: Emoji 选择器 -->
         <Transition name="emoji-pop">
           <div v-if="showEmoji" class="emoji-panel">
@@ -493,6 +536,14 @@
             </div>
           </div>
         </Transition>
+
+        <!-- 快捷提示行 -->
+        <div class="quick-prompts">
+          <button class="qp-chip" @click="handleQuick('解释这个题目的解题思路')">解释题目</button>
+          <button class="qp-chip" @click="handleQuick('帮我写一份周计划')">帮我写周计划</button>
+          <button class="qp-chip" @click="handleQuick('总结这篇论文的创新点')">总结论文创新点</button>
+          <button class="qp-chip" @click="handleQuick('推荐适合我的课程表')">推荐课表</button>
+        </div>
 
         <!-- 能力工具栏 + 模型选择器（参考DeepSeek设计，在输入框下方） -->
         <div class="ability-bar">
@@ -579,6 +630,14 @@
     <ChatRightPanel
       @checkin="handleCheckinFromPanel"
       @send-message="handleQuick"
+    />
+
+    <!-- 星火小宇浮层 -->
+    <SparkXiaoyuWidget
+      :mood-icon="'💚'"
+      :mood-text="'状态良好'"
+      :recent-items="[{ icon: '💻', text: 'C++ 代码解释' }, { icon: '📖', text: '复习计划制定' }]"
+      @action="handleQuick"
     />
 
     <!-- 签到弹窗 -->
@@ -708,6 +767,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } 
 import { useRouter } from 'vue-router'
 import ChatRightPanel from '../../components/chat/ChatRightPanel.vue'
 import CheckinModal from '../../components/chat/CheckinModal.vue'
+import SparkXiaoyuWidget from '../../components/chat/SparkXiaoyuWidget.vue'
 import { useCheckin } from '../../composables/useCheckin'
 import { useSparkAI, MODEL_OPTIONS, ABILITY_TOOLS, WORKFLOW_PRESETS, isBinaryFile, formatFileSize } from '../../composables/useSparkAI'
 import type { SparkAction, FileAttachment, ModelMode, Conversation } from '../../composables/useSparkAI'
@@ -769,6 +829,7 @@ const memoryEnabled = ref(true)
 const focusModeOn = ref(false)
 const sbShowFavorites = ref(true)
 const sbShowTopics = ref(false)
+const sbShowAbilities = ref(true)
 
 const studyTopics = [
   { icon: '📐', label: '高数知识点总结', prompt: '帮我整理高等数学核心知识点，按章节分类总结' },
@@ -2476,7 +2537,12 @@ async function handleInheritMemory() {
 .sb-uc-info { flex:1; min-width:0; }
 .sb-uc-name-row { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
 .sb-uc-name { font-size:12px; font-weight:700; color:rgba(255,255,255,.65); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sb-uc-level { font-size:9px; font-weight:700; color:rgba(139,92,246,.7); white-space:nowrap; }
+.sb-uc-level { display:inline-flex; align-items:center; gap:2px; font-size:9px; font-weight:700; padding:1px 6px; border-radius:8px; white-space:nowrap; }
+.sb-uc-level svg { flex-shrink:0; }
+.sb-lvl-0 { color:#10b981; background:rgba(16,185,129,.08); }
+.sb-lvl-1 { color:#3b82f6; background:rgba(59,130,246,.08); }
+.sb-lvl-2 { color:#8b5cf6; background:rgba(139,92,246,.08); }
+.sb-lvl-3 { color:#f59e0b; background:rgba(245,158,11,.08); }
 .sb-uc-detail { font-size:9px; color:rgba(255,255,255,.2); margin-bottom:1px; }
 .sb-uc-school { font-size:9px; color:rgba(255,255,255,.15); margin-bottom:4px; }
 .sb-uc-xp-row { display:flex; align-items:center; gap:6px; }
@@ -3181,6 +3247,10 @@ async function handleInheritMemory() {
 @keyframes katex-twinkle { from { opacity:.45; } to { opacity:.85; } }
 
 /* ============ v13: 单条消息导出菜单 ============ */
+.prompt-suggestions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.ps-btn { background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.12); border-radius:16px; padding:5px 12px; color:rgba(167,139,250,0.85); font-size:12px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.ps-btn:hover { background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.3); color:#c4b5fd; }
+
 .msg-export { position:relative; }
 .msg-export-btn { width:28px; height:28px; border-radius:6px; border:none; background:rgba(255,255,255,.015); color:rgba(255,255,255,.25); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s; }
 .msg-export-btn:hover,.msg-export-btn.active { background:rgba(34,197,94,.08); color:rgba(134,239,172,.95); }
@@ -3354,5 +3424,121 @@ async function handleInheritMemory() {
   .sandbox-container { width:100%; height:95vh; border-radius:12px; }
   .sandbox-body.sandbox-split { flex-direction:column; }
   .sandbox-editor { flex:0 0 40%; border-right:none; border-bottom:1px solid rgba(139,92,246,.12); }
+}
+
+/* ====== AI 后续建议按钮行 ====== */
+.suggest-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+.suggest-btn {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(139, 92, 246, 0.12);
+  background: rgba(139, 92, 246, 0.06);
+  color: rgba(196, 181, 253, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms ease;
+  white-space: nowrap;
+}
+.suggest-btn:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.1);
+  transform: translateY(-1px);
+}
+.suggest-btn:active {
+  transform: scale(0.97);
+}
+
+/* ====== 输入框下方快捷提示行 ====== */
+.quick-prompts {
+  display: flex;
+  gap: 6px;
+  padding: 6px 0 0;
+  overflow-x: auto;
+}
+.quick-prompts::-webkit-scrollbar { display: none; }
+.qp-chip {
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(139, 92, 246, 0.08);
+  background: rgba(139, 92, 246, 0.04);
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.qp-chip:hover {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.2);
+  color: rgba(196, 181, 253, 0.8);
+}
+
+/* ====== AI 回答后续建议按钮行 ====== */
+.ai-followup-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0 6px;
+  margin-top: 4px;
+}
+.followup-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(139, 92, 246, 0.12);
+  background: rgba(15, 12, 41, 0.4);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.followup-btn:hover {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.08);
+  transform: translateY(-1px);
+}
+.followup-btn:active {
+  transform: scale(0.97);
+}
+
+/* ====== 输入快捷提示行 ====== */
+.input-hints-row {
+  display: flex; gap: 6px; padding: 6px 12px 4px; flex-wrap: wrap;
+  overflow-x: auto; scrollbar-width: none;
+}
+.input-hints-row::-webkit-scrollbar { display: none; }
+.input-hint-btn {
+  padding: 3px 10px; border-radius: 12px; font-size: 11px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.35); cursor: pointer; transition: all 0.15s;
+  white-space: nowrap; flex-shrink: 0;
+}
+.input-hint-btn:hover {
+  background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.2);
+  color: rgba(255,255,255,0.6);
+}
+
+/* ====== 代码块紫色描边装饰 ====== */
+.md-body pre {
+  border: 1px solid rgba(139, 92, 246, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+.md-body pre code {
+  font-size: 13px !important;
+  line-height: 1.6 !important;
 }
 </style>
