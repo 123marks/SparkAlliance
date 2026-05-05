@@ -100,17 +100,46 @@
 
         <!-- 校园热度值 -->
         <div class="heat-card">
-          <div class="heat-top">
-            <span class="heat-label">校园热度值</span>
+          <div class="heat-body">
+            <div class="heat-robot">
+              <svg viewBox="0 0 80 80" class="robot-svg">
+                <defs>
+                  <radialGradient id="robotGlow" cx="50%" cy="40%" r="50%">
+                    <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.4"/>
+                    <stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="40" cy="40" r="38" fill="url(#robotGlow)"/>
+                <rect x="22" y="24" width="36" height="32" rx="10" fill="#312e81" stroke="#6366f1" stroke-width="1.5"/>
+                <circle cx="33" cy="38" r="4" fill="#818cf8"/>
+                <circle cx="47" cy="38" r="4" fill="#818cf8"/>
+                <circle cx="33" cy="38" r="2" fill="white"/>
+                <circle cx="47" cy="38" r="2" fill="white"/>
+                <rect x="30" y="48" width="20" height="3" rx="1.5" fill="#818cf8" opacity="0.6"/>
+                <rect x="26" y="18" width="4" height="8" rx="2" fill="#6366f1"/>
+                <rect x="50" y="18" width="4" height="8" rx="2" fill="#6366f1"/>
+                <line x1="28" y1="14" x2="28" y2="18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="52" y1="14" x2="52" y2="18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="28" cy="12" r="2.5" fill="#a78bfa"/>
+                <circle cx="52" cy="12" r="2.5" fill="#a78bfa"/>
+                <rect x="18" y="34" width="6" height="12" rx="3" fill="#312e81" stroke="#6366f1" stroke-width="1"/>
+                <rect x="56" y="34" width="6" height="12" rx="3" fill="#312e81" stroke="#6366f1" stroke-width="1"/>
+                <rect x="30" y="58" width="8" height="10" rx="3" fill="#312e81" stroke="#6366f1" stroke-width="1"/>
+                <rect x="42" y="58" width="8" height="10" rx="3" fill="#312e81" stroke="#6366f1" stroke-width="1"/>
+              </svg>
+            </div>
+            <div class="heat-info">
+              <span class="heat-label">校园热度值</span>
+              <div class="heat-row">
+                <span class="heat-num">{{ campusHeatScore.toLocaleString() }}</span>
+                <span class="heat-badge" :class="trendDirection">
+                  {{ trendDirection === 'up' ? '↑' : trendDirection === 'down' ? '↓' : '→' }}
+                  {{ trendDelta }}
+                </span>
+              </div>
+              <span class="heat-sub">校苑日</span>
+            </div>
           </div>
-          <div class="heat-row">
-            <span class="heat-num">{{ campusHeatScore.toLocaleString() }}</span>
-            <span class="heat-badge" :class="trendDirection">
-              {{ trendDirection === 'up' ? '↑' : trendDirection === 'down' ? '↓' : '→' }}
-              {{ trendDelta }}
-            </span>
-          </div>
-          <span class="heat-sub">校苑日</span>
         </div>
       </div>
     </aside>
@@ -302,7 +331,10 @@
             <div v-for="(item, i) in hotRankList" :key="item.id" class="hot-item" @click="scrollToPost(item.id)">
               <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
               <span class="hot-text">{{ item.preview }}</span>
-              <span class="hot-heat">{{ item.heat }}</span>
+              <span class="hot-heat-badge">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c6.075 0 11-4.925 11-11 0-4.078-2.052-7.665-5.164-9.794C16.56 1.325 14.394 0.938 12 2c-2.394-1.062-4.56-.675-5.836.206C3.052 4.335 1 7.922 1 12c0 6.075 4.925 11 11 11z"/></svg>
+                {{ item.heatFormatted }}
+              </span>
             </div>
             <div v-if="hotRankList.length === 0" class="hot-empty">暂无热门内容</div>
           </div>
@@ -313,11 +345,17 @@
           <h4 class="rs-title">💬 推荐圈子</h4>
           <div class="circle-list">
             <div v-for="c in recommendedCircles" :key="c.name" class="circle-item">
-              <span class="circle-icon">{{ c.icon }}</span>
+              <div class="circle-avatar" :style="{ background: c.color }">
+                <span>{{ c.icon }}</span>
+              </div>
               <div class="circle-info">
                 <span class="circle-name">{{ c.name }}</span>
-                <span class="circle-count">{{ c.members }}</span>
+                <span class="circle-count">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                  {{ c.members }}
+                </span>
               </div>
+              <button class="circle-join">加入</button>
             </div>
           </div>
         </div>
@@ -327,7 +365,7 @@
           <h4 class="rs-title">📅 本周活动日历</h4>
           <div class="activity-calendar">
             <div v-for="evt in weeklyEvents" :key="evt.date" class="cal-event">
-              <span class="cal-date">{{ evt.date }}</span>
+              <span class="cal-date" :class="{ highlight: evt.highlight }">{{ evt.date }}</span>
               <div class="cal-detail">
                 <span class="cal-event-name">{{ evt.name }}</span>
                 <span class="cal-event-info">{{ evt.info }}</span>
@@ -340,7 +378,7 @@
         <div class="right-section">
           <h4 class="rs-title">🔍 校园热搜</h4>
           <div class="hot-search-chips">
-            <button v-for="kw in campusHotSearch" :key="kw" class="hs-chip" @click="searchQuery = kw">{{ kw }}</button>
+            <button v-for="(kw, idx) in campusHotSearch" :key="kw" class="hs-chip" :class="`hs-color-${idx % 6}`" @click="searchQuery = kw">{{ kw }}</button>
           </div>
         </div>
 
@@ -348,53 +386,65 @@
         <div class="right-section">
           <h4 class="rs-title">⚡ 实时动态</h4>
           <div class="rt-stats-row">
-            <span class="rt-stat">👥 在线 <strong>{{ onlineCount.toLocaleString() }}</strong> 人</span>
-            <span class="rt-stat">今日 <strong>{{ wallStats.todayPosts.toLocaleString() }}</strong> 条</span>
+            <span class="rt-stat-pill">
+              <span class="rt-dot green"></span>
+              在线 <strong>{{ onlineCount.toLocaleString() }}</strong> 人
+            </span>
+            <span class="rt-stat-mini">今日 <strong>{{ wallStats.todayPosts.toLocaleString() }}</strong> 条</span>
           </div>
           <div class="rt-chart">
             <svg viewBox="0 0 240 60" class="rt-chart-svg">
               <defs>
                 <linearGradient id="rtGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+                  <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35"/>
                   <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
                 </linearGradient>
               </defs>
               <path :d="rtChartAreaPath" fill="url(#rtGrad)" />
-              <path :d="rtChartLinePath" fill="none" stroke="#8b5cf6" stroke-width="2" />
+              <path :d="rtChartLinePath" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" />
             </svg>
             <div class="rt-chart-labels">
-              <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span>
+              <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
             </div>
-          </div>
-          <div class="realtime-list">
-            <div v-for="item in realtimeFeed" :key="item.id" class="rt-item">
-              <span class="rt-avatar">{{ item.initial }}</span>
-              <div class="rt-content">
-                <span class="rt-text">{{ item.text }}</span>
-                <span class="rt-time">{{ item.time }}</span>
-              </div>
-            </div>
-            <div v-if="realtimeFeed.length === 0" class="hot-empty">暂无实时动态</div>
           </div>
         </div>
 
         <!-- AI 话题助手 -->
         <div class="right-section ai-helper">
           <h4 class="rs-title">🤖 AI 话题助手</h4>
-          <p class="ai-desc">生成一篇关于时间管理的校园段落分析</p>
-          <div class="ai-suggestions">
-            <button v-for="s in aiSuggestions" :key="s" class="ai-chip" @click="applyAiSuggestion(s)">{{ s }}</button>
+          <div class="ai-suggestions-list">
+            <button class="ai-sug-item" v-for="s in aiTopicSuggestions" :key="s.text" @click="applyAiSuggestion(s.text)">
+              <span class="ai-sug-icon">{{ s.icon }}</span>
+              <span class="ai-sug-text">{{ s.text }}</span>
+              <span class="ai-sug-arrow">›</span>
+            </button>
           </div>
         </div>
 
         <!-- 校园信任与安全 -->
         <div class="right-section trust-section">
           <h4 class="rs-title">🛡️ 校园信任与安全</h4>
-          <div class="trust-chips">
-            <span class="trust-chip"><span class="tc-icon">👤</span> 校园认证</span>
-            <span class="trust-chip"><span class="tc-icon">📋</span> 内容审核</span>
-            <span class="trust-chip"><span class="tc-icon">🔒</span> 隐私保护</span>
+          <div class="trust-grid">
+            <div class="trust-cell">
+              <div class="trust-icon-circle blue">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+              </div>
+              <span>校园认证</span>
+            </div>
+            <div class="trust-cell">
+              <div class="trust-icon-circle purple">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+              </div>
+              <span>内容审核</span>
+            </div>
+            <div class="trust-cell">
+              <div class="trust-icon-circle green">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <span>隐私保护</span>
+            </div>
           </div>
+          <p class="trust-footer">共建真实、友善、安全的校园社区</p>
         </div>
       </div>
     </aside>
@@ -1621,28 +1671,48 @@ const campusHeatScore = computed(() => {
 })
 
 // ====== 右侧栏数据 ======
+function formatHeat(n: number): string {
+  if (n >= 10000) return (n / 10000).toFixed(1) + 'w'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return String(n)
+}
+
 const hotRankList = computed(() => {
-  return [...posts.value]
+  const defaultHots = [
+    { id: 'dh1', preview: '清华暑期学校开放报名 🎓', heat: 128000, heatFormatted: '12.8w' },
+    { id: 'dh2', preview: '周末活动怎么选？投票中', heat: 86000, heatFormatted: '8.6w' },
+    { id: 'dh3', preview: 'Python 3.12 新特性解读', heat: 62000, heatFormatted: '6.2w' },
+    { id: 'dh4', preview: '校园二手交易防坑指南', heat: 41000, heatFormatted: '4.1w' },
+    { id: 'dh5', preview: '求推荐靠谱实习内推渠道', heat: 37000, heatFormatted: '3.7w' },
+  ]
+
+  const fromPosts = [...posts.value]
     .sort((a, b) => (b.likes * 2 + b.comments * 3) - (a.likes * 2 + a.comments * 3))
-    .slice(0, 6)
-    .map(p => ({
-      id: p.id,
-      preview: p.content.length > 22 ? p.content.slice(0, 22) + '…' : p.content,
-      heat: `${p.likes + p.comments}`,
-    }))
+    .slice(0, 5)
+    .map(p => {
+      const h = p.likes * 2 + p.comments * 3
+      return {
+        id: p.id,
+        preview: p.content.length > 20 ? p.content.slice(0, 20) + '…' : p.content,
+        heat: h,
+        heatFormatted: formatHeat(h),
+      }
+    })
+
+  return fromPosts.length >= 3 ? fromPosts : defaultHots
 })
 
 const recommendedCircles = [
-  { name: '清华读书会', icon: '📖', members: '1.2w 书香四溢' },
-  { name: 'AI 学术交流', icon: '🤖', members: '8500 探索前沿' },
-  { name: '摄影爱好者', icon: '📸', members: '3200' },
-  { name: '校园跑团', icon: '🏃', members: '5178 一起出发' },
+  { name: '清华读书会', icon: '📖', members: '1.2w', color: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
+  { name: 'AI 学术交流', icon: '🤖', members: '8,560', color: 'linear-gradient(135deg, #06b6d4, #3b82f6)' },
+  { name: '摄影爱好者', icon: '📸', members: '6,230', color: 'linear-gradient(135deg, #f59e0b, #f97316)' },
+  { name: '校园跑团', icon: '🏃', members: '5,178', color: 'linear-gradient(135deg, #10b981, #14b8a6)' },
 ]
 
 const weeklyEvents = [
-  { date: '5/25 · 周六', name: '《人类简史》共读', info: '清华读书会 · 204人 · 86 人报名' },
-  { date: '5/26 · 09:00', name: '紧凑星期计划', info: '42 人参加' },
-  { date: '5/27 · 14:00', name: 'AI 前沿讲座：大模型与教育', info: '主楼C厅 · 120 人报名' },
+  { date: '5/25 v 19:30', name: '星火读书会·《人类简史》共读', info: '报名 204人 · 86人报名', highlight: false },
+  { date: '5/26 · 09:00', name: '紧凑星期计划', info: '42 人参加', highlight: false },
+  { date: '5/27 · 14:00', name: 'AI 前沿讲座：大模型与教育', info: '主楼C厅 · 120 人报名', highlight: true },
 ]
 
 const campusHotSearch = ['研究生', '保研经验', '实习推荐', '实习内推', '二手交易', '健身打卡']
@@ -1681,6 +1751,12 @@ const aiSuggestions = computed(() => {
   if (tags.length === 0) return ['分享校园生活', '表白墙', '期末加油']
   return tags
 })
+
+const aiTopicSuggestions = [
+  { icon: '📝', text: '生成一篇关于时间管理的校园经验分享' },
+  { icon: '📣', text: '帮我写一条招募志愿者的活动文案' },
+  { icon: '🔬', text: '有哪些值得参加的科技类竞赛？' },
+]
 
 const applyAiSuggestion = (text: string) => {
   newPostContent.value = text.startsWith('#') ? `聊聊 ${text} 的那些事 ` : text
@@ -2500,7 +2576,7 @@ const submitPost = async () => {
 /* ====== 三栏布局 ====== */
 .wall-layout {
   display: grid;
-  grid-template-columns: 240px 1fr 280px;
+  grid-template-columns: 240px 1fr 300px;
   gap: 24px;
   min-height: calc(100vh - 72px);
   padding: 20px 24px;
@@ -2629,16 +2705,20 @@ const submitPost = async () => {
 .heat-card {
   background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
   border: 1px solid rgba(139,92,246,0.2); border-radius: 14px; padding: 14px;
+  overflow: hidden;
 }
+.heat-body { display: flex; align-items: center; gap: 12px; }
+.heat-robot { flex-shrink: 0; }
+.robot-svg { width: 64px; height: 64px; filter: drop-shadow(0 0 8px rgba(139,92,246,0.3)); }
+.heat-info { flex: 1; }
 .heat-label { font-size: 12px; color: var(--color-text-muted); }
-.heat-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
-.heat-num { font-size: 24px; font-weight: 800; color: #a78bfa; }
-.heat-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.heat-row { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
+.heat-num { font-size: 22px; font-weight: 800; background: linear-gradient(135deg, #a78bfa, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.heat-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
 .heat-badge.up { color: #10b981; background: rgba(16,185,129,0.1); }
 .heat-badge.down { color: #f43f5e; background: rgba(244,63,94,0.1); }
 .heat-badge.flat { color: var(--color-text-muted); background: rgba(255,255,255,0.05); }
-.heat-top { display: flex; justify-content: space-between; align-items: center; }
-.heat-sub { font-size: 11px; color: var(--color-text-muted); margin-top: 4px; display: block; }
+.heat-sub { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; display: block; }
 
 /* ====== 中间 Feed ====== */
 .wall-main { min-width: 0; }
@@ -2691,70 +2771,103 @@ const submitPost = async () => {
 }
 .rs-title { font-size: 13px; font-weight: 600; color: white; margin: 0 0 10px; }
 
-.hot-list { display: flex; flex-direction: column; gap: 6px; }
+.hot-list { display: flex; flex-direction: column; gap: 4px; }
 .hot-item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  display: flex; align-items: center; gap: 8px; padding: 7px 0;
   cursor: pointer; transition: all 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
 }
+.hot-item:last-child { border-bottom: none; }
 .hot-item:hover { opacity: 0.8; }
 .hot-rank {
   width: 20px; height: 20px; border-radius: 4px; text-align: center;
   font-size: 11px; font-weight: 700; line-height: 20px;
-  background: rgba(255,255,255,0.06); color: var(--color-text-muted);
+  background: rgba(255,255,255,0.06); color: var(--color-text-muted); flex-shrink: 0;
 }
 .hot-rank.top { background: linear-gradient(135deg, #f59e0b, #f97316); color: white; }
 .hot-text { flex: 1; font-size: 12px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hot-heat { font-size: 11px; color: var(--color-text-muted); }
+.hot-heat-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; color: #f97316; font-weight: 600; white-space: nowrap;
+}
+.hot-heat-badge svg { color: #f97316; }
 .hot-empty { font-size: 12px; color: var(--color-text-muted); text-align: center; padding: 10px 0; }
 
-.circle-list { display: flex; flex-direction: column; gap: 8px; }
-.circle-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-.circle-icon { font-size: 20px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border-radius: 8px; }
-.circle-info { display: flex; flex-direction: column; }
-.circle-name { font-size: 13px; color: white; font-weight: 500; }
-.circle-count { font-size: 11px; color: var(--color-text-muted); }
-
-.realtime-list { display: flex; flex-direction: column; gap: 8px; }
-.rt-item { display: flex; align-items: flex-start; gap: 8px; }
-.rt-avatar {
-  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
-  background: rgba(79,142,247,0.15); color: #4f8ef7;
+/* 推荐圈子 */
+.circle-list { display: flex; flex-direction: column; gap: 10px; }
+.circle-item { display: flex; align-items: center; gap: 10px; }
+.circle-avatar {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 600;
+  font-size: 18px; color: white;
 }
-.rt-content { flex: 1; display: flex; flex-direction: column; }
-.rt-text { font-size: 12px; color: var(--color-text-secondary); line-height: 1.4; }
-.rt-time { font-size: 10px; color: var(--color-text-muted); }
-
-.ai-helper { background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(79,142,247,0.05)); border-color: rgba(6,182,212,0.15); }
-.ai-desc { font-size: 12px; color: var(--color-text-muted); margin: 0 0 10px; }
-.ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
-.ai-chip {
-  padding: 5px 12px; border-radius: 20px;
-  border: 1px solid rgba(6,182,212,0.2);
-  background: rgba(6,182,212,0.06);
-  color: #22d3ee; font-size: 12px;
+.circle-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.circle-name { font-size: 13px; color: white; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.circle-count { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--color-text-muted); }
+.circle-count svg { opacity: 0.5; }
+.circle-join {
+  padding: 3px 10px; border-radius: 12px; flex-shrink: 0;
+  background: rgba(79,142,247,0.12); border: 1px solid rgba(79,142,247,0.25);
+  color: #4f8ef7; font-size: 11px; font-weight: 600;
   cursor: pointer; transition: all 0.15s;
 }
-.ai-chip:hover { background: rgba(6,182,212,0.12); }
+.circle-join:hover { background: rgba(79,142,247,0.2); }
+
+/* 实时动态 */
+.rt-stats-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.rt-stat-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 12px;
+  background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15);
+  font-size: 11px; color: var(--color-text-secondary);
+}
+.rt-stat-pill strong { color: #10b981; }
+.rt-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.rt-dot.green { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.5); }
+.rt-stat-mini { font-size: 11px; color: var(--color-text-muted); }
+.rt-stat-mini strong { color: #a78bfa; }
+.rt-chart { margin-bottom: 4px; }
+.rt-chart-svg { width: 100%; height: 55px; }
+.rt-chart-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--color-text-muted); margin-top: 2px; }
+
+/* AI 话题助手 */
+.ai-helper { background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(79,142,247,0.05)); border-color: rgba(6,182,212,0.15); }
+.ai-suggestions-list { display: flex; flex-direction: column; gap: 6px; }
+.ai-sug-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+  color: var(--color-text-secondary); font-size: 12px;
+  cursor: pointer; transition: all 0.15s; text-align: left;
+}
+.ai-sug-item:hover { background: rgba(6,182,212,0.08); border-color: rgba(6,182,212,0.2); }
+.ai-sug-icon { font-size: 14px; flex-shrink: 0; }
+.ai-sug-text { flex: 1; line-height: 1.35; }
+.ai-sug-arrow { color: var(--color-text-muted); font-size: 16px; flex-shrink: 0; }
 
 /* 本周活动日历 */
 .activity-calendar { display: flex; flex-direction: column; gap: 8px; }
 .cal-event { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
-.cal-date { font-size: 11px; color: #a78bfa; font-weight: 600; white-space: nowrap; min-width: 72px; }
+.cal-date { font-size: 11px; color: #a78bfa; font-weight: 600; white-space: nowrap; min-width: 80px; }
+.cal-date.highlight { color: #f59e0b; }
 .cal-detail { display: flex; flex-direction: column; gap: 1px; }
 .cal-event-name { font-size: 12px; color: white; font-weight: 500; }
 .cal-event-info { font-size: 10px; color: var(--color-text-muted); }
 
-/* 校园热搜 */
+/* 校园热搜 - 多色标签 */
 .hot-search-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .hs-chip {
-  padding: 4px 12px; border-radius: 14px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
-  color: var(--color-text-secondary); font-size: 11px;
+  padding: 5px 12px; border-radius: 14px; border: none;
+  font-size: 11px; font-weight: 500;
   cursor: pointer; transition: all 0.15s;
 }
-.hs-chip:hover { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.2); color: #4f8ef7; }
+.hs-chip:hover { filter: brightness(1.2); transform: translateY(-1px); }
+.hs-color-0 { background: rgba(99,102,241,0.15); color: #818cf8; }
+.hs-color-1 { background: rgba(236,72,153,0.15); color: #f472b6; }
+.hs-color-2 { background: rgba(16,185,129,0.15); color: #34d399; }
+.hs-color-3 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.hs-color-4 { background: rgba(6,182,212,0.15); color: #22d3ee; }
+.hs-color-5 { background: rgba(139,92,246,0.15); color: #a78bfa; }
 
 /* 实时动态统计行 */
 .rt-stats-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
@@ -2766,15 +2879,22 @@ const submitPost = async () => {
 .rt-chart-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--color-text-muted); margin-top: 2px; }
 
 /* 校园信任与安全 */
-.trust-section { border-color: rgba(16,185,129,0.15); }
-.trust-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.trust-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 10px; border-radius: 8px;
-  background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15);
-  font-size: 11px; color: #10b981;
+.trust-section { border-color: rgba(16,185,129,0.12); }
+.trust-grid { display: flex; justify-content: space-around; gap: 8px; margin-bottom: 10px; }
+.trust-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.trust-cell span { font-size: 10px; color: var(--color-text-muted); }
+.trust-icon-circle {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
 }
-.tc-icon { font-size: 12px; }
+.trust-icon-circle.blue { background: rgba(79,142,247,0.12); color: #4f8ef7; }
+.trust-icon-circle.purple { background: rgba(139,92,246,0.12); color: #8b5cf6; }
+.trust-icon-circle.green { background: rgba(16,185,129,0.12); color: #10b981; }
+.trust-footer {
+  font-size: 10px; color: var(--color-text-muted); text-align: center;
+  padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.04);
+  margin: 0;
+}
 
 /* ====== 响应式：平板及以下 ====== */
 @media (max-width: 1100px) {

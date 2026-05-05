@@ -22,9 +22,15 @@
       </div>
       <!-- 内容 -->
       <div class="hero-left">
-        <h1 class="hero-greeting">{{ greeting }}，SparkAlliance</h1>
+        <h1 class="hero-greeting">{{ greeting }}，SparkAlliance <span class="hero-sparkle">✦</span></h1>
         <p class="hero-date">{{ currentDate }}</p>
         <p class="hero-insight">AI 洞察：{{ aiInsight }}</p>
+        <div class="hero-pills">
+          <span class="hero-pill" v-for="pill in heroPills" :key="pill.label">
+            <span class="pill-indicator" :class="pill.trend"></span>
+            {{ pill.label }}
+          </span>
+        </div>
       </div>
       <div class="hero-right">
         <button class="btn hero-ghost" type="button" @click="loadDashboard">🔄 刷新主控台</button>
@@ -272,6 +278,57 @@
       <p class="footer-copy">© 2026 Spark Alliance 星火联盟 · 让每一个火花都能汇聚成照亮前路的星辰</p>
     </footer>
 
+    <!-- 星芒快捷中心 -->
+    <button class="spark-fab" :class="{ active: showQuickCenter }" type="button" @click="showQuickCenter = !showQuickCenter" aria-label="星芒快捷中心">
+      <svg viewBox="0 0 24 24" class="fab-star"><path d="M12 2l2.09 6.26L20.18 9l-4.64 4.14L16.73 20 12 16.77 7.27 20l1.19-6.86L3.82 9l6.09-.74z" fill="currentColor"/></svg>
+    </button>
+    <Transition name="qc">
+      <div v-if="showQuickCenter" class="quick-center" @click.self="showQuickCenter = false">
+        <div class="qc-panel">
+          <div class="qc-header">
+            <div class="qc-greeting">{{ greeting }}，继续点亮你的校园轨迹 ✦</div>
+            <button class="qc-close" type="button" @click="showQuickCenter = false" aria-label="关闭">✕</button>
+          </div>
+          <div class="qc-section">
+            <h4>快速动作</h4>
+            <div class="qc-actions">
+              <router-link to="/app/chat" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6)">💬</span><span>AI 对话</span></router-link>
+              <router-link to="/app/schedule" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#10b981,#06b6d4)">📅</span><span>添加日程</span></router-link>
+              <router-link to="/app/study-room" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">🎯</span><span>开始专注</span></router-link>
+              <router-link to="/app/wall" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#8b5cf6,#f43f5e)">📝</span><span>发动态</span></router-link>
+              <router-link to="/app/shop" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#f97316,#fb7185)">🏷️</span><span>发布商品</span></router-link>
+              <router-link to="/app/study-room" class="qc-act" @click="showQuickCenter = false"><span class="qc-act-icon" style="background:linear-gradient(135deg,#06b6d4,#3b82f6)">📚</span><span>进入自习室</span></router-link>
+            </div>
+          </div>
+          <div class="qc-section">
+            <h4>今日提醒</h4>
+            <div class="qc-reminders">
+              <div class="qc-remind"><span class="qc-remind-dot urgent"></span>待办 {{ dashboardSnapshot.todayTasks }} 项</div>
+              <div class="qc-remind"><span class="qc-remind-dot info"></span>未读互动 {{ dashboardSnapshot.unreadShopMessages }} 条</div>
+              <div v-if="todaySchedule.length > 0" class="qc-remind"><span class="qc-remind-dot upcoming"></span>即将开始：{{ todaySchedule[0]?.title }}</div>
+              <div v-if="dashboardSnapshot.overdueTasks > 0" class="qc-remind"><span class="qc-remind-dot overdue"></span>逾期事项 {{ dashboardSnapshot.overdueTasks }} 项</div>
+            </div>
+          </div>
+          <div class="qc-section">
+            <h4>最近访问</h4>
+            <div class="qc-recent">
+              <router-link to="/app/chat" class="qc-recent-item" @click="showQuickCenter = false">AI 助手</router-link>
+              <router-link to="/app/resources" class="qc-recent-item" @click="showQuickCenter = false">学习资源</router-link>
+              <router-link to="/app/wall" class="qc-recent-item" @click="showQuickCenter = false">星火墙</router-link>
+              <router-link to="/app/health" class="qc-recent-item" @click="showQuickCenter = false">健康打卡</router-link>
+            </div>
+          </div>
+          <div class="qc-section qc-bottom">
+            <div class="qc-inspire">✦ {{ currentQuote.text }} — {{ currentQuote.author }}</div>
+            <div class="qc-bottom-acts">
+              <button class="qc-small-btn" type="button" @click="refreshQuote">换灵感</button>
+              <router-link to="/app/feedback" class="qc-small-btn" @click="showQuickCenter = false">提建议</router-link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <Transition name="fade">
       <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
     </Transition>
@@ -366,6 +423,7 @@ const quickNote = ref(localStorage.getItem('spark_quick_note') || '')
 const noteSaved = ref(false)
 const convertingNote = ref(false)
 const toastMessage = ref('')
+const showQuickCenter = ref(false)
 const coreFeatures = createCoreFeatures()
 
 const greeting = computed(() => {
@@ -402,6 +460,15 @@ const ringOffset = computed(() => {
 })
 const heroSubtitle = computed(() => {
   return dashboardActions.value[0]?.description || '主控台已经接入真实的规划、交易、日程和社区摘要。'
+})
+
+const heroPills = computed(() => {
+  const s = dashboardSnapshot.value
+  return [
+    { label: `本周专注 +${Math.max(0, s.weeklyCompletedTasks * 3)}%`, trend: 'up' },
+    { label: `连续高效 ${s.streakDays} 天`, trend: s.streakDays >= 3 ? 'up' : 'stable' },
+    { label: `校园话题热度 ${Math.min(99, 60 + campusHighlights.value.length * 5)}%`, trend: 'hot' },
+  ]
 })
 
 const aiInsight = computed(() => {
@@ -708,24 +775,29 @@ watch(
 .shortcut-card,
 .action-card,
 .signal {
-  background: rgba(15, 17, 24, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(12, 10, 28, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(139, 92, 246, 0.12);
   border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.02);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 0.5px rgba(139,92,246,0.08);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s;
 }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.04);
-  border-color: rgba(168, 85, 247, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(139, 92, 246, 0.08), 0 0 0 1px rgba(139,92,246,0.15);
+  border-color: rgba(139, 92, 246, 0.25);
 }
 
 .stat-chip {
-  border-color: rgba(168, 85, 247, 0.06);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(168, 85, 247, 0.03);
+  border-color: rgba(139, 92, 246, 0.15);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(139, 92, 246, 0.1);
+}
+.stat-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(139, 92, 246, 0.1);
 }
 
 .hero {
@@ -739,14 +811,15 @@ watch(
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 60% 30%, rgba(139,92,246,0.25) 0%, transparent 55%),
-    radial-gradient(ellipse at 75% 50%, rgba(88,28,200,0.18) 0%, transparent 50%),
-    radial-gradient(ellipse at 15% 80%, rgba(59,130,246,0.1) 0%, transparent 45%),
-    radial-gradient(ellipse at 40% 10%, rgba(99,102,241,0.1) 0%, transparent 60%),
-    linear-gradient(180deg, rgba(12,8,30,0.92) 0%, rgba(8,6,20,0.96) 100%);
-  border: 1px solid rgba(139,92,246,0.1);
-  box-shadow: 0 4px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
-  min-height: 180px;
+    radial-gradient(ellipse at 55% 25%, rgba(139,92,246,0.35) 0%, transparent 50%),
+    radial-gradient(ellipse at 75% 45%, rgba(88,28,200,0.25) 0%, transparent 45%),
+    radial-gradient(ellipse at 20% 75%, rgba(59,130,246,0.15) 0%, transparent 40%),
+    radial-gradient(ellipse at 35% 5%, rgba(147,51,234,0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 80%, rgba(236,72,153,0.06) 0%, transparent 35%),
+    linear-gradient(180deg, rgba(10,6,26,0.94) 0%, rgba(6,4,16,0.97) 100%);
+  border: 1px solid rgba(139,92,246,0.18);
+  box-shadow: 0 4px 48px rgba(0,0,0,0.6), 0 0 80px rgba(139,92,246,0.05), inset 0 1px 0 rgba(255,255,255,0.06);
+  min-height: 200px;
 }
 
 /* 星球图片 — 大面积铺满 hero 右侧 */
@@ -759,7 +832,7 @@ watch(
   pointer-events: none;
   z-index: 0;
   animation: planetFloat 24s ease-in-out infinite alternate;
-  opacity: 0.65;
+  opacity: 0.75;
   mix-blend-mode: screen;
 }
 .planet-img {
@@ -1476,17 +1549,26 @@ watch(
 .badge-item-v2:hover { transform: translateY(-3px); }
 .badge-item-v2.locked { opacity: 0.3; }
 .badge-circle {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  font-size: 24px;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s;
+  border: 1.5px solid rgba(255,255,255,0.1);
+}
+.badge-item-v2.earned .badge-circle {
+  animation: badgeGlow 3s ease-in-out infinite alternate;
+}
+@keyframes badgeGlow {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.15); }
 }
 .badge-item-v2:hover .badge-circle {
-  transform: scale(1.08);
+  transform: scale(1.12);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
 }
 .badge-item-v2 > span {
   font-size: 10px;
@@ -1603,14 +1685,19 @@ watch(
 }
 
 .stat-icon {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 12px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.08);
+  box-shadow: 0 0 16px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.15);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.stat-chip:hover .stat-icon {
+  box-shadow: 0 0 24px rgba(var(--icon-r, 139), var(--icon-g, 92), var(--icon-b, 246), 0.25);
+  transform: scale(1.05);
 }
 
 .stat-text { min-width: 0; }
@@ -1756,5 +1843,241 @@ watch(
   color: var(--color-text-muted);
   margin: 0;
   opacity: 0.6;
+}
+
+/* ====== Hero Pills ====== */
+.hero-sparkle {
+  color: #c084fc;
+  font-size: 0.85em;
+  animation: sparkleGlow 2.5s ease-in-out infinite;
+}
+@keyframes sparkleGlow {
+  0%, 100% { opacity: 0.5; text-shadow: none; }
+  50% { opacity: 1; text-shadow: 0 0 12px rgba(192,132,252,0.5); }
+}
+
+.hero-pills {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.15);
+  color: #ddd6fe;
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  transition: 0.2s;
+}
+.hero-pill:hover {
+  background: rgba(139,92,246,0.18);
+  border-color: rgba(139,92,246,0.25);
+}
+.pill-indicator {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.pill-indicator.up { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.pill-indicator.stable { background: #60a5fa; box-shadow: 0 0 6px rgba(96,165,250,0.4); }
+.pill-indicator.hot { background: #f97316; box-shadow: 0 0 6px rgba(249,115,22,0.5); }
+
+/* ====== 星芒快捷中心 FAB ====== */
+.spark-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 100;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  border: 1px solid rgba(139,92,246,0.4);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(109,40,217,0.35), 0 0 40px rgba(139,92,246,0.1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s;
+  animation: fabBreath 3s ease-in-out infinite;
+}
+.spark-fab:hover {
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 6px 28px rgba(109,40,217,0.45), 0 0 50px rgba(139,92,246,0.15);
+}
+.spark-fab:active { transform: scale(0.96); }
+.spark-fab.active { transform: rotate(45deg) scale(1.05); }
+.fab-star { width: 22px; height: 22px; filter: drop-shadow(0 0 4px rgba(255,255,255,0.4)); }
+
+@keyframes fabBreath {
+  0%, 100% { box-shadow: 0 4px 20px rgba(109,40,217,0.35), 0 0 30px rgba(139,92,246,0.08); }
+  50% { box-shadow: 0 4px 24px rgba(109,40,217,0.45), 0 0 50px rgba(139,92,246,0.15); }
+}
+
+/* ====== Quick Center Panel ====== */
+.quick-center {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 24px;
+}
+.qc-panel {
+  width: 360px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: rgba(12,10,28,0.92);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(139,92,246,0.15);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.06);
+  transform-origin: bottom right;
+}
+.qc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.qc-greeting {
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.qc-close {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.4);
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.qc-close:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+
+.qc-section { margin-bottom: 16px; }
+.qc-section h4 {
+  color: rgba(255,255,255,0.35);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 10px;
+}
+
+.qc-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.qc-act {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 4px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  text-decoration: none;
+  transition: 0.2s;
+}
+.qc-act:hover {
+  background: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.15);
+  transform: translateY(-2px);
+}
+.qc-act-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.qc-act > span:last-child {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+
+.qc-reminders { display: flex; flex-direction: column; gap: 8px; }
+.qc-remind {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+}
+.qc-remind-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.qc-remind-dot.urgent { background: #f97316; box-shadow: 0 0 6px rgba(249,115,22,0.5); }
+.qc-remind-dot.info { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,0.4); }
+.qc-remind-dot.upcoming { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+.qc-remind-dot.overdue { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+
+.qc-recent {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.qc-recent-item {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  text-decoration: none;
+  transition: 0.15s;
+}
+.qc-recent-item:hover {
+  background: rgba(139,92,246,0.1);
+  border-color: rgba(139,92,246,0.2);
+  color: #ddd6fe;
+}
+
+.qc-bottom { border-top: 1px solid rgba(255,255,255,0.05); padding-top: 14px; }
+.qc-inspire {
+  font-size: 12px;
+  color: rgba(192,132,252,0.6);
+  line-height: 1.6;
+  font-style: italic;
+  margin-bottom: 10px;
+}
+.qc-bottom-acts { display: flex; gap: 8px; }
+.qc-small-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: 0.15s;
+}
+.qc-small-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+
+/* QC Transition */
+.qc-enter-active { transition: opacity 0.22s ease; }
+.qc-leave-active { transition: opacity 0.18s ease; }
+.qc-enter-from, .qc-leave-to { opacity: 0; }
+.qc-enter-active .qc-panel { animation: qcOpen 0.26s cubic-bezier(0.16,1,0.3,1) forwards; }
+.qc-leave-active .qc-panel { animation: qcClose 0.18s ease forwards; }
+
+@keyframes qcOpen {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes qcClose {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.94) translateY(8px); }
 }
 </style>
