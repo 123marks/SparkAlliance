@@ -840,7 +840,36 @@ watch(
   height: 100%;
   object-fit: contain;
   object-position: center;
-  filter: brightness(0.85) saturate(1.3);
+  filter: brightness(0.9) saturate(1.4) drop-shadow(0 0 40px rgba(139,92,246,0.3));
+}
+.planet-img-wrap::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 70%;
+  height: 20%;
+  transform: translate(-50%, -50%) rotateX(70deg);
+  border: 1.5px solid rgba(139,92,246,0.3);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(139,92,246,0.2), inset 0 0 20px rgba(139,92,246,0.1);
+  animation: ringRotate 20s linear infinite;
+}
+.planet-img-wrap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 25%;
+  transform: translate(-50%, -50%) rotateX(70deg);
+  border: 0.5px solid rgba(96,165,250,0.15);
+  border-radius: 50%;
+  animation: ringRotate 30s linear infinite reverse;
+}
+@keyframes ringRotate {
+  from { transform: translate(-50%, -50%) rotateX(70deg) rotateZ(0deg); }
+  to { transform: translate(-50%, -50%) rotateX(70deg) rotateZ(360deg); }
 }
 
 @keyframes planetFloat {
