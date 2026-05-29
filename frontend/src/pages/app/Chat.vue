@@ -381,14 +381,6 @@
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 14V2M9 18.12L10 14H4.17a2 2 0 01-1.92-2.56l2.33-8A2 2 0 016.5 2H20a2 2 0 012 2v8a2 2 0 01-2 2h-2.76a2 2 0 00-1.79 1.11L12 22a3.13 3.13 0 01-3-3.88z"/></svg>
                 </button>
-                <!-- AI 回复后续建议按钮 -->
-                <div class="prompt-suggestions" v-if="!streamingInCurrentView">
-                  <button class="ps-btn" @click="handleQuick('请深入讲解这个主题')">✨ 深入讲解</button>
-                  <button class="ps-btn" @click="handleQuick('请延展思路，给我更多角度')">🔀 延展思路</button>
-                  <button class="ps-btn" @click="handleQuick('提取这段回答的亮点和核心要点')">💡 提取亮点</button>
-                  <button class="ps-btn" @click="handleQuick('扩展相关知识点')">📚 扩展知识点</button>
-                  <button class="ps-btn" @click="handleQuick('给我推荐相关的学习资源')">🔗 相关知识</button>
-                </div>
                 <!-- v13: 单条导出菜单 -->
                 <div class="msg-export">
                   <button class="msg-export-btn" :class="{ active: msgExportOpen === idx }" title="导出本条" aria-label="导出本条回复" @click.stop="msgExportOpen = msgExportOpen === idx ? -1 : idx">
@@ -403,14 +395,6 @@
                     <button class="mx-item" @click="exportSingleMessage(idx, 'json'); msgExportOpen = -1">🧾 JSON</button>
                   </div>
                 </div>
-              <!-- AI 后续建议按钮行 -->
-              <div v-if="msg.role === 'assistant' && !msg.pending && msg.content" class="suggest-row">
-                <button class="suggest-btn" @click="handleQuick('深入讲解上面的内容')">🔍 深入讲解</button>
-                <button class="suggest-btn" @click="handleQuick('延展思路，从不同角度分析')">💡 延展思路</button>
-                <button class="suggest-btn" @click="handleQuick('提取上面回答的亮点和关键要素')">✨ 提取亮点</button>
-                <button class="suggest-btn" @click="handleQuick('扩展相关知识点')">📚 扩展知识点</button>
-                <button class="suggest-btn" @click="handleQuick('推荐相关知识和学习资源')">🔗 相关知识</button>
-              </div>
               </div>
             </div>
           </div>
@@ -510,12 +494,24 @@
           </button>
         </div>
 
-        <!-- 快捷提示行 -->
-        <div class="input-hints-row">
-          <button class="input-hint-btn" @click="handleQuick('解释量子计算的基本原理')">解释量子计算的基本原理</button>
-          <button class="input-hint-btn" @click="handleQuick('帮我写一份周计划表')">帮我写一份周计划表</button>
-          <button class="input-hint-btn" @click="handleQuick('总结这篇论文的创新点')">总结这篇论文的创新点</button>
-          <button class="input-hint-btn" @click="handleQuick('推荐几本高质量的学习书籍')">推荐几本高质量的学习书籍</button>
+        <!-- 智能快捷提示（可收缩 + 基于对话历史推荐，点击直接发送） -->
+        <div class="smart-hints" :class="{ collapsed: quickHintsCollapsed }">
+          <button class="sh-toggle" @click="toggleQuickHints" :title="quickHintsCollapsed ? '展开推荐' : '收起推荐'">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span>{{ quickHintsCollapsed ? '猜你想问' : '猜你想问' }}</span>
+            <svg class="sh-chevron" :class="{ rotated: quickHintsCollapsed }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <Transition name="sh-collapse">
+            <div v-show="!quickHintsCollapsed" class="sh-list">
+              <button
+                v-for="(hint, hi) in smartQuickHints"
+                :key="hi + '-' + hint"
+                class="sh-chip"
+                :title="'点击直接发送：' + hint"
+                @click="handleQuick(hint)"
+              >{{ hint }}</button>
+            </div>
+          </Transition>
         </div>
 
         <!-- v9: Emoji 选择器 -->
@@ -536,14 +532,6 @@
             </div>
           </div>
         </Transition>
-
-        <!-- 快捷提示行 -->
-        <div class="quick-prompts">
-          <button class="qp-chip" @click="handleQuick('解释这个题目的解题思路')">解释题目</button>
-          <button class="qp-chip" @click="handleQuick('帮我写一份周计划')">帮我写周计划</button>
-          <button class="qp-chip" @click="handleQuick('总结这篇论文的创新点')">总结论文创新点</button>
-          <button class="qp-chip" @click="handleQuick('推荐适合我的课程表')">推荐课表</button>
-        </div>
 
         <!-- 能力工具栏 + 模型选择器（参考DeepSeek设计，在输入框下方） -->
         <div class="ability-bar">
@@ -1433,6 +1421,93 @@ const starters = [
   { i:'🧭', l:'功能导航', t:'带我看看 Spark Alliance 都有哪些功能模块' },
   { i:'✍️', l:'写作助手', t:'帮我写一份实习申请自荐信' },
 ]
+
+// ===== 区域2：智能快捷提示（可收缩 + 基于对话历史的关键词推荐） =====
+
+// 收缩状态（持久化到 localStorage，记住用户选择）
+const QUICK_HINTS_COLLAPSE_KEY = 'spark-quick-hints-collapsed'
+const quickHintsCollapsed = ref<boolean>(
+  (() => { try { return localStorage.getItem(QUICK_HINTS_COLLAPSE_KEY) === '1' } catch { return false } })()
+)
+function toggleQuickHints() {
+  quickHintsCollapsed.value = !quickHintsCollapsed.value
+  try { localStorage.setItem(QUICK_HINTS_COLLAPSE_KEY, quickHintsCollapsed.value ? '1' : '0') } catch { /* ignore */ }
+}
+
+// 推荐模板库：每个关键词命中后给出可直接发送的提示语
+interface HintTemplate { kw: string[]; label: string; prompt: string }
+const HINT_TEMPLATES: HintTemplate[] = [
+  { kw: ['代码', '编程', 'bug', '报错', '函数', 'vue', 'python', 'js', 'java', '算法'], label: '帮我审查代码', prompt: '帮我审查上面的代码，指出潜在问题并给出优化建议' },
+  { kw: ['代码', '编程', '实现', '写一个', '开发'], label: '写个示例', prompt: '给我一个完整可运行的代码示例，并附带注释讲解' },
+  { kw: ['论文', '文献', '研究', '综述', '创新点'], label: '总结论文创新点', prompt: '总结这篇论文的核心创新点和研究方法' },
+  { kw: ['计划', '规划', '日程', '安排', '复习', '备考'], label: '帮我做周计划', prompt: '帮我制定一份可执行的周学习计划，按天拆分时间段' },
+  { kw: ['解释', '原理', '概念', '是什么', '为什么', '怎么理解'], label: '通俗讲解', prompt: '用通俗易懂的方式，并配合例子讲解上面的概念' },
+  { kw: ['题', '解题', '做题', '答案', '思路'], label: '讲解题思路', prompt: '请给出这道题的详细解题思路和步骤' },
+  { kw: ['翻译', 'english', '英语', '英文'], label: '翻译并润色', prompt: '帮我翻译并润色上面的内容，使其更地道' },
+  { kw: ['写', '文案', '自荐', '简历', '作文', '邮件', '总结报告'], label: '帮我写作', prompt: '帮我把上面的要点扩写成一段结构清晰的文字' },
+  { kw: ['推荐', '书', '资源', '课程', '资料'], label: '推荐学习资源', prompt: '根据我们聊的内容，推荐几份高质量的学习资源' },
+  { kw: ['面试', '求职', '实习', '简历', '工作'], label: '模拟面试', prompt: '围绕这个方向出几道高频面试题并给出参考答案' },
+]
+
+// 默认推荐（无对话历史时展示）
+const DEFAULT_HINTS = [
+  '解释量子计算的基本原理',
+  '帮我写一份周计划表',
+  '总结这篇论文的创新点',
+  '推荐几本高质量的学习书籍',
+]
+
+// 中文/英文分词 + 停用词过滤，统计高频关键词
+const STOP_WORDS = new Set(['的','了','吗','呢','是','我','你','他','她','它','在','和','与','也','都','就','请','帮','一个','这个','那个','一下','可以','怎么','如何','什么','为什么','以及','还有','这','那','有','吧','啊','哦','嗯','我们','你们','一份','一些'])
+
+/**
+ * 基于当前会话最近的用户消息，统计高频关键词，匹配推荐模板。
+ * 返回可直接点击发送的提示语数组（去重，最多 4 条），不足时用默认推荐补齐。
+ */
+const smartQuickHints = computed<string[]>(() => {
+  const conv = conversations.value.find(c => c.id === currentConversationId.value)
+  const userTexts = (conv?.messages || [])
+    .filter(m => m.role === 'user')
+    .slice(-12)
+    .map(m => m.content || '')
+
+  if (!userTexts.length) return DEFAULT_HINTS
+
+  // 统计关键词频率（2+ 字的中文片段 / 英文单词）
+  const freq = new Map<string, number>()
+  const joined = userTexts.join(' ').toLowerCase()
+  const tokens = joined.match(/[\u4e00-\u9fa5]{2,}|[a-z]{2,}/g) || []
+  for (const tk of tokens) {
+    if (STOP_WORDS.has(tk)) continue
+    freq.set(tk, (freq.get(tk) || 0) + 1)
+  }
+
+  // 模板打分：模板关键词在历史里出现得越多，分数越高
+  const scored = HINT_TEMPLATES.map(t => {
+    let score = 0
+    for (const k of t.kw) {
+      if (joined.includes(k)) score += 2
+      for (const [word, n] of freq) {
+        if (word.includes(k) || k.includes(word)) score += n
+      }
+    }
+    return { prompt: t.prompt, score }
+  }).filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  const result: string[] = []
+  for (const s of scored) {
+    if (!result.includes(s.prompt)) result.push(s.prompt)
+    if (result.length >= 4) break
+  }
+  // 不足 4 条用默认推荐补齐
+  for (const d of DEFAULT_HINTS) {
+    if (result.length >= 4) break
+    if (!result.includes(d)) result.push(d)
+  }
+  return result
+})
+
 
 function getActionCardMeta(action: SparkAction): { icon: string; label: string; desc: string } {
   if (action.action === 'add_schedule') {
@@ -3267,9 +3342,6 @@ async function handleInheritMemory() {
 @keyframes katex-twinkle { from { opacity:.45; } to { opacity:.85; } }
 
 /* ============ v13: 单条消息导出菜单 ============ */
-.prompt-suggestions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-.ps-btn { background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.12); border-radius:16px; padding:5px 12px; color:rgba(167,139,250,0.85); font-size:12px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
-.ps-btn:hover { background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.3); color:#c4b5fd; }
 
 .msg-export { position:relative; }
 .msg-export-btn { width:28px; height:28px; border-radius:6px; border:none; background:rgba(255,255,255,.015); color:rgba(255,255,255,.25); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s; }
@@ -3446,64 +3518,47 @@ async function handleInheritMemory() {
   .sandbox-editor { flex:0 0 40%; border-right:none; border-bottom:1px solid rgba(139,92,246,.12); }
 }
 
-/* ====== AI 后续建议按钮行 ====== */
-.suggest-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(139, 92, 246, 0.05);
-}
-.suggest-btn {
-  padding: 6px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(139, 92, 246, 0.1);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(59, 130, 246, 0.03));
-  color: rgba(196, 181, 253, 0.75);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 250ms cubic-bezier(.4,0,.2,1);
-  white-space: nowrap;
-  backdrop-filter: blur(8px);
-}
-.suggest-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.08));
-  border-color: rgba(139, 92, 246, 0.3);
-  color: #c4b5fd;
-  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.12);
-  transform: translateY(-2px);
-}
-.suggest-btn:active {
-  transform: scale(0.97);
-}
-
-/* ====== 输入框下方快捷提示行 ====== */
-.quick-prompts {
-  display: flex;
-  gap: 6px;
+/* ====== 区域2：智能快捷提示（可收缩 + 推荐 + 响应式换行） ====== */
+.smart-hints {
   padding: 6px 0 0;
-  overflow-x: auto;
 }
-.quick-prompts::-webkit-scrollbar { display: none; }
-.qp-chip {
-  padding: 5px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(139, 92, 246, 0.08);
-  background: rgba(139, 92, 246, 0.04);
-  color: rgba(255, 255, 255, 0.35);
-  font-size: 11px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all 200ms cubic-bezier(.4,0,.2,1);
-  font-weight: 500;
+.sh-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 12px;
+  background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.12);
+  color: rgba(196,181,253,0.8); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; margin-bottom: 6px;
 }
-.qp-chip:hover {
-  background: rgba(139, 92, 246, 0.1);
-  border-color: rgba(139, 92, 246, 0.2);
-  color: rgba(196, 181, 253, 0.85);
-  transform: translateY(-1px);
+.sh-toggle:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); color: #c4b5fd; }
+.sh-toggle svg { flex-shrink: 0; }
+.sh-chevron { transition: transform 0.25s; }
+.sh-chevron.rotated { transform: rotate(-90deg); }
+/* 响应式：自动换行，永不重叠；窄屏可横向滚动兜底 */
+.sh-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.sh-chip {
+  padding: 5px 14px; border-radius: 16px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  background: linear-gradient(135deg, rgba(15,12,41,0.45), rgba(139,92,246,0.04));
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s cubic-bezier(.4,0,.2,1);
+  white-space: nowrap; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.sh-chip:hover {
+  background: linear-gradient(135deg, rgba(124,58,237,0.14), rgba(59,130,246,0.06));
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd; transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(139,92,246,0.1);
+}
+.sh-collapse-enter-active, .sh-collapse-leave-active { transition: all 0.22s ease; }
+.sh-collapse-enter-from, .sh-collapse-leave-to { opacity: 0; transform: translateY(-4px); }
+@media (max-width: 768px) {
+  .sh-list { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .sh-list::-webkit-scrollbar { display: none; }
+  .sh-chip { flex-shrink: 0; }
 }
 
 /* ====== AI 回答后续建议按钮行 ====== */
@@ -3538,23 +3593,6 @@ async function handleInheritMemory() {
   transform: scale(0.97);
 }
 
-/* ====== 输入快捷提示行 ====== */
-.input-hints-row {
-  display: flex; gap: 6px; padding: 6px 12px 4px; flex-wrap: wrap;
-  overflow-x: auto; scrollbar-width: none;
-}
-.input-hints-row::-webkit-scrollbar { display: none; }
-.input-hint-btn {
-  padding: 3px 10px; border-radius: 12px; font-size: 11px;
-  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.35); cursor: pointer; transition: all 0.15s;
-  white-space: nowrap; flex-shrink: 0;
-}
-.input-hint-btn:hover {
-  background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.2);
-  color: rgba(255,255,255,0.6);
-}
-
 /* ====== 代码块紫色描边装饰 ====== */
 .md-body pre {
   border: 1px solid rgba(139, 92, 246, 0.15) !important;
@@ -3586,15 +3624,15 @@ async function handleInheritMemory() {
   box-shadow: 0 0 0 3px rgba(139,92,246,0.06), 0 0 16px rgba(139,92,246,0.08);
 }
 
-/* AI 回答后续建议 stagger */
-.prompt-suggestions .ps-btn {
+/* 智能快捷提示 stagger 入场 */
+.sh-list .sh-chip {
   animation: psBtnIn 0.3s ease both;
 }
-.prompt-suggestions .ps-btn:nth-child(1) { animation-delay: 0ms; }
-.prompt-suggestions .ps-btn:nth-child(2) { animation-delay: 60ms; }
-.prompt-suggestions .ps-btn:nth-child(3) { animation-delay: 120ms; }
-.prompt-suggestions .ps-btn:nth-child(4) { animation-delay: 180ms; }
-.prompt-suggestions .ps-btn:nth-child(5) { animation-delay: 240ms; }
+.sh-list .sh-chip:nth-child(1) { animation-delay: 0ms; }
+.sh-list .sh-chip:nth-child(2) { animation-delay: 60ms; }
+.sh-list .sh-chip:nth-child(3) { animation-delay: 120ms; }
+.sh-list .sh-chip:nth-child(4) { animation-delay: 180ms; }
+.sh-list .sh-chip:nth-child(5) { animation-delay: 240ms; }
 @keyframes psBtnIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -3635,6 +3673,7 @@ async function handleInheritMemory() {
   .ibox.shake { animation: none; }
   .sb-item::before { transition: none; }
   .prompt-suggestions .ps-btn { animation: none !important; }
+  .sh-list .sh-chip { animation: none !important; }
   .quick-grid > * { animation: none !important; }
 }
 </style>
