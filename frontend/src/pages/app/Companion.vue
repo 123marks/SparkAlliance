@@ -127,13 +127,16 @@
             <span class="cp-conv-last">{{ item.lastMsg }}</span>
           </div>
           <div class="cp-conv-right">
-            <span v-if="item.muted" class="cp-mute-icon">🔕</span>
-            <span v-if="item.unread" class="cp-badge">{{ item.unread }}</span>
+            <span class="cp-conv-time">{{ item.lastMsgTime ? formatConvTime(new Date(item.lastMsgTime).toISOString()) : '' }}</span>
+            <div class="cp-conv-indicators">
+              <span v-if="item.muted" class="cp-mute-icon">🔕</span>
+              <span v-if="item.unread" class="cp-badge">{{ item.unread }}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 通讯录(仿微信分组) -->
+      <!-- 通讯录(仿微信分组 — 侧栏入口) -->
       <div v-if="sideTab==='contacts'" class="cp-list">
         <div class="cp-contact-group" @click="showAddFriendModal=true"><span class="cp-cg-icon nr">👤</span><span class="cp-cg-text">新的朋友</span><span class="cp-cg-arrow">›</span></div>
         <div class="cp-contact-group" @click="contactGroupExpand.groups=!contactGroupExpand.groups"><span class="cp-cg-icon grp">👥</span><span class="cp-cg-text">群聊</span><span class="cp-cg-count">{{ groups.length }}</span><span class="cp-cg-arrow" :class="{open:contactGroupExpand.groups}">›</span></div>
@@ -143,7 +146,6 @@
             <div class="cp-contact-info"><span class="cp-contact-name">{{ g.name }}</span><span class="cp-contact-id">{{ g.members.length }}人</span></div>
           </div>
         </template>
-        <!-- 好友标签组管理入口 -->
         <div class="cp-contact-group" @click="showTagManager=true">
           <span class="cp-cg-icon" style="background:linear-gradient(135deg,#8b5cf6,#6366f1)">🏷️</span>
           <span class="cp-cg-text">标签组</span>
@@ -605,40 +607,115 @@
       </div>
     </main>
 
-    <!-- 通讯录资料卡(仿微信) -->
-    <main v-else-if="rightPanel==='contact'" class="cp-main cp-profile-card">
-      <div class="pf-header">
-        <SparkAvatar :avatar="selectedContact?.avatar||''" :avatar-url="selectedContact?.avatar_url||selectedContact?.profile?.avatar_url||''" :name="selectedContact?.nickname||''" size="lg" clickable @click="selectedContact&&showProfilePopup(selectedContact)" />
-        <div class="pf-info">
-          <h2>
-            <span v-if="selectedContact?.is_starred" class="pf-star">⭐</span>
-            {{ selectedContact?.remark ? selectedContact.nickname + '（' + selectedContact.remark + '）' : selectedContact?.nickname }}
-          </h2>
-          <p class="pf-sub">星火ID：{{ selectedContact?.spark_id }}</p>
-          <p v-if="getContactMeta(selectedContact)" class="pf-sub pf-meta">{{ getContactMeta(selectedContact) }}</p>
+    <!-- 通讯录（设计图复刻：搜索+筛选胶囊+网格/列表+右侧资料面板） -->
+    <main v-else-if="rightPanel==='contact'" class="cp-main cp-contacts-main">
+      <div class="ct-grid-area">
+        <div class="ct-toolbar">
+          <div class="ct-search-box">
+            <svg class="ct-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input v-model="contactSearchQuery" class="ct-search-input" placeholder="搜索姓名、学校、专业..." />
+          </div>
+          <div class="ct-filters">
+            <button v-for="f in CONTACT_FILTERS" :key="f.key" class="ct-filter-pill" :class="{active:contactFilter===f.key}" @click="contactFilter=f.key">{{ f.label }}</button>
+          </div>
+          <div class="ct-view-toggle">
+            <button :class="{active:contactView==='grid'}" @click="contactView='grid'" title="网格视图">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>
+            </button>
+            <button :class="{active:contactView==='list'}" @click="contactView='list'" title="列表视图">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="ct-cards" :class="{'ct-list-view':contactView==='list'}">
+          <div v-for="f in filteredContactList" :key="f.id" class="ct-card" :class="{active:selectedContact?.spark_id===f.spark_id}" @click="selectContact(f)">
+            <button class="ct-star-btn" :class="{starred:f.is_starred}" @click.stop="toggleStarFriend(f.spark_id)" title="星标">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            </button>
+            <SparkAvatar :avatar="f.avatar" :avatar-url="f.avatar_url||f.profile?.avatar_url||''" :name="f.nickname" :size="contactView==='grid'?'lg':'sm'" />
+            <div class="ct-card-info">
+              <span class="ct-card-name">{{ f.remark||f.nickname }}</span>
+              <span v-if="f.profile?.identity" class="ct-identity-tag">{{ f.profile.identity }}</span>
+              <span v-if="f.profile?.university" class="ct-card-school">{{ f.profile.university }}<template v-if="f.profile?.major"> · {{ f.profile.major }}</template></span>
+            </div>
+            <span class="ct-online-dot offline"></span>
+          </div>
+          <p v-if="filteredContactList.length===0" class="cp-empty">{{ contactSearchQuery ? '没有匹配的联系人' : '还没有联系人' }}</p>
         </div>
       </div>
-      <div class="pf-section">
-        <div class="pf-row clickable" @click="openContactRemarkEdit"><span class="pf-label">备注</span><span class="pf-val">{{ selectedContact?.remark||'未设置' }}</span><span class="pf-arrow">›</span></div>
-      </div>
-      <div class="pf-section">
-        <div class="pf-row clickable" @click="handleContactStarToggle"><span class="pf-label">星标好友</span><span class="pf-val">{{ selectedContact?.is_starred ? '⭐ 已星标' : '☆ 未星标' }}</span><span class="pf-arrow">›</span></div>
-      </div>
-      <div class="pf-section">
-        <div class="pf-row clickable" @click="showToast('查看星火域')"><span class="pf-label">星火域</span><div class="pf-moments-preview"><span v-for="m in contactMoments(selectedContact?.spark_id||'').slice(0,3)" :key="m.id" class="pf-moment-thumb">📝</span></div><span class="pf-arrow">›</span></div>
-      </div>
-      <div class="pf-section">
-        <div class="pf-row"><span class="pf-label">来源</span><span class="pf-val">通过星火ID添加</span></div>
-      </div>
-      <div class="pf-section pf-danger-zone">
-        <button class="pf-action-link warn" @click="handleContactBlock">🚫 拉黑</button>
-        <button class="pf-action-link danger" @click="handleRemoveFriend(selectedContact!.spark_id)">🗑️ 删除联系人</button>
-      </div>
-      <div class="pf-actions">
-        <button class="pf-btn primary" @click="openPrivateChat(selectedContact!.spark_id)"><span>💬</span>发消息</button>
-        <button class="pf-btn" @click="showToast('语音通话开发中')"><span>📞</span>语音聊天</button>
-        <button class="pf-btn" @click="showToast('视频通话开发中')"><span>📹</span>视频聊天</button>
-      </div>
+      <aside v-if="selectedContact" class="ct-detail-panel">
+        <div class="ct-dp-cover">
+          <div class="ct-dp-cover-bg"></div>
+        </div>
+        <div class="ct-dp-avatar-row">
+          <SparkAvatar :avatar="selectedContact.avatar||''" :avatar-url="selectedContact.avatar_url||selectedContact.profile?.avatar_url||''" :name="selectedContact.nickname||''" size="lg" clickable @click="showProfilePopup(selectedContact)" />
+          <button class="ct-dp-star" :class="{starred:selectedContact.is_starred}" @click="toggleStarFriend(selectedContact.spark_id)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </button>
+        </div>
+        <div class="ct-dp-name-row">
+          <h3>{{ selectedContact.remark ? selectedContact.nickname + '（' + selectedContact.remark + '）' : selectedContact.nickname }}</h3>
+          <span class="ct-dp-online offline">离线</span>
+        </div>
+        <p v-if="selectedContact.profile?.identity" class="ct-dp-identity">{{ selectedContact.profile.identity }}</p>
+        <p class="ct-dp-sparkid">Spark ID: {{ selectedContact.spark_id }}</p>
+        <div class="ct-dp-actions">
+          <button class="ct-dp-act primary" @click="openPrivateChat(selectedContact.spark_id)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>聊天</button>
+          <button class="ct-dp-act" @click="showToast('语音通话开发中')"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>语音</button>
+          <button class="ct-dp-act" @click="openContactRemarkEdit"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>备注</button>
+          <button class="ct-dp-act" @click="showToast('功能开发中')"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>拉群</button>
+        </div>
+        <div class="ct-dp-sections">
+          <div class="ct-dp-section" v-if="selectedContact.profile?.bio">
+            <div class="ct-dp-section-hdr" @click="contactDetailExpand.bio=!contactDetailExpand.bio">
+              <span>个性签名</span>
+              <span class="ct-dp-arrow" :class="{open:contactDetailExpand.bio}">›</span>
+            </div>
+            <div v-if="contactDetailExpand.bio" class="ct-dp-section-body">
+              <p class="ct-dp-bio">{{ selectedContact.profile.bio }}</p>
+            </div>
+          </div>
+          <div class="ct-dp-section">
+            <div class="ct-dp-section-hdr" @click="contactDetailExpand.tags=!contactDetailExpand.tags">
+              <span>标签</span>
+              <span class="ct-dp-arrow" :class="{open:contactDetailExpand.tags}">›</span>
+            </div>
+            <div v-if="contactDetailExpand.tags" class="ct-dp-section-body">
+              <div class="ct-dp-tags">
+                <span v-for="tag in getTagsForFriend(selectedContact.spark_id)" :key="tag.id" class="ct-dp-tag" :style="{borderColor:tag.color+'44',color:tag.color}">{{ tag.name }}</span>
+                <span v-if="getTagsForFriend(selectedContact.spark_id).length===0" class="ct-dp-empty-hint">暂无标签</span>
+              </div>
+            </div>
+          </div>
+          <div class="ct-dp-section">
+            <div class="ct-dp-section-hdr" @click="contactDetailExpand.mutual=!contactDetailExpand.mutual">
+              <span>共同群聊</span>
+              <span class="ct-dp-arrow" :class="{open:contactDetailExpand.mutual}">›</span>
+            </div>
+            <div v-if="contactDetailExpand.mutual" class="ct-dp-section-body">
+              <div v-for="g in getContactMutualGroups(selectedContact.spark_id)" :key="g.id" class="ct-dp-group" @click="openGroupChat(g.id)">
+                <SparkAvatar :avatar="g.avatar" :name="g.name" size="xs" />
+                <span>{{ g.name }}</span>
+              </div>
+              <span v-if="getContactMutualGroups(selectedContact.spark_id).length===0" class="ct-dp-empty-hint">暂无共同群聊</span>
+            </div>
+          </div>
+          <div class="ct-dp-section">
+            <div class="ct-dp-section-hdr" @click="contactDetailExpand.info=!contactDetailExpand.info">
+              <span>互动信息</span>
+              <span class="ct-dp-arrow" :class="{open:contactDetailExpand.info}">›</span>
+            </div>
+            <div v-if="contactDetailExpand.info" class="ct-dp-section-body">
+              <div class="ct-dp-info-row"><span>来源</span><span>通过星火ID添加</span></div>
+              <div class="ct-dp-info-row"><span>备注</span><span>{{ selectedContact.remark||'未设置' }}</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="ct-dp-danger">
+          <button class="ct-dp-danger-btn warn" @click="handleContactBlock">🚫 拉黑</button>
+          <button class="ct-dp-danger-btn danger" @click="handleRemoveFriend(selectedContact.spark_id)">🗑️ 删除</button>
+        </div>
+      </aside>
     </main>
 
     <!-- 星火域(双栏布局) / 默认欢迎页 -->
@@ -954,6 +1031,45 @@
           </div>
           </template>
           <p v-if="!allMoments.length" class="cp-empty">还没有动态，发一条吧 🌟</p>
+        </div>
+        <!-- 右侧信息栏 -->
+        <div class="cp-mr-sidebar">
+          <div class="cp-sidebar-card">
+            <h4 class="cp-sidebar-title">🔥 热点话题</h4>
+            <div class="cp-sidebar-topics">
+              <div v-for="(topic, ti) in domainHotTopics" :key="ti" class="cp-topic-item">
+                <span class="cp-topic-rank" :class="'rank-' + (ti + 1)">{{ ti + 1 }}</span>
+                <span class="cp-topic-name">#{{ topic.name }}</span>
+                <span class="cp-topic-count">{{ topic.count }} 讨论</span>
+              </div>
+            </div>
+          </div>
+          <div class="cp-sidebar-card">
+            <h4 class="cp-sidebar-title">💬 今日活跃群</h4>
+            <div class="cp-sidebar-groups">
+              <div v-for="ag in domainActiveGroups" :key="ag.id" class="cp-active-group" @click="openGroupChat(ag.id)">
+                <SparkAvatar :avatar="ag.avatar" :name="ag.name" size="xs" />
+                <div class="cp-ag-info">
+                  <span class="cp-ag-name">{{ ag.name }}</span>
+                  <span class="cp-ag-msg">{{ ag.lastMsg }}</span>
+                </div>
+                <span class="cp-ag-count">{{ ag.msgCount }} 条</span>
+              </div>
+            </div>
+          </div>
+          <div class="cp-sidebar-card">
+            <h4 class="cp-sidebar-title">👋 推荐关注</h4>
+            <div class="cp-sidebar-recommend">
+              <div v-for="ru in domainRecommendUsers" :key="ru.id" class="cp-rec-user">
+                <SparkAvatar :avatar="''" :name="ru.name" size="sm" />
+                <div class="cp-rec-info">
+                  <span class="cp-rec-name">{{ ru.name }}</span>
+                  <span class="cp-rec-desc">{{ ru.desc }}</span>
+                </div>
+                <button class="cp-rec-follow" :class="{followed: ru.followed}" @click="ru.followed = !ru.followed">{{ ru.followed ? '✓ 已关注' : '+ 关注' }}</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div v-else class="cp-welcome">
@@ -1621,6 +1737,42 @@ watch(() => {
 const rightPanel = ref<'none'|'chat'|'contact'>('none')
 const activeChat = ref<{id:string;type:'private'|'group'|'ai'}|null>(null)
 const selectedContact = ref<Friend|null>(null)
+const contactSearchQuery = ref("")
+const contactFilter = ref("all")
+const contactView = ref<"grid"|"list">("grid")
+const contactDetailExpand = reactive({ bio: true, tags: true, mutual: false, info: false })
+const CONTACT_FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "recent", label: "最近联系" },
+  { key: "school", label: "同校" },
+  { key: "ai", label: "AI伙伴" },
+  { key: "group", label: "群聊" },
+] as const
+const filteredContactList = computed(() => {
+  let list = [...friends.value]
+  if (contactFilter.value === "recent") {
+    list = list.filter(f => f.last_msg_time).sort((a, b) => new Date(b.last_msg_time || 0).getTime() - new Date(a.last_msg_time || 0).getTime())
+  } else if (contactFilter.value === "school") {
+    const mySchool = myProfile.value?.university
+    if (mySchool) list = list.filter(f => f.profile?.university === mySchool)
+  } else if (contactFilter.value === "ai") {
+    list = list.filter(f => (f as Record<string, unknown>).is_ai)
+  }
+  if (contactSearchQuery.value.trim()) {
+    const q = contactSearchQuery.value.trim().toLowerCase()
+    list = list.filter(f =>
+      f.nickname.toLowerCase().includes(q) ||
+      (f.remark || "").toLowerCase().includes(q) ||
+      (f.profile?.university || "").toLowerCase().includes(q) ||
+      (f.profile?.major || "").toLowerCase().includes(q) ||
+      f.spark_id.toLowerCase().includes(q)
+    )
+  }
+  return list
+})
+function getContactMutualGroups(sparkId: string) {
+  return groups.value.filter(g => g.members.some(m => m.spark_id === sparkId))
+}
 const chatInput = ref('')
 const chatScrollRef = ref<HTMLElement|null>(null)
 const toast = reactive({ show: false, msg: '' })
@@ -2137,6 +2289,19 @@ async function handleChatSend(){
   }
 }
 function formatMsgTime(s:string){return formatMsgTimeUtil(s)}
+function formatConvTime(s: string): string {
+  if (!s) return ""
+  const d = new Date(s)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (diff < 60000) return "刚刚"
+  if (diff < 3600000) return Math.floor(diff / 60000) + "分钟前"
+  if (d.toDateString() === now.toDateString()) return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0")
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (d.toDateString() === yesterday.toDateString()) return "昨天"
+  return (d.getMonth() + 1) + "/" + d.getDate()
+}
 // v7.0: 菜单位置边界检测（防止溢出屏幕）
 function clampMenuPos(x: number, y: number, menuW = 155, menuH = 280): { x: number; y: number } {
   const vw = window.innerWidth, vh = window.innerHeight
@@ -3560,6 +3725,57 @@ const pinnedMoments = computed(() => allMoments.value.filter(m => m.is_pinned))
 // feedMoments 包含所有动态（含置顶），置顶在最前面
 const feedMoments = computed(() => allMoments.value)
 
+// ===== 星火域右侧信息栏数据（修复：模板引用但 script 缺失定义，导致三个区块渲染空白） =====
+// 热点话题：从动态内容里提取 #话题标签 统计，无标签时给出默认占位
+const domainHotTopics = computed(() => {
+  const counter = new Map<string, number>()
+  for (const m of moments.value) {
+    const text = (m as any).content || ''
+    const tags = text.match(/#([^#\s]{1,20})/g) || []
+    for (const t of tags) {
+      const name = t.slice(1)
+      counter.set(name, (counter.get(name) || 0) + 1)
+    }
+  }
+  const fromData = [...counter.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
+  if (fromData.length) return fromData
+  // 无真实话题时的默认展示
+  return [
+    { name: '期末复习', count: 128 },
+    { name: '校园招聘', count: 96 },
+    { name: '社团招新', count: 73 },
+    { name: '考研上岸', count: 54 },
+    { name: '失物招领', count: 32 },
+  ]
+})
+
+// 今日活跃群：从真实群聊按消息数排序派生
+const domainActiveGroups = computed(() => {
+  return groups.value
+    .map(g => {
+      const last = g.messages?.[g.messages.length - 1]
+      return {
+        id: g.id,
+        name: g.group_remark || g.name,
+        avatar: g.avatar || '',
+        lastMsg: last?.content?.slice(0, 16) || '暂无消息',
+        msgCount: g.messages?.length || 0,
+      }
+    })
+    .sort((a, b) => b.msgCount - a.msgCount)
+    .slice(0, 4)
+})
+
+// 推荐关注：从非好友资料里挑选（无数据时用占位），followed 可在本地切换
+const domainRecommendUsers = ref<{ id: string; name: string; desc: string; followed: boolean }[]>([
+  { id: 'rec-1', name: '学长说', desc: '分享考研/求职干货', followed: false },
+  { id: 'rec-2', name: '校园活动君', desc: '第一时间发布校园活动', followed: false },
+  { id: 'rec-3', name: '星火官方', desc: '平台功能更新与公告', followed: false },
+])
+
 /** 微信风格时间分割线：返回该 moment 应显示的时间段标签（若与上一条不同） */
 function getTimeDivider(momentIdx: number): string | null {
   const list = feedMoments.value
@@ -4019,9 +4235,9 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .toast-enter-active{transition:all .3s}.toast-leave-active{transition:all .25s}.toast-enter-from{opacity:0;transform:translateX(-50%) translateY(-14px)}.toast-leave-to{opacity:0}
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}.fade-enter-from,.fade-leave-to{opacity:0}
 /* 右键菜单 */
-.cp-ctx-menu{position:fixed;z-index:100;background:rgba(30,28,44,.98);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:4px;box-shadow:0 8px 32px rgba(0,0,0,.5);min-width:150px}
-.cp-ctx-menu button{display:flex;width:100%;align-items:center;gap:6px;padding:8px 14px;border:none;background:none;color:rgba(255,255,255,.6);font-size:12px;cursor:pointer;border-radius:7px;transition:all .12s}
-.cp-ctx-menu button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
+.cp-ctx-menu{position:fixed;z-index:100;background:rgba(20,18,34,.95);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(139,92,246,.1);border-radius:12px;padding:4px;box-shadow:0 8px 32px rgba(0,0,0,.55),0 0 16px rgba(139,92,246,.04);min-width:150px}
+.cp-ctx-menu button{display:flex;width:100%;align-items:center;gap:6px;padding:8px 14px;border:none;background:none;color:rgba(255,255,255,.6);font-size:12px;cursor:pointer;border-radius:8px;transition:all .15s cubic-bezier(.16,1,.3,1)}
+.cp-ctx-menu button:hover{background:rgba(139,92,246,.08);color:rgba(167,139,250,.8)}
 .cp-ctx-menu button.del{color:rgba(239,68,68,.6)}.cp-ctx-menu button.del:hover{background:rgba(239,68,68,.06);color:rgba(239,68,68,.8)}
 .cp-ctx-menu button.warn{color:rgba(251,191,36,.7)}.cp-ctx-menu button.warn:hover{background:rgba(251,191,36,.06);color:rgba(251,191,36,.9)}
 .cp-ctx-menu.msg-ctx{min-width:130px}
@@ -4029,20 +4245,20 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-confirm-text{font-size:12px;color:rgba(255,255,255,.4);text-align:center;line-height:1.6;margin:0 0 10px}
 .cp-modal-btns button.danger{background:rgba(239,68,68,.12)!important;color:rgba(239,68,68,.8)!important;border-color:rgba(239,68,68,.15)!important}
 /* 侧栏 */
-.cp-sidebar{width:300px;border-right:1px solid rgba(255,255,255,.04);display:flex;flex-direction:column;flex-shrink:0;background:rgba(8,6,18,.92);backdrop-filter:blur(20px);z-index:2;position:relative}
-.cp-sb-top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.03);position:relative}
-.cp-logo{font-size:14px;margin:0;color:white;font-weight:700}.cp-sb-actions{display:flex;gap:2px}
-.cp-sb-btn{width:30px;height:30px;border-radius:8px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.cp-sb-btn:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.6)}
+.cp-sidebar{width:300px;border-right:1px solid rgba(139,92,246,.06);display:flex;flex-direction:column;flex-shrink:0;background:rgba(8,6,18,.94);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);z-index:2;position:relative}
+.cp-sb-top{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.04);position:relative}
+.cp-logo{font-size:15px;margin:0;font-weight:800;background:linear-gradient(135deg,#a78bfa,#818cf8,#6d28d9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:.5px}.cp-sb-actions{display:flex;gap:4px}
+.cp-sb-btn{width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s cubic-bezier(.16,1,.3,1)}
+.cp-sb-btn:hover{background:rgba(139,92,246,.08);color:rgba(139,92,246,.7);border-color:rgba(139,92,246,.12);box-shadow:0 0 10px rgba(139,92,246,.08)}
 .cp-add-menu{position:absolute;top:100%;right:8px;background:rgba(30,28,44,.98);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;z-index:20;box-shadow:0 8px 32px rgba(0,0,0,.4);min-width:140px}
 .cp-add-menu button{display:flex;width:100%;gap:6px;padding:8px 12px;border:none;background:none;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer;border-radius:7px;transition:all .12s}
 .cp-add-menu button:hover{background:rgba(139,92,246,.06);color:rgba(139,92,246,.7)}
-.cp-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.03)}.cp-tabs button{flex:1;padding:9px 0;border:none;background:none;color:rgba(255,255,255,.2);font-size:11px;cursor:pointer;font-weight:500;transition:all .15s;border-bottom:2px solid transparent}.cp-tabs button.active{color:rgba(139,92,246,.7);border-bottom-color:rgba(139,92,246,.3)}
+.cp-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.04);position:relative}.cp-tabs button{flex:1;padding:10px 0;border:none;background:none;color:rgba(255,255,255,.25);font-size:11.5px;cursor:pointer;font-weight:500;transition:all .2s cubic-bezier(.16,1,.3,1);border-bottom:2px solid transparent;position:relative}.cp-tabs button:hover{color:rgba(255,255,255,.5)}.cp-tabs button.active{color:rgba(167,139,250,.9);border-bottom-color:rgba(139,92,246,.5);text-shadow:0 0 14px rgba(139,92,246,.35);font-weight:600}
 .cp-list{flex:1;overflow-y:auto;padding:4px}.cp-list::-webkit-scrollbar{width:2px}.cp-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
-.cp-conv{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:all .15s}.cp-conv:hover{background:rgba(255,255,255,.02)}.cp-conv.active{background:rgba(139,92,246,.06)}
+.cp-conv{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:all .18s cubic-bezier(.16,1,.3,1);border:1px solid transparent}.cp-conv:hover{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.04)}.cp-conv.active{background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(99,102,241,.06));border-color:rgba(139,92,246,.15);box-shadow:0 0 12px rgba(139,92,246,.06)}
 .cp-av{width:34px;height:34px;border-radius:9px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}.cp-av.sm{width:28px;height:28px;font-size:13px;border-radius:7px}
 .cp-conv-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.cp-conv-name{font-size:12px;color:rgba(255,255,255,.6);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cp-conv-name small{color:rgba(255,255,255,.15);margin-left:3px;font-size:10px}.cp-conv-last{font-size:10px;color:rgba(255,255,255,.15);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cp-badge{min-width:16px;height:16px;border-radius:8px;background:rgba(239,68,68,.6);color:white;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700}
+.cp-badge{min-width:16px;height:16px;border-radius:8px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 5px;font-weight:700;box-shadow:0 0 8px rgba(239,68,68,.3)}
 .cp-section-title{font-size:9px;color:rgba(255,255,255,.1);padding:10px 10px 3px;font-weight:700;letter-spacing:1px}
 .cp-contact{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;cursor:pointer;transition:all .12s}.cp-contact:hover{background:rgba(255,255,255,.015)}.cp-contact.active{background:rgba(139,92,246,.06)}
 .cp-contact-info{flex:1;min-width:0;display:flex;flex-direction:column}.cp-contact-name{font-size:11px;color:rgba(255,255,255,.5)}.cp-contact-id{font-size:9px;color:rgba(255,255,255,.1)}
@@ -4092,24 +4308,24 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-av.lg{width:48px;height:48px;font-size:22px;border-radius:12px}
 /* 右侧主面板 */
 .cp-main{flex:1;display:flex;flex-direction:column;min-width:0;z-index:1;position:relative}
-.cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;background:rgba(8,6,18,.7);backdrop-filter:blur(20px);flex-wrap:wrap}
+.cp-chat-hdr{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(139,92,246,.06);flex-shrink:0;background:rgba(8,6,18,.85);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);flex-wrap:wrap}
 .cp-hdr-title-group{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
 .cp-chat-hdr h3{margin:0;font-size:14px;color:white;font-weight:600;display:flex;align-items:center;gap:6px}
 .cp-hdr-badge{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,.15);color:rgba(139,92,246,.8);font-weight:600}
 .cp-back{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px}
 .cp-hdr-sub{font-size:10px;color:rgba(255,255,255,.3)}
 .cp-hdr-actions{display:flex;gap:2px;align-items:center}
-.cp-hdr-btn{background:none;border:none;font-size:14px;cursor:pointer;padding:4px 6px;border-radius:6px;color:rgba(255,255,255,.3);transition:all .15s}.cp-hdr-btn:hover{color:rgba(255,255,255,.6);background:rgba(255,255,255,.03)}
+.cp-hdr-btn{background:none;border:1px solid transparent;font-size:14px;cursor:pointer;padding:5px 7px;border-radius:8px;color:rgba(255,255,255,.3);transition:all .18s cubic-bezier(.16,1,.3,1)}.cp-hdr-btn:hover{color:rgba(167,139,250,.8);background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.1);box-shadow:0 0 8px rgba(139,92,246,.06)}
 .cp-atmo-score{display:flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.1);border-radius:8px;margin-left:auto}
 .cp-atmo-label{font-size:10px;color:rgba(255,255,255,.4);white-space:nowrap}
 .cp-atmo-bar{width:48px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
 .cp-atmo-fill{height:100%;background:linear-gradient(90deg,rgba(139,92,246,.6),rgba(59,130,246,.6));border-radius:2px;transition:width .5s}
 .cp-atmo-val{font-size:11px;color:rgba(245,158,11,.8);font-weight:700;white-space:nowrap}.cp-atmo-val small{font-size:9px;color:rgba(255,255,255,.2);font-weight:normal}
 /* 快捷回复建议条 */
-.cp-quick-replies{display:flex;gap:6px;padding:6px 12px;overflow-x:auto;flex-shrink:0;border-top:1px solid rgba(255,255,255,.03)}
+.cp-quick-replies{display:flex;gap:6px;padding:7px 14px;overflow-x:auto;flex-shrink:0;border-top:1px solid rgba(139,92,246,.04)}
 .cp-quick-replies::-webkit-scrollbar{height:0}
-.cp-qr-chip{padding:5px 12px;border-radius:14px;border:1px solid rgba(139,92,246,.12);background:rgba(139,92,246,.04);color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s}
-.cp-qr-chip:hover{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.25);color:rgba(255,255,255,.8)}
+.cp-qr-chip{padding:5px 14px;border-radius:16px;border:1px solid rgba(139,92,246,.12);background:rgba(139,92,246,.04);color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .18s cubic-bezier(.16,1,.3,1)}
+.cp-qr-chip:hover{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.28);color:rgba(255,255,255,.85);box-shadow:0 0 10px rgba(139,92,246,.08)}
 .cp-qr-refresh{border-color:rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
 /* ☰设置按钮高亮 */
 .cs-btn{font-size:16px;color:rgba(255,255,255,.25);border-radius:6px;transition:all .15s}.cs-btn:hover{color:rgba(255,255,255,.4);background:rgba(255,255,255,.02)}.cs-btn.active{color:rgba(139,92,246,.6);background:rgba(139,92,246,.06)}
@@ -4127,10 +4343,10 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-msg-meta.mine{justify-content:flex-end;padding:0 4px 0 0}
 .cp-msg-name{font-size:10px;color:rgba(255,255,255,.55);font-weight:500}
 .cp-bubble-row{display:flex;align-items:flex-end;gap:4px}.cp-bubble-row.reverse{flex-direction:row-reverse}
-.cp-bubble{padding:8px 12px;border-radius:14px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.75);word-break:break-word;white-space:pre-wrap}
-.cp-msg:not(.mine):not(.sys) .cp-bubble{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-top-left-radius:4px}
-.cp-msg.mine .cp-bubble{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.08);border-top-right-radius:4px;color:rgba(255,255,255,.85)}
-.cp-msg.ai .cp-bubble{background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.06);border-top-left-radius:4px}
+.cp-bubble{padding:9px 14px;border-radius:16px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.78);word-break:break-word;white-space:pre-wrap;transition:box-shadow .2s}
+.cp-msg:not(.mine):not(.sys) .cp-bubble{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);border-top-left-radius:4px;backdrop-filter:blur(8px)}
+.cp-msg.mine .cp-bubble{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(99,102,241,.08));border:1px solid rgba(139,92,246,.12);border-top-right-radius:4px;color:rgba(255,255,255,.88)}
+.cp-msg.ai .cp-bubble{background:linear-gradient(135deg,rgba(139,92,246,.05),rgba(59,130,246,.03));border:1px solid rgba(139,92,246,.08);border-top-left-radius:4px}
 /* AI 重试按钮 */
 .cp-ai-retry-btn{margin-top:6px;padding:5px 14px;border-radius:10px;border:1px solid rgba(139,92,246,.2);background:rgba(139,92,246,.06);color:rgba(139,92,246,.7);font-size:11px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
 .cp-ai-retry-btn:hover{background:rgba(139,92,246,.14);border-color:rgba(139,92,246,.35);color:rgba(139,92,246,.9);transform:translateY(-1px);box-shadow:0 2px 8px rgba(139,92,246,.15)}
@@ -4150,7 +4366,7 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-chat-body::before{content:'';position:absolute;inset:0;background:url('/chatBackground.png') center/cover no-repeat;opacity:.12;pointer-events:none;z-index:0}
 .cp-chat-body .cp-messages{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px;position:relative;z-index:1}
 /* 聊天设置面板(仿微信) */
-.cp-chat-settings{width:260px;flex-shrink:0;border-left:1px solid rgba(255,255,255,.04);background:rgba(8,6,18,.85);backdrop-filter:blur(16px);padding:16px;overflow-y:auto}
+.cp-chat-settings{width:260px;flex-shrink:0;border-left:1px solid rgba(139,92,246,.06);background:rgba(8,6,18,.9);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);padding:16px;overflow-y:auto}
 .cs-members{display:flex;flex-wrap:wrap;gap:10px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.03);margin-bottom:10px}
 .cs-member{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:4px;border-radius:8px;transition:all .12s}.cs-member:hover{background:rgba(139,92,246,.04)}
 .cs-av{width:42px;height:42px;border-radius:10px;background:rgba(139,92,246,.06);display:flex;align-items:center;justify-content:center;font-size:20px}
@@ -4188,13 +4404,13 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .cp-ai-thinking-content{display:flex;align-items:center;gap:8px}
 .cp-ai-thinking-text{color:rgba(139,92,246,.6);font-size:12px;font-style:italic}
 /* 输入区 */
-.cp-input-area{padding:8px 14px 12px;border-top:1px solid rgba(255,255,255,.03);flex-shrink:0;background:rgba(8,6,18,.6);backdrop-filter:blur(16px);position:relative}
-.cp-emoji-panel{position:absolute;bottom:100%;left:0;right:0;background:rgba(20,18,34,.98);border:1px solid rgba(255,255,255,.05);border-radius:12px 12px 0 0;padding:10px;display:flex;flex-wrap:wrap;gap:2px;max-height:160px;overflow-y:auto}
+.cp-input-area{padding:8px 14px 12px;border-top:1px solid rgba(139,92,246,.06);flex-shrink:0;background:rgba(8,6,18,.8);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);position:relative}
+.cp-emoji-panel{position:absolute;bottom:100%;left:0;right:0;background:rgba(20,18,34,.95);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(139,92,246,.08);border-radius:14px 14px 0 0;padding:10px;display:flex;flex-wrap:wrap;gap:2px;max-height:160px;overflow-y:auto}
 .cp-emoji-panel button{width:32px;height:32px;border:none;background:none;font-size:18px;cursor:pointer;border-radius:6px;transition:all .1s}.cp-emoji-panel button:hover{background:rgba(139,92,246,.08);transform:scale(1.2)}
 .cp-tools{display:flex;gap:2px;margin-bottom:6px;align-items:center}.cp-tools button{width:28px;height:28px;border-radius:7px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.25);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}.cp-tools button:hover,.cp-tools button.active{background:rgba(139,92,246,.06);color:rgba(139,92,246,.5)}
 .cp-tools-r{margin-left:auto;display:flex;gap:2px}
-.cp-input-row{display:flex;gap:6px;align-items:flex-end}.cp-input-row textarea{flex:1;padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025);color:white;font-size:12px;resize:none;outline:none;font-family:inherit;line-height:1.5;min-height:22px;max-height:100px}.cp-input-row textarea:focus{border-color:rgba(139,92,246,.15)}.cp-input-row textarea::placeholder{color:rgba(255,255,255,.12)}
-.cp-send{width:34px;height:34px;border-radius:9px;border:none;background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(109,40,217,.2));color:rgba(139,92,246,.6);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}.cp-send:hover:not(:disabled){background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white}.cp-send:disabled{opacity:.2}
+.cp-input-row{display:flex;gap:6px;align-items:flex-end}.cp-input-row textarea{flex:1;padding:8px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.025);color:white;font-size:12.5px;resize:none;outline:none;font-family:inherit;line-height:1.5;min-height:22px;max-height:100px;transition:border-color .2s,box-shadow .2s}.cp-input-row textarea:focus{border-color:rgba(139,92,246,.25);box-shadow:0 0 16px rgba(139,92,246,.08),0 0 0 1px rgba(139,92,246,.1)}.cp-input-row textarea::placeholder{color:rgba(255,255,255,.15)}
+.cp-send{width:36px;height:36px;border-radius:12px;border:none;background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(109,40,217,.15));color:rgba(139,92,246,.5);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .22s cubic-bezier(.16,1,.3,1)}.cp-send:hover:not(:disabled){background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;box-shadow:0 4px 16px rgba(139,92,246,.3);transform:translateY(-1px)}.cp-send:active:not(:disabled){transform:scale(.95)}.cp-send:disabled{opacity:.2}
 /* 资料卡(仿微信) */
 .cp-profile-card{padding:32px 24px;overflow-y:auto}
 .pf-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.04)}
@@ -5207,5 +5423,153 @@ void updateProfile;void favorites;void addFavorite;void formatTimeAgo;void showC
 .egg-banner-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(-12px) scale(0.95);
+}
+
+/* ====== 通讯录设计图复刻样式 ====== */
+.cp-contacts-main{display:flex;flex:1;min-width:0;overflow:hidden}
+.ct-grid-area{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.ct-toolbar{padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid rgba(139,92,246,.04);flex-shrink:0}
+.ct-search-box{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:14px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);transition:border-color .22s,box-shadow .22s}
+.ct-search-box:focus-within{border-color:rgba(124,58,237,.3);box-shadow:0 0 16px rgba(124,58,237,.08),0 0 0 1px rgba(124,58,237,.12)}
+.ct-search-icon{color:rgba(255,255,255,.2);flex-shrink:0}
+.ct-search-input{flex:1;background:none;border:none;color:white;font-size:13px;outline:none;font-family:inherit}
+.ct-search-input::placeholder{color:rgba(255,255,255,.2)}
+.ct-filters{display:flex;gap:6px;flex-wrap:wrap}
+.ct-filter-pill{padding:5px 14px;border-radius:20px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:12px;cursor:pointer;transition:all .2s cubic-bezier(.16,1,.3,1);white-space:nowrap}
+.ct-filter-pill:hover{border-color:rgba(124,58,237,.2);color:rgba(255,255,255,.55);background:rgba(124,58,237,.04)}
+.ct-filter-pill.active{background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(99,102,241,.1));border-color:rgba(124,58,237,.3);color:rgba(167,139,250,.95);font-weight:600;box-shadow:0 0 10px rgba(124,58,237,.08)}
+.ct-view-toggle{display:flex;gap:2px;margin-left:auto;align-self:flex-end}
+.ct-view-toggle button{width:30px;height:30px;border-radius:8px;border:none;background:rgba(255,255,255,.02);color:rgba(255,255,255,.2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ct-view-toggle button.active{background:rgba(124,58,237,.1);color:rgba(124,58,237,.7)}
+.ct-view-toggle button:hover{color:rgba(255,255,255,.5)}
+
+.ct-cards{flex:1;overflow-y:auto;padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;align-content:start}
+.ct-cards::-webkit-scrollbar{width:3px}.ct-cards::-webkit-scrollbar-thumb{background:rgba(255,255,255,.04);border-radius:3px}
+.ct-cards.ct-list-view{grid-template-columns:1fr;gap:4px}
+
+.ct-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px;border-radius:18px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);cursor:pointer;transition:all .22s cubic-bezier(.16,1,.3,1);overflow:hidden}
+.ct-card::before{content:'';position:absolute;inset:0;border-radius:18px;background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(59,130,246,.04));opacity:0;transition:opacity .22s}
+.ct-card:hover{border-color:rgba(124,58,237,.18);transform:translateY(-3px);box-shadow:0 6px 24px rgba(0,0,0,.25),0 0 12px rgba(124,58,237,.06)}
+.ct-card:hover::before{opacity:1}
+.ct-card.active{border-color:rgba(124,58,237,.35);background:rgba(124,58,237,.06);box-shadow:0 0 16px rgba(124,58,237,.08)}
+.ct-card.active::before{opacity:1}
+
+.ct-list-view .ct-card{flex-direction:row;padding:10px 14px;border-radius:10px;gap:10px}
+.ct-list-view .ct-card:hover{transform:none}
+
+.ct-star-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;border:none;background:none;color:rgba(255,255,255,.12);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all .14s;z-index:1}
+.ct-star-btn:hover{color:rgba(245,158,11,.5);background:rgba(245,158,11,.06)}
+.ct-star-btn.starred{color:rgba(245,158,11,.8);animation:starPop .3s cubic-bezier(.16,1,.3,1)}
+@keyframes starPop{0%{transform:scale(1)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+.ct-list-view .ct-star-btn{position:static;order:3;margin-left:auto}
+
+.ct-card-info{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;position:relative;z-index:1}
+.ct-list-view .ct-card-info{align-items:flex-start;flex:1}
+.ct-card-name{font-size:13px;font-weight:600;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px}
+.ct-identity-tag{font-size:10px;padding:1px 8px;border-radius:10px;background:rgba(124,58,237,.1);color:rgba(124,58,237,.7);white-space:nowrap}
+.ct-card-school{font-size:11px;color:rgba(255,255,255,.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+
+.ct-online-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;position:absolute;bottom:12px;right:12px}
+.ct-online-dot.online{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.4)}
+.ct-online-dot.offline{background:rgba(255,255,255,.1)}
+.ct-list-view .ct-online-dot{position:static}
+
+/* 右侧资料面板 */
+.ct-detail-panel{width:280px;flex-shrink:0;border-left:1px solid rgba(139,92,246,.06);background:rgba(8,6,18,.92);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);overflow-y:auto;display:flex;flex-direction:column}
+.ct-detail-panel::-webkit-scrollbar{width:2px}.ct-detail-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.03)}
+.ct-dp-cover{height:110px;position:relative;flex-shrink:0;overflow:hidden}
+.ct-dp-cover-bg{position:absolute;inset:0;background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(59,130,246,.18),rgba(217,70,239,.12));animation:coverShimmer 8s ease-in-out infinite alternate}
+@keyframes coverShimmer{0%{background-position:0% 50%}100%{background-position:100% 50%}}
+.ct-dp-avatar-row{display:flex;align-items:center;justify-content:space-between;padding:0 16px;margin-top:-28px;position:relative;z-index:1}
+.ct-dp-star{width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:rgba(255,255,255,.15);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ct-dp-star:hover{color:rgba(245,158,11,.5);border-color:rgba(245,158,11,.15)}
+.ct-dp-star.starred{color:rgba(245,158,11,.8);border-color:rgba(245,158,11,.2);background:rgba(245,158,11,.06)}
+.ct-dp-name-row{padding:10px 16px 0;display:flex;align-items:center;gap:6px}
+.ct-dp-name-row h3{margin:0;font-size:16px;color:white;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-dp-online{font-size:10px;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.ct-dp-online.online{background:rgba(34,197,94,.1);color:rgba(34,197,94,.7)}
+.ct-dp-online.offline{background:rgba(255,255,255,.03);color:rgba(255,255,255,.2)}
+.ct-dp-identity{margin:4px 16px 0;font-size:11px;color:rgba(124,58,237,.6);padding:2px 10px;border-radius:10px;background:rgba(124,58,237,.06);display:inline-block}
+.ct-dp-sparkid{margin:6px 16px 0;font-size:11px;color:rgba(255,255,255,.2);font-family:monospace}
+
+.ct-dp-actions{display:flex;gap:6px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.04)}
+.ct-dp-act{display:flex;align-items:center;gap:4px;padding:7px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.4);font-size:11px;cursor:pointer;transition:all .18s cubic-bezier(.16,1,.3,1);white-space:nowrap}
+.ct-dp-act:hover{background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.15);color:rgba(167,139,250,.8);box-shadow:0 0 8px rgba(124,58,237,.06)}
+.ct-dp-act.primary{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(99,102,241,.08));border-color:rgba(124,58,237,.2);color:rgba(167,139,250,.9)}
+.ct-dp-act.primary:hover{background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(99,102,241,.14));box-shadow:0 0 12px rgba(124,58,237,.1)}
+
+.ct-dp-sections{flex:1;padding:4px 0}
+.ct-dp-section{border-bottom:1px solid rgba(255,255,255,.03)}
+.ct-dp-section-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.45);transition:background .15s,color .15s;border-radius:6px}
+.ct-dp-section-hdr:hover{background:rgba(124,58,237,.04);color:rgba(255,255,255,.6)}
+.ct-dp-arrow{color:rgba(255,255,255,.15);font-size:14px;transition:transform .22s cubic-bezier(.16,1,.3,1);transform:rotate(90deg)}
+.ct-dp-arrow.open{transform:rotate(-90deg)}
+.ct-dp-section-body{padding:0 16px 10px}
+.ct-dp-bio{font-size:12px;color:rgba(255,255,255,.35);line-height:1.6;margin:0}
+.ct-dp-tags{display:flex;flex-wrap:wrap;gap:4px}
+.ct-dp-tag{font-size:10px;padding:2px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.4)}
+.ct-dp-empty-hint{font-size:11px;color:rgba(255,255,255,.12)}
+.ct-dp-group{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:12px;color:rgba(255,255,255,.4);transition:color .12s}
+.ct-dp-group:hover{color:rgba(124,58,237,.6)}
+.ct-dp-info-row{display:flex;justify-content:space-between;padding:6px 0;font-size:11px;color:rgba(255,255,255,.3)}
+
+.ct-dp-danger{padding:12px 16px;display:flex;gap:8px}
+.ct-dp-danger-btn{flex:1;padding:8px;border-radius:10px;border:none;font-size:11px;cursor:pointer;transition:all .15s;font-weight:600}
+.ct-dp-danger-btn.warn{background:rgba(251,191,36,.06);color:rgba(251,191,36,.5)}
+.ct-dp-danger-btn.warn:hover{background:rgba(251,191,36,.12);color:rgba(251,191,36,.7)}
+.ct-dp-danger-btn.danger{background:rgba(239,68,68,.06);color:rgba(239,68,68,.5)}
+.ct-dp-danger-btn.danger:hover{background:rgba(239,68,68,.12);color:rgba(239,68,68,.7)}
+
+/* ====== 消息页视觉增强 ====== */
+.cp-conv .cp-conv-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:auto;flex-shrink:0}
+.cp-conv-time{font-size:9px;color:rgba(255,255,255,.15);white-space:nowrap}
+.cp-conv-indicators{display:flex;align-items:center;gap:4px}
+
+/* 语音消息紫色胶囊增强 */
+.cp-voice-bubble{background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(124,58,237,.08))!important;border:1px solid rgba(124,58,237,.2)!important;border-radius:20px!important;padding:6px 14px!important}
+.cp-voice-bubble.playing{box-shadow:0 0 12px rgba(124,58,237,.2);border-color:rgba(124,58,237,.35)!important}
+.cp-voice-icon.playing{color:rgba(124,58,237,.9)}
+
+/* 时间分割线胶囊 */
+.cp-time-sep{text-align:center;padding:4px 0;margin:4px 0}
+.cp-time-sep{font-size:10px;color:rgba(255,255,255,.2);background:rgba(255,255,255,.02);display:inline-block;padding:3px 14px;border-radius:20px;margin:4px auto;position:relative;left:50%;transform:translateX(-50%)}
+
+/* 群公告紫色渐变增强 */
+.cp-ann-banner{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(59,130,246,.08))!important;border:1px solid rgba(124,58,237,.15)!important;border-radius:10px;margin:8px 16px;padding:8px 14px;display:flex;align-items:center;gap:8px}
+
+/* Tab 选中态发光增强 */
+.cp-tabs button.active{color:rgba(167,139,250,.9);border-bottom-color:rgba(139,92,246,.5);text-shadow:0 0 14px rgba(139,92,246,.35);font-weight:600}
+
+/* 侧栏标题增强 */
+.cp-logo{background:linear-gradient(135deg,#a78bfa,#818cf8,#6d28d9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:800!important;letter-spacing:.5px}
+
+/* 群公告横幅增强 */
+.cp-ann-banner{background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(59,130,246,.08))!important;border:1px solid rgba(124,58,237,.18)!important;border-radius:12px;margin:8px 16px;padding:10px 14px;display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s}
+
+/* 语音胶囊播放增强 */
+.cp-voice-bubble.playing{box-shadow:0 0 16px rgba(124,58,237,.25),0 0 4px rgba(124,58,237,.15);border-color:rgba(124,58,237,.4)!important}
+
+/* 会话置顶增强 */
+.cp-conv.is-pinned{background:rgba(139,92,246,.04)!important;border-left:2px solid rgba(139,92,246,.15)}
+
+/* 免打扰图标增强 */
+.cp-mute-icon{font-size:10px;opacity:.4}
+
+/* 在线状态点增强 */
+.ct-online-dot.online{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.45),0 0 2px rgba(34,197,94,.6)}
+
+/* 添加菜单增强 */
+.cp-add-menu{background:rgba(20,18,34,.95)!important;backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(139,92,246,.1)!important;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 16px rgba(139,92,246,.04)!important;border-radius:12px!important}
+.cp-add-menu button:hover{background:rgba(139,92,246,.08)!important;color:rgba(167,139,250,.8)!important}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion:reduce){
+  .cp-conv,.ct-card,.ct-filter-pill,.cp-sb-btn,.cp-hdr-btn,.cp-send,.cp-qr-chip,.ct-dp-act,.ct-dp-arrow,.cp-ctx-menu button,.cp-bubble{transition:none!important}
+  .ct-card:hover{transform:none!important}
+  .cp-send:hover:not(:disabled){transform:none!important}
+  @keyframes coverShimmer{0%,100%{background-position:0% 50%}}
+  .cp-ai-thinking-avatar{animation:none!important}
+  .cp-ai-thinking-bubble{animation:none!important}
+  .cp-poke-msg{animation:none!important}
 }
 </style>

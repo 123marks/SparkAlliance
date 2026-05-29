@@ -1283,6 +1283,8 @@ interface Post {
   mood?: string | null
   school?: string | null
   region?: string | null
+  isOfficial?: boolean
+  isVerified?: boolean
 }
 
 const posts = ref<Post[]>([])
@@ -4302,7 +4304,7 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   position: fixed;
   inset: 0;
   z-index: -3;
-  opacity: 0.45;
+  opacity: 0.65;
   pointer-events: none;
 }
 </style>
