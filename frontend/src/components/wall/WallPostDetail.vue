@@ -192,6 +192,7 @@ interface Post {
   categoryLabel: string
   categoryClass: string
   time: string
+  createdAt?: string
   content: string
   tags: string[]
   mediaUrls: string[]
@@ -201,6 +202,9 @@ interface Post {
   category: string
   mood?: string | null
   school?: string | null
+  region?: string | null
+  isOfficial?: boolean
+  isVerified?: boolean
 }
 
 interface Comment {
@@ -209,14 +213,18 @@ interface Comment {
   authorId: string
   isAnonymous: boolean
   anonymousSeed?: string
+  authorInitial?: string
+  avatarBg?: string
   content: string
   time: string
+  createdAt?: string
   liked: boolean
   likeCount: number
-  replyToName?: string
+  replyToName?: string | null
   isOwn?: boolean
   mediaUrls: string[]
   isHidden?: boolean
+  reportCount?: number
 }
 
 const props = defineProps<{

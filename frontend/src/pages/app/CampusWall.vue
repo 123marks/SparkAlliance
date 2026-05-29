@@ -22,18 +22,22 @@
     <main class="wall-main">
       <WallPostDetail
         :post="selectedPostForDetail"
-        :comments="commentList"
+        :comment-list="commentList"
+        :comment-loading="commentLoading"
+        :author-display="getPostAuthorDisplay(selectedPostForDetail)"
+        :get-comment-avatar="getCommentAuthorDisplay"
+        :related-topics="detailRelatedTopics"
         :similar-posts="detailSimilarPosts"
-        :reply-to="replyToComment?.authorName || null"
         @back="closePostDetail"
         @like="toggleLike"
         @share="sharePost"
-        @bookmark="(p) => showToast('已收藏', 'success')"
+        @bookmark="() => showToast('已收藏', 'success')"
         @report="openReport"
         @lightbox="openLightbox"
         @comment-like="toggleCommentLike"
         @reply="setReplyTo"
         @submit-comment="(text) => { newCommentText = text; submitComment() }"
+        @switch-post="(id) => { const p = posts.find(pp => pp.id === id); if (p) openPostDetail(p) }"
       />
     </main>
     <aside class="wall-right" />
@@ -195,15 +199,20 @@
           :post="detailPost"
           :comment-list="commentList"
           :comment-loading="commentLoading"
-          :all-posts="posts"
+          :author-display="getPostAuthorDisplay(detailPost)"
+          :get-comment-avatar="getCommentAuthorDisplay"
+          :related-topics="detailRelatedTopics"
+          :similar-posts="detailSimilarPosts"
           @back="closePostDetail"
           @like="toggleLike"
           @share="sharePost"
+          @bookmark="() => showToast('已收藏', 'success')"
           @report="openReport"
           @lightbox="openLightbox"
           @comment-like="toggleCommentLike"
-          @filter-tag="filterByTag"
-          @open-post="openPostDetail"
+          @reply="setReplyTo"
+          @submit-comment="(text) => { newCommentText = text; submitComment() }"
+          @switch-post="(id) => { const p = posts.find(pp => pp.id === id); if (p) openPostDetail(p) }"
         />
       </main>
     </template>
@@ -1350,6 +1359,26 @@ const detailSimilarPosts = computed(() => {
   return posts.value
     .filter(p => p.id !== selectedPostForDetail.value!.id)
     .slice(0, 3)
+})
+// 详情页"相关话题"：统计全站标签出现次数，优先展示与当前帖子相关的标签
+const detailRelatedTopics = computed<{ tag: string; count: number }[]>(() => {
+  const counter = new Map<string, number>()
+  for (const p of posts.value) {
+    for (const t of (p.tags || [])) {
+      counter.set(t, (counter.get(t) || 0) + 1)
+    }
+  }
+  const curTags = new Set(selectedPostForDetail.value?.tags || [])
+  return [...counter.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    // 当前帖子的标签排前面，其余按热度
+    .sort((a, b) => {
+      const aRel = curTags.has(a.tag) ? 1 : 0
+      const bRel = curTags.has(b.tag) ? 1 : 0
+      if (aRel !== bRel) return bRel - aRel
+      return b.count - a.count
+    })
+    .slice(0, 6)
 })
 const activeTagFilter = ref<string | null>(null)
 
