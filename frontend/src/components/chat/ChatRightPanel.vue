@@ -91,29 +91,45 @@
         </div>
         <div class="rp-level-row">
           <div class="rp-level-badge">
-            <span class="rp-level-icon">🔥</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#fireGrad)"/><defs><linearGradient id="fireGrad" x1="3" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs></svg>
           </div>
           <div class="rp-level-info">
-            <div class="rp-level-name">Lv.{{ userLevel }} <span class="rp-level-title">{{ levelTitle }}</span></div>
+            <div class="rp-level-name">Lv.{{ userLevel }} <span class="rp-level-title">{{ levelTitle }}</span> <span class="rp-level-xp-inline">进度 {{ userXP }} XP</span></div>
             <div class="rp-level-xp">{{ userXP }} / {{ nextLevelXP }} XP</div>
             <div class="rp-xp-bar"><div class="rp-xp-fill" :style="{ width: xpPercent + '%' }"></div></div>
           </div>
         </div>
         <div class="rp-growth-stats">
           <div class="rp-gs-item">
-            <strong>{{ streakDays }} 天</strong>
+            <strong>🔥 {{ streakDays }} 天</strong>
             <span>连续陪伴</span>
           </div>
           <div class="rp-gs-item">
-            <strong>{{ weeklyActiveDays }} 天</strong>
+            <strong>📅 {{ weeklyActiveDays }} 天</strong>
             <span>本周活跃</span>
           </div>
         </div>
-        <div class="rp-growth-tags">
-          <span class="rp-gt">📚 专注达人</span>
-          <span class="rp-gt">🎯 学习任务</span>
-          <span class="rp-gt">💬 计数大师</span>
-          <span class="rp-gt rp-gt-more">更多成就 →</span>
+        <div class="rp-badge-row">
+          <div class="rp-badge" title="早起达人">
+            <svg class="rp-badge-svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="url(#bg1)"/><text x="16" y="20" text-anchor="middle" font-size="14">🌅</text><defs><linearGradient id="bg1"><stop offset="0%" stop-color="#f59e0b" stop-opacity="0.15"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0.05"/></linearGradient></defs></svg>
+            <span>早起</span>
+          </div>
+          <div class="rp-badge" title="专注达人">
+            <svg class="rp-badge-svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="url(#bg2)"/><text x="16" y="20" text-anchor="middle" font-size="14">🎯</text><defs><linearGradient id="bg2"><stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.15"/><stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.05"/></linearGradient></defs></svg>
+            <span>专注</span>
+          </div>
+          <div class="rp-badge" title="学习任务">
+            <svg class="rp-badge-svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="url(#bg3)"/><text x="16" y="20" text-anchor="middle" font-size="14">📚</text><defs><linearGradient id="bg3"><stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0.05"/></linearGradient></defs></svg>
+            <span>学习</span>
+          </div>
+          <div class="rp-badge" title="计数大师">
+            <svg class="rp-badge-svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="url(#bg4)"/><text x="16" y="20" text-anchor="middle" font-size="14">💬</text><defs><linearGradient id="bg4"><stop offset="0%" stop-color="#10b981" stop-opacity="0.15"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.05"/></linearGradient></defs></svg>
+            <span>对话</span>
+          </div>
+          <router-link to="/app/profile" class="rp-badge rp-badge-more" title="更多成就">
+            <span class="rp-badge-plus">+</span>
+            <span>更多</span>
+          </router-link>
         </div>
       </section>
 
@@ -153,6 +169,15 @@
           <span>✅</span> 已签到 · 连续 {{ streakDays }} 天
         </div>
       </section>
+
+      <!-- 一键开始按钮 -->
+      <div class="rp-one-start">
+        <button class="one-start-btn" @click="$emit('send-message', '帮我开始今天的学习计划，进入专注模式')">
+          <span class="os-icon">🚀</span>
+          <span class="os-text">一键开始</span>
+          <span class="os-arrow">→</span>
+        </button>
+      </div>
     </div>
   </aside>
 </template>
@@ -349,17 +374,18 @@ onMounted(async () => {
 
 <style scoped>
 .chat-right-panel {
-  width: 310px;
-  background: rgba(8, 6, 18, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(255, 255, 255, 0.03);
+  width: 320px;
+  background: linear-gradient(180deg, rgba(10, 8, 22, 0.95), rgba(6, 4, 16, 0.98));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-left: 1px solid rgba(139, 92, 246, 0.06);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   position: relative;
   z-index: 1;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
 }
 
 .chat-right-panel.collapsed {
@@ -368,77 +394,80 @@ onMounted(async () => {
 
 .rp-toggle {
   position: absolute;
-  top: 12px;
-  left: -14px;
-  width: 28px;
-  height: 28px;
+  top: 14px;
+  left: -15px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(12, 10, 24, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.08);
+  background: rgba(12, 10, 24, 0.96);
   color: rgba(255, 255, 255, 0.35);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 5;
-  transition: all 0.2s;
+  transition: all 0.25s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .rp-toggle:hover {
   background: rgba(139, 92, 246, 0.15);
   color: rgba(196, 181, 253, 0.9);
   border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
 }
 
 .rp-scroll {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .rp-scroll::-webkit-scrollbar { width: 3px; }
-.rp-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.04); border-radius: 3px; }
+.rp-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.08); border-radius: 3px; }
 
 .rp-card {
-  padding: 14px;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 16px;
   background: rgba(12, 10, 24, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.04);
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
 }
 
 .rp-card:hover {
-  border-color: rgba(139, 92, 246, 0.1);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  border-color: rgba(139, 92, 246, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .rp-status {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(12, 10, 24, 0.5));
-  border-color: rgba(16, 185, 129, 0.06);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(12, 10, 24, 0.5));
+  border-color: rgba(16, 185, 129, 0.08);
 }
 
 .rp-schedule {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04), rgba(12, 10, 24, 0.5));
-  border-color: rgba(139, 92, 246, 0.06);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(12, 10, 24, 0.5));
+  border-color: rgba(139, 92, 246, 0.08);
 }
 
 .rp-memory {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.03), rgba(12, 10, 24, 0.5));
-  border-color: rgba(245, 158, 11, 0.05);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.04), rgba(12, 10, 24, 0.5));
+  border-color: rgba(245, 158, 11, 0.06);
 }
 
 .rp-growth {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.03), rgba(12, 10, 24, 0.5));
-  border-color: rgba(236, 72, 153, 0.05);
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.04), rgba(12, 10, 24, 0.5));
+  border-color: rgba(236, 72, 153, 0.06);
 }
 
 .rp-actions {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03), rgba(12, 10, 24, 0.5));
-  border-color: rgba(59, 130, 246, 0.05);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.04), rgba(12, 10, 24, 0.5));
+  border-color: rgba(59, 130, 246, 0.06);
 }
 
 .rp-card-head {
@@ -479,27 +508,28 @@ onMounted(async () => {
 /* 今日状态 - 能量环 */
 .rp-energy-ring {
   position: relative;
-  width: 100px;
-  height: 100px;
-  margin: 0 auto 10px;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 12px;
 }
 
-.energy-svg { width: 100%; height: 100%; }
+.energy-svg { width: 100%; height: 100%; filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.1)); }
 
 .ring-bg {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.06);
-  stroke-width: 6;
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 7;
 }
 
 .ring-fg {
   fill: none;
-  stroke-width: 6;
+  stroke-width: 7;
   stroke-linecap: round;
   stroke-dasharray: 251.33;
   transform: rotate(-90deg);
   transform-origin: center;
-  transition: stroke-dashoffset 0.8s ease, stroke 0.3s;
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s;
+  filter: drop-shadow(0 0 6px currentColor);
 }
 
 .energy-center {
@@ -512,14 +542,18 @@ onMounted(async () => {
 }
 
 .energy-center strong {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, #e0e7ff, #c4b5fd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .energy-center span {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 500;
 }
 
 .rp-status-tips {
@@ -558,21 +592,28 @@ onMounted(async () => {
   grid-template-columns: auto 1fr auto;
   gap: 8px;
   align-items: center;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid transparent;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.rp-event:hover {
+  background: rgba(139, 92, 246, 0.04);
+  transform: translateX(2px);
 }
 
 .rp-event.active {
-  background: rgba(139, 92, 246, 0.06);
-  border-color: rgba(139, 92, 246, 0.15);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.04));
+  border-color: rgba(139, 92, 246, 0.18);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08);
 }
 
 .rp-event.upcoming {
-  background: rgba(245, 158, 11, 0.04);
-  border-color: rgba(245, 158, 11, 0.1);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(249, 115, 22, 0.03));
+  border-color: rgba(245, 158, 11, 0.12);
 }
 
 .rp-event-time {
@@ -691,15 +732,26 @@ onMounted(async () => {
 }
 
 .rp-level-badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #8b5cf6, #f59e0b);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+  position: relative;
+  overflow: hidden;
 }
+.rp-level-badge::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.15) 50%, transparent 70%);
+  animation: rpBadgeShimmer 3s infinite;
+}
+@keyframes rpBadgeShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
 .rp-level-icon { font-size: 18px; }
 
@@ -718,6 +770,13 @@ onMounted(async () => {
   margin-left: 4px;
 }
 
+.rp-level-xp-inline {
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(245, 158, 11, 0.5);
+  margin-left: 4px;
+}
+
 .rp-level-xp {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.25);
@@ -725,17 +784,31 @@ onMounted(async () => {
 }
 
 .rp-xp-bar {
-  height: 5px;
-  background: rgba(255, 255, 255, 0.06);
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 3px;
   overflow: hidden;
+  position: relative;
 }
 
 .rp-xp-fill {
   height: 100%;
   background: linear-gradient(90deg, #8b5cf6, #f59e0b);
   border-radius: 3px;
-  transition: width 0.6s ease;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+  position: relative;
+}
+.rp-xp-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  filter: blur(2px);
 }
 
 .rp-growth-stats {
@@ -764,33 +837,55 @@ onMounted(async () => {
   color: rgba(255, 255, 255, 0.25);
 }
 
-.rp-growth-tags {
+.rp-badge-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.03);
+  justify-content: center;
 }
 
-.rp-gt {
-  font-size: 9px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+.rp-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
+  transition: transform 0.15s;
+}
+
+.rp-badge:hover { transform: translateY(-2px); }
+
+.rp-badge-svg { width: 32px; height: 32px; }
+
+.rp-badge span {
+  font-size: 8px;
   color: rgba(255, 255, 255, 0.3);
-  white-space: nowrap;
+  font-weight: 500;
 }
 
-.rp-gt-more {
-  color: rgba(139, 92, 246, 0.4);
+.rp-badge-more {
+  text-decoration: none;
   cursor: pointer;
-  border-color: rgba(139, 92, 246, 0.08);
 }
 
-.rp-gt-more:hover {
-  color: rgba(139, 92, 246, 0.7);
+.rp-badge-plus {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px dashed rgba(139, 92, 246, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px !important;
+  color: rgba(139, 92, 246, 0.3) !important;
+  transition: all 0.15s;
+}
+
+.rp-badge-more:hover .rp-badge-plus {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: rgba(139, 92, 246, 0.6) !important;
   background: rgba(139, 92, 246, 0.04);
 }
 
@@ -807,24 +902,25 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.04);
   background: rgba(255, 255, 255, 0.015);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: left;
 }
 
 .rp-action-btn:hover {
-  background: rgba(139, 92, 246, 0.06);
-  border-color: rgba(139, 92, 246, 0.12);
-  transform: translateX(2px);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.04));
+  border-color: rgba(139, 92, 246, 0.15);
+  transform: translateX(3px);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08);
 }
 
 .rp-action-focus {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.04));
-  border-color: rgba(139, 92, 246, 0.1);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.05));
+  border-color: rgba(139, 92, 246, 0.12);
 }
 
 .rp-action-icon {
@@ -899,7 +995,147 @@ onMounted(async () => {
   margin: 0;
 }
 
-@media (max-width: 1100px) {
+.rp-one-start { padding: 14px; }
+.one-start-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;
+  color: white; padding: 16px 24px; border-radius: 16px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: all 0.25s; box-shadow: 0 4px 24px rgba(124, 58, 237, 0.35);
+  position: relative; overflow: hidden; letter-spacing: 0.5px;
+}
+.one-start-btn::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.08) 50%, transparent 70%);
+  animation: rpStartShimmer 3s infinite;
+}
+@keyframes rpStartShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.one-start-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(124, 58, 237, 0.5); }
+.one-start-btn:active { transform: scale(0.98); }
+.os-icon { font-size: 20px; }
+.os-arrow { opacity: 0.7; transition: transform 0.2s; }
+.one-start-btn:hover .os-arrow { transform: translateX(6px); opacity: 1; }
+
+/* 中等屏幕先收窄右侧面板，进一步变窄则整块隐藏，避免挤压中间对话区导致重叠 */
+@media (max-width: 1500px) {
+  .chat-right-panel { width: 280px; }
+}
+@media (max-width: 1320px) {
   .chat-right-panel { display: none; }
+}
+
+/* 能量环呼吸光晕 */
+.energy-svg {
+  animation: rpRingGlow 3s ease-in-out infinite;
+}
+@keyframes rpRingGlow {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(139,92,246,0.08)); }
+  50% { filter: drop-shadow(0 0 14px rgba(139,92,246,0.2)); }
+}
+
+/* 卡片 stagger 入场 */
+.rp-card {
+  animation: rpCardIn 0.4s ease both;
+}
+.rp-card:nth-child(1) { animation-delay: 60ms; }
+.rp-card:nth-child(2) { animation-delay: 140ms; }
+.rp-card:nth-child(3) { animation-delay: 220ms; }
+.rp-card:nth-child(4) { animation-delay: 300ms; }
+.rp-card:nth-child(5) { animation-delay: 380ms; }
+@keyframes rpCardIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 时间线事件 active 脉冲 */
+.rp-event.active {
+  animation: rpEventPulse 2.5s ease-in-out infinite;
+}
+@keyframes rpEventPulse {
+  0%,100% { box-shadow: 0 2px 8px rgba(139,92,246,0.08); }
+  50% { box-shadow: 0 2px 16px rgba(139,92,246,0.18); }
+}
+
+/* 记忆胶囊 hover 左侧线 */
+.rp-mem-item {
+  position: relative;
+  transition: all 0.2s;
+}
+.rp-mem-item::before {
+  content: '';
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 0; border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #f59e0b, #f97316);
+  transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+.rp-mem-item:hover::before { height: 60%; }
+.rp-mem-item:hover {
+  background: rgba(245,158,11,0.03);
+  transform: translateX(3px);
+}
+
+/* 成就徽章 hover 缩放弹簧 */
+.rp-badge:hover {
+  transform: translateY(-3px) scale(1.08);
+}
+.rp-badge:active {
+  transform: scale(0.95);
+}
+
+/* 经验条增长扫光 */
+.rp-xp-fill::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+  animation: rpXpSweep 2.5s ease infinite;
+}
+@keyframes rpXpSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* 一键开始按钮 hover 光环 */
+.one-start-btn::after {
+  content: '';
+  position: absolute; inset: -4px; border-radius: 20px;
+  border: 1.5px solid rgba(139,92,246,0.2);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.one-start-btn:hover::after {
+  opacity: 1;
+  animation: rpStartRing 1.5s ease-out infinite;
+}
+@keyframes rpStartRing {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.06); opacity: 0; }
+}
+
+/* 签到按钮 sparkle 效果 */
+.rp-checkin-btn {
+  position: relative;
+  overflow: hidden;
+}
+.rp-checkin-btn::before {
+  content: '';
+  position: absolute; inset: -2px;
+  background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+  animation: rpCheckinShimmer 3s infinite;
+}
+@keyframes rpCheckinShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-xp-fill { transition: none; }
+  .ring-fg { transition: none; }
+  .rp-level-badge::before { animation: none; }
+  .one-start-btn::before { animation: none; }
+  .energy-svg { animation: none; }
+  .rp-card { animation: none !important; }
+  .rp-event.active { animation: none; }
+  .rp-xp-fill::before { animation: none; }
+  .rp-checkin-btn::before { animation: none; }
+  .one-start-btn::after { animation: none; }
 }
 </style>
