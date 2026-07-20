@@ -110,12 +110,14 @@ export function fetchOverview(): Promise<StatsOverview> {
   return request<StatsOverview>('/admin/stats/overview')
 }
 
-export function fetchTrend(days = 30): Promise<TrendPoint[]> {
-  return request<TrendPoint[]>(`/admin/stats/trend${qs({ days })}`)
+export async function fetchTrend(days = 30): Promise<TrendPoint[]> {
+  const res = await request<{ trend: TrendPoint[] }>(`/admin/stats/trend${qs({ days })}`)
+  return res.trend ?? []
 }
 
-export function fetchModules(): Promise<ModuleStat[]> {
-  return request<ModuleStat[]>('/admin/stats/modules')
+export async function fetchModules(): Promise<ModuleStat[]> {
+  const res = await request<{ modules: ModuleStat[] }>('/admin/stats/modules')
+  return res.modules ?? []
 }
 
 // ---- Admin: users ----

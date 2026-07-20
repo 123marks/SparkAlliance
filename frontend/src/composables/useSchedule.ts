@@ -121,6 +121,14 @@ const error = ref<string | null>(null)
 
 // ====== Composable ======
 
+/** 把表单产出的本地时间串（如 2026-07-21T09:00:00）归一化为 RFC3339 UTC；已带时区的原样透传 */
+function toRFC3339(value: string | null | undefined): string | null {
+  if (!value) return null
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(value)) return value
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? value : d.toISOString()
+}
+
 export function useSchedule() {
   // ====== CRUD ======
 
@@ -155,8 +163,8 @@ export function useSchedule() {
           title: form.title,
           description: form.description || null,
           location: form.location || null,
-          start_time: form.start_time,
-          end_time: form.end_time || null,
+          start_time: toRFC3339(form.start_time),
+          end_time: toRFC3339(form.end_time),
           all_day: form.all_day,
           event_type: form.event_type,
           event_subtype: form.event_subtype || null,
@@ -177,7 +185,10 @@ export function useSchedule() {
   /** 更新事件 */
   const updateEvent = async (id: string, form: Partial<EventFormData>): Promise<boolean> => {
     try {
-      await apiFetch(`/api/schedule/events/${id}`, { method: 'PATCH', body: form })
+      const body: Record<string, unknown> = { ...form }
+      if (typeof body.start_time === 'string') body.start_time = toRFC3339(body.start_time)
+      if (typeof body.end_time === 'string') body.end_time = toRFC3339(body.end_time)
+      await apiFetch(`/api/schedule/events/${id}`, { method: 'PATCH', body })
       return true
     } catch {
       return false
