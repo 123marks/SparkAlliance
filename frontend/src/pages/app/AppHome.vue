@@ -372,7 +372,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { usePlanner } from '../../composables/usePlanner'
-import { supabase } from '../../supabase'
+import { apiFetch } from '../../api/client'
 import {
   ACTIVE_GOAL_STATUSES,
   buildDashboardActions,
@@ -420,27 +420,16 @@ interface ScheduleEventRow {
   priority?: number | null
 }
 
-interface ShopConversationRow {
-  buyer_id: string
-  seller_id: string
-  buyer_unread: number | null
-  seller_unread: number | null
-}
-
 interface CampusPostRow {
   id: string
   content: string
-  author_id: string | null
-  author_name: string | null
+  user_id: string | null
+  author_nickname: string | null
   anonymous_seed: string | null
   is_anonymous: boolean | null
   created_at: string
-  likes?: Array<{ count: number }>
-  comments?: Array<{ count: number }>
-}
-
-interface StudyFocusRow {
-  total_focus_minutes: number | null
+  likes_count: number
+  comments_count: number
 }
 
 interface DashboardSectionStates {
@@ -1015,134 +1004,95 @@ async function loadDashboard() {
     return
   }
 
-  const userId = user.value.id
   const today = getLocalDate()
   const weekRange = getLocalWeekDateRange(getDashboardNow())
   const todayRange = getTodayRange()
 
   try {
-    // 独立容错：每个查询失败不影响其他查询
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function safeQuery<T>(queryFn: () => PromiseLike<{ data: any; error: any; count?: number | null }>, fallback: T) {
+    // 独立容错：每个 API 失败不影响其他区块（自建后端，契约见 BACKEND-CONTRACT.md）
+    async function safeApi<T>(path: string, fallback: T) {
       try {
-        const result = await queryFn()
-        if (result.error) {
-          console.warn('[Dashboard] 查询降级:', result.error.message)
-          return { data: fallback as T, count: 0, state: 'error' as DashboardDataState }
-        }
-        return { data: (result.data ?? fallback) as T, count: result.count ?? 0, state: 'real' as DashboardDataState }
+        const data = await apiFetch<T>(path)
+        return { data, state: 'real' as DashboardDataState }
       } catch (e) {
-        console.warn('[Dashboard] 查询跳过:', e)
-        return { data: fallback as T, count: 0, state: 'error' as DashboardDataState }
+        console.warn('[Dashboard] 查询降级:', path, e)
+        return { data: fallback, state: 'error' as DashboardDataState }
       }
     }
 
     const [
-      plannerTasksResult,
-      goalsCountResult,
+      todayTasksResult,
+      goalsResult,
       weekTasksResult,
       streakResult,
       scheduleResult,
-      activeProductsResult,
-      transactionResult,
-      conversationsResult,
-      weeklyFocusResult,
+      myItemsResult,
+      buyerOrdersResult,
+      sellerOrdersResult,
       hotPostsResult,
     ] = await Promise.all([
-      safeQuery(() => supabase
-        .from('planner_tasks')
-        .select('id, title, due_date, goals(title)')
-        .eq('user_id', userId)
-        .in('status', ['pending', 'in_progress'])
-        .lte('due_date', today)
-        .order('due_date', { ascending: true })
-        .limit(6), [] as PlannerTaskRow[]),
-      safeQuery(() => supabase.from('goals').select('id', { count: 'exact', head: true }).eq('user_id', userId).in('status', [...ACTIVE_GOAL_STATUSES]), null),
-      safeQuery(() => supabase
-        .from('planner_tasks')
-        .select('is_completed, status')
-        .eq('user_id', userId)
-        .gte('due_date', weekRange.start)
-        .lte('due_date', weekRange.end)
-        .in('status', ['pending', 'in_progress', 'completed']), [] as Array<{ is_completed?: boolean | null; status?: string | null }>),
-      safeQuery(() => supabase.from('user_stats').select('current_daily_streak').eq('user_id', userId).maybeSingle(), null),
-      safeQuery(() => supabase
-        .from('schedule_events')
-        .select('id, title, start_time, end_time, priority')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .lt('start_time', todayRange.end)
-        .or(`end_time.is.null,end_time.gte.${todayRange.start}`)
-        .order('start_time', { ascending: true })
-        .limit(6), [] as ScheduleEventRow[]),
-      safeQuery(() => supabase.from('shop_products').select('id', { count: 'exact', head: true }).eq('seller_id', userId).eq('status', 'active'), null),
-      safeQuery(() => supabase
-        .from('shop_transactions')
-        .select('id, status')
-        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
-        .in('status', ['pending', 'accepted', 'meeting']), []),
-      safeQuery(() => supabase
-        .from('shop_conversations')
-        .select('buyer_id, seller_id, buyer_unread, seller_unread')
-        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`), [] as ShopConversationRow[]),
-      safeQuery(() => supabase
-        .from('study_daily_stats')
-        .select('total_focus_minutes')
-        .eq('user_id', userId)
-        .gte('stat_date', weekRange.start)
-        .lte('stat_date', today), [] as StudyFocusRow[]),
-      safeQuery(() => supabase
-        .from('posts')
-        .select('id, content, author_id, author_name, anonymous_seed, is_anonymous, created_at, likes(count), comments(count)')
-        .order('created_at', { ascending: false })
-        .limit(24), [] as CampusPostRow[]),
+      safeApi<{ tasks: Array<PlannerTaskRow & { status?: string }> }>(`/api/planner/tasks?due_before=${today}`, { tasks: [] }),
+      safeApi<{ goals: Array<{ id: string; status: string }> }>('/api/planner/goals', { goals: [] }),
+      safeApi<{ tasks: Array<{ is_completed?: boolean | null; status?: string | null; due_date?: string | null }> }>(`/api/planner/tasks?due_before=${weekRange.end}`, { tasks: [] }),
+      safeApi<{ current_streak: number }>('/api/health/streak', { current_streak: 0 }),
+      safeApi<{ events: ScheduleEventRow[] }>(`/api/schedule/events?from=${encodeURIComponent(todayRange.start)}&to=${encodeURIComponent(todayRange.end)}`, { events: [] }),
+      safeApi<{ items: Array<{ id: string; status: string }> }>('/api/shop/items?mine=1&limit=50', { items: [] }),
+      safeApi<{ orders: Array<{ id: string; status: string }> }>('/api/shop/orders?role=buyer&limit=50', { orders: [] }),
+      safeApi<{ orders: Array<{ id: string; status: string }> }>('/api/shop/orders?role=seller&limit=50', { orders: [] }),
+      safeApi<{ posts: CampusPostRow[] }>('/api/wall/posts?limit=24', { posts: [] }),
     ])
 
-    const plannerTasks = (plannerTasksResult.data || []) as PlannerTaskRow[]
+    // 今日任务：due_before=today 已含逾期；只保留未完成状态
+    const plannerTasks = (todayTasksResult.data.tasks || [])
+      .filter(task => !task.status || task.status === 'pending' || task.status === 'in_progress')
+      .slice(0, 6)
     const overdueTasks = plannerTasks.filter(task => task.due_date && task.due_date < today).length
-    const weeklyTasks = (weekTasksResult.data || []) as Array<{ is_completed?: boolean | null; status?: string | null }>
-    const weeklyCategories = categorizeWeeklyTasks(weeklyTasks)
-    const weeklyFocusMinutes = ((weeklyFocusResult.data || []) as StudyFocusRow[]).reduce(
-      (sum, row) => sum + (row.total_focus_minutes || 0),
-      0,
+
+    // 本周任务：due_before=weekEnd 拉回后本地截取本周区间
+    const weeklyTasks = (weekTasksResult.data.tasks || []).filter(task =>
+      task.due_date && task.due_date >= weekRange.start && task.due_date <= weekRange.end
+      && (!task.status || ['pending', 'in_progress', 'completed'].includes(task.status)),
     )
-    const pendingTransactions = (transactionResult.data || []).length
-    const unreadMessages = ((conversationsResult.data || []) as ShopConversationRow[]).reduce((sum, conversation) => {
-      if (conversation.buyer_id === userId) return sum + (conversation.buyer_unread || 0)
-      if (conversation.seller_id === userId) return sum + (conversation.seller_unread || 0)
-      return sum
-    }, 0)
-    const activeListings = activeProductsResult.count || 0
+    const weeklyCategories = categorizeWeeklyTasks(weeklyTasks)
+
+    const activeGoals = (goalsResult.data.goals || []).filter(goal => (ACTIVE_GOAL_STATUSES as readonly string[]).includes(goal.status)).length
+    const scheduleEvents = (scheduleResult.data.events || []).slice(0, 6)
+    const activeListings = (myItemsResult.data.items || []).filter(item => item.status === 'on_sale').length
+    const pendingTransactions = [...(buyerOrdersResult.data.orders || []), ...(sellerOrdersResult.data.orders || [])]
+      .filter(order => order.status === 'pending').length
+    const shopState: DashboardDataState = [myItemsResult.state, buyerOrdersResult.state, sellerOrdersResult.state].includes('error') ? 'error' : 'real'
 
     dashboardSnapshot.value = {
       overdueTasks,
       todayTasks: plannerTasks.length,
-      activeGoals: goalsCountResult.count || 0,
-      todayEvents: (scheduleResult.data || []).length,
-      streakDays: (streakResult.data as any)?.current_daily_streak || 0,
+      activeGoals,
+      todayEvents: scheduleEvents.length,
+      streakDays: streakResult.data.current_streak || 0,
       weeklyCompletedTasks: weeklyCategories.completed,
       weeklyInProgressTasks: weeklyCategories.inProgress,
       weeklyNotStartedTasks: weeklyCategories.notStarted,
       weeklyTotalTasks: weeklyCategories.total,
-      weeklyFocusMinutes,
+      // 自建后端暂无专注时长统计源（原 study_daily_stats 未迁移），显式 unavailable 而非伪造
+      weeklyFocusMinutes: null,
       activeListings,
       pendingTransactions,
-      unreadShopMessages: unreadMessages,
+      // 自建后端暂无商品聊天会话，未读数显式置 0 并保持 shop 区块可用
+      unreadShopMessages: 0,
       quickNoteLength: quickNote.value.trim().length,
       metricStates: {
-        todayTasks: plannerTasksResult.state,
-        activeGoals: goalsCountResult.state,
-        activeListings: activeProductsResult.state,
-        pendingTransactions: transactionResult.state,
-        weeklyFocusMinutes: weeklyFocusResult.state,
+        todayTasks: todayTasksResult.state,
+        activeGoals: goalsResult.state,
+        activeListings: myItemsResult.state,
+        pendingTransactions: shopState,
+        weeklyFocusMinutes: 'unavailable',
         streakDays: streakResult.state,
       },
     }
     sectionStates.value = {
-      planner: plannerTasksResult.state === 'error' || goalsCountResult.state === 'error' ? 'error' : 'real',
+      planner: todayTasksResult.state === 'error' || goalsResult.state === 'error' ? 'error' : 'real',
       schedule: scheduleResult.state,
       weekly: weekTasksResult.state,
-      shop: [activeProductsResult.state, transactionResult.state, conversationsResult.state].includes('error') ? 'error' : 'real',
+      shop: shopState,
       campus: hotPostsResult.state,
     }
 
@@ -1159,7 +1109,7 @@ async function loadDashboard() {
       }
     })
 
-    todaySchedule.value = ((scheduleResult.data || []) as ScheduleEventRow[]).map((event) => ({
+    todaySchedule.value = scheduleEvents.map((event) => ({
       id: event.id,
       title: event.title,
       time: formatScheduleTime(event.start_time, event.end_time),
@@ -1168,22 +1118,22 @@ async function loadDashboard() {
     }))
 
     campusHighlights.value = buildCampusHotHighlights(
-      ((hotPostsResult.data || []) as CampusPostRow[])
+      (hotPostsResult.data.posts || [])
         .filter(post => Boolean(post.content?.trim()))
         .map(post => ({
           id: post.id,
           content: post.content,
-          authorId: post.author_id,
-          authorName: post.author_name,
+          authorId: post.user_id,
+          authorName: post.author_nickname,
           anonymousSeed: post.anonymous_seed,
           isAnonymous: post.is_anonymous,
           createdAt: post.created_at,
-          likes: post.likes?.[0]?.count || 0,
-          comments: post.comments?.[0]?.count || 0,
+          likes: post.likes_count || 0,
+          comments: post.comments_count || 0,
         })),
     )
 
-    shopSignals.value = buildShopSignals(activeListings, pendingTransactions, unreadMessages)
+    shopSignals.value = buildShopSignals(activeListings, pendingTransactions, 0)
   } catch (error) {
     console.error('loadDashboard failed:', error)
     sectionStates.value = {

@@ -42,30 +42,41 @@ func scanShopItem(row rowScanner) (shopItemDTO, error) {
 }
 
 // GET /api/shop/items?search=&category=&limit=&offset=（公开，在售）
+// mine=1（需登录）：只看自己发布的商品，且不限 on_sale（含已售出/下架）
 func (a *app) handleListShopItems(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r)
 	search := trimToNil(r.URL.Query().Get("search"))
 	category := trimToNil(r.URL.Query().Get("category"))
 
+	var mineID *string
+	if r.URL.Query().Get("mine") == "1" {
+		uid := userID(r)
+		if uid == "" {
+			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "请先登录")
+			return
+		}
+		mineID = &uid
+	}
+
 	var total int
 	if err := a.pool.QueryRow(r.Context(),
 		`SELECT count(*) FROM shop_items
-		 WHERE status = 'on_sale'
+		 WHERE ($3::uuid IS NULL AND status = 'on_sale' OR seller_id = $3)
 		   AND ($1::text IS NULL OR title ILIKE '%' || $1 || '%' OR description ILIKE '%' || $1 || '%')
 		   AND ($2::text IS NULL OR category = $2)`,
-		search, category).Scan(&total); err != nil {
+		search, category, mineID).Scan(&total); err != nil {
 		writeDBError(w, err)
 		return
 	}
 
 	rows, err := a.pool.Query(r.Context(),
 		`SELECT `+shopItemCols+` FROM shop_items
-		 WHERE status = 'on_sale'
+		 WHERE ($3::uuid IS NULL AND status = 'on_sale' OR seller_id = $3)
 		   AND ($1::text IS NULL OR title ILIKE '%' || $1 || '%' OR description ILIKE '%' || $1 || '%')
 		   AND ($2::text IS NULL OR category = $2)
 		 ORDER BY created_at DESC
-		 LIMIT $3 OFFSET $4`,
-		search, category, limit, offset)
+		 LIMIT $4 OFFSET $5`,
+		search, category, mineID, limit, offset)
 	if err != nil {
 		writeDBError(w, err)
 		return

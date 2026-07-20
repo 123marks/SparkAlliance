@@ -295,7 +295,7 @@ import UpcomingSidebar from '../../components/schedule/UpcomingSidebar.vue'
 import AIImportModal from '../../components/schedule/AIImportModal.vue'
 import ScheduleInsights from '../../components/schedule/ScheduleInsights.vue'
 import { usePlanner, type PlannerTask } from '../../composables/usePlanner'
-import { supabase } from '../../supabase'
+import { apiFetch, getToken } from '../../api/client'
 import {
   useSchedule,
   EVENT_TYPES,
@@ -477,26 +477,25 @@ const loadBacklog = async () => {
   }
   backlogState.value = 'loading'
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session.session?.user.id
-    if (!userId) {
+    if (!getToken()) {
       backlogTasks.value = []
       backlogState.value = 'ready'
       return
     }
-    const { data, error: qError } = await supabase
-      .from('planner_tasks')
-      .select('*, goals(title)')
-      .eq('user_id', userId)
-      .in('status', ['pending', 'in_progress'])
-      .is('schedule_event_id', null)
-      .order('due_date', { ascending: true, nullsFirst: false })
-      .limit(7)
-    if (qError) throw qError
-    backlogTasks.value = (data || []).map((t: PlannerTask & { goals?: { title?: string } | null }) => ({
-      ...t,
-      goalTitle: t.goals?.title || '快捷任务',
-    }))
+    // 待安排 = 未排期（无关联日程事件）的进行中任务，后端 unscheduled=1 过滤
+    const [{ tasks }, { goals }] = await Promise.all([
+      apiFetch<{ tasks: PlannerTask[] }>('/api/planner/tasks?unscheduled=1'),
+      apiFetch<{ goals: Array<{ id: string; title: string }> }>('/api/planner/goals'),
+    ])
+    const goalTitleById = new Map(goals.map(g => [g.id, g.title]))
+    backlogTasks.value = (tasks || [])
+      .filter(t => t.status === 'pending' || t.status === 'in_progress')
+      .sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
+      .slice(0, 7)
+      .map(t => ({
+        ...t,
+        goalTitle: (t.goal_id && goalTitleById.get(t.goal_id)) || '快捷任务',
+      }))
     backlogState.value = 'ready'
   } catch (e) {
     console.warn('[Schedule] backlog load failed:', e)
@@ -834,22 +833,19 @@ const confirmDeleteExecute = async () => {
 
 const handlePushToPlanner = async (event: ScheduleEvent) => {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    if (!session.session) {
+    if (!getToken()) {
       showToast('请先登录', 'error')
       return
     }
-    const { error: err } = await supabase.from('planner_tasks').insert({
-      user_id: session.session.user.id,
-      goal_id: null,
-      title: event.title,
-      description: event.description || `从日程同步: ${event.start_time}`,
-      due_date: event.start_time.slice(0, 10),
-      status: 'pending',
-      is_completed: false,
-      schedule_event_id: event.id || null,
+    await apiFetch('/api/planner/tasks', {
+      body: {
+        goal_id: null,
+        title: event.title,
+        description: event.description || `从日程同步: ${event.start_time}`,
+        due_date: event.start_time.slice(0, 10),
+        schedule_event_id: event.id || null,
+      },
     })
-    if (err) throw err
     showToast(`「${event.title}」已推送到规划`, 'success')
   } catch {
     showToast('推送失败，请稍后重试', 'error')
@@ -858,18 +854,14 @@ const handlePushToPlanner = async (event: ScheduleEvent) => {
 
 const handleShareToWall = async (event: ScheduleEvent) => {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    if (!session.session) {
+    if (!getToken()) {
       showToast('请先登录', 'error')
       return
     }
     const content = `📅 ${event.title}\n🕒 ${event.start_time.replace('T', ' ').slice(0, 16)}${event.location ? `\n📍 ${event.location}` : ''}${event.description ? `\n${event.description}` : ''}`
-    const { error: err } = await supabase.from('posts').insert({
-      author_id: session.session.user.id,
-      content,
-      is_anonymous: false,
+    await apiFetch('/api/wall/posts', {
+      body: { content, category: 'share', tags: ['日程'], media_urls: [], is_anonymous: false },
     })
-    if (err) throw err
     showToast('已分享到校园墙', 'success')
   } catch {
     showToast('分享失败，请稍后重试', 'error')
