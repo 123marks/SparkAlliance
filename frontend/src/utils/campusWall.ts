@@ -70,6 +70,8 @@ export interface WallPost {
   region?: string | null
   isOfficial?: boolean
   isVerified?: boolean
+  /** 推荐接口（GET /api/wall/recommended）返回的可解释推荐理由，仅推荐 tab 展示 */
+  reason?: string
 }
 
 /** 星火墙评论视图模型 —— 同上共用 */

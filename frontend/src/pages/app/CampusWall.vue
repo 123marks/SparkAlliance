@@ -300,6 +300,7 @@
                   <span v-if="post.school && !post.isAnonymous" class="school-badge">{{ post.school }}</span>
                   <span class="tag" :class="post.categoryClass">{{ post.categoryLabel }}</span>
                   <span v-if="post.mood" class="post-mood-chip" :title="post.mood">{{ post.mood }}</span>
+                  <span v-if="activeTab === '推荐' && post.reason" class="reason-chip" :title="post.reason">✨ {{ post.reason }}</span>
                 </h4>
                 <span class="time">{{ post.time }}</span>
               </div>
@@ -1009,18 +1010,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAuth } from '../../composables/useAuth'
-import { supabase } from '../../supabase'
+import { apiFetch, apiUpload, API_BASE, ApiError } from '../../api/client'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import WallPostDetail from '../../components/wall/WallPostDetail.vue'
 import CosmicBackground from '../../components/CosmicBackground.vue'
 import {
-  ANONYMOUS_PLACEHOLDER_NAME,
-  buildCampusWallUploadOptions,
-  createAnonymousSeed,
-  createStorageObjectPath,
-  extractStoragePathFromPublicUrl,
   inferAnonymousState,
-  isSupportedVideoFile,
   resolveAuthorDisplay,
   type WallPost,
   type WallComment,
@@ -1042,25 +1037,16 @@ const myProfile = ref<UserProfile>({
   nickname: '', avatar_url: '', university: '', bio: '', level: 1, credit_score: 80
 })
 
+// 个人资料直接取 useAuth 的 user_metadata（自建后端 /auth/me 序列化字段）
 const loadMyProfile = async () => {
   if (!user.value) return
-  try {
-    const { data } = await supabase
-      .from('spark_profiles')
-      .select('nickname, avatar_url, university, bio')
-      .eq('user_id', user.value.id)
-      .maybeSingle()
-    if (data) {
-      myProfile.value = {
-        ...myProfile.value,
-        nickname: data.nickname || '',
-        avatar_url: data.avatar_url || '',
-        university: data.university || '',
-        bio: data.bio || '',
-      }
-    }
-  } catch {
-    // spark_profiles 表可能不存在
+  const meta = user.value.user_metadata || {}
+  myProfile.value = {
+    ...myProfile.value,
+    nickname: meta.nickname || '',
+    avatar_url: meta.avatar_url || '',
+    university: meta.university || meta.school || '',
+    bio: meta.bio || '',
   }
 }
 
@@ -1108,6 +1094,8 @@ function normalizeCampusMeta(s: string | undefined | null): string {
 const switchTab = (tab: string) => {
   activeTab.value = tab
   if (tab !== '推荐') activeTagFilter.value = null
+  // 切到推荐 tab 时刷新服务端推荐
+  if (tab === '推荐') fetchRecommended()
   // 切换 tab 时强制关闭发布面板并重置
   if (composerExpanded.value) {
     composerExpanded.value = false
@@ -1145,7 +1133,13 @@ const selectedFiles = ref<File[]>([])
 const previewUrls = ref<string[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const MAX_MEDIA_FILE_SIZE = 50 * 1024 * 1024
+// 自建后端 POST /api/uploads 限制：≤5MB，扩展名白名单
+const MAX_MEDIA_FILE_SIZE = 5 * 1024 * 1024
+const UPLOAD_ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm']
+const isUploadableFile = (file: File): boolean => {
+  const name = file.name.toLowerCase()
+  return UPLOAD_ALLOWED_EXTS.some(ext => name.endsWith(ext))
+}
 const MAX_POST_MEDIA_COUNT = 9
 const MAX_COMMENT_MEDIA_COUNT = 4
 
@@ -1245,7 +1239,8 @@ const collectValidMediaFiles = (incomingFiles: File[], existingCount: number, ma
       continue
     }
 
-    if (file.type.startsWith('video') && !isSupportedVideoFile(file)) {
+    // 上传白名单（后端 /api/uploads 约束）：png/jpg/jpeg/webp/gif/mp4/webm
+    if (!isUploadableFile(file)) {
       skippedVideoFiles.push(file)
       continue
     }
@@ -1274,11 +1269,11 @@ const onImagesSelected = (e: Event) => {
   const nextFiles = [...selectedFiles.value, ...validation.accepted]
 
   if (validation.skippedLargeFiles.length > 0) {
-    showToast('Some files are larger than 50MB and were skipped.', 'error')
+    showToast('部分文件超过 5MB 已跳过', 'error')
   } else if (validation.skippedVideoFiles.length > 0) {
-    showToast('Videos must be MP4, WebM, or Ogg for reliable playback.', 'error')
+    showToast('仅支持 png/jpg/jpeg/webp/gif/mp4/webm 格式', 'error')
   } else if (validation.skippedOverflowCount > 0) {
-    showToast('You can upload up to 9 files per post.', 'error')
+    showToast('每帖最多上传 9 个文件', 'error')
   }
 
   applySelectedFiles(selectedFiles, previewUrls, nextFiles)
@@ -1402,60 +1397,94 @@ function effectivePostCategory(): string {
   return selectedCategory.value
 }
 
-// ====== 数据获取 ======
+// ====== 数据获取（自建 Go 后端，BACKEND-CONTRACT.md §4.2 / §4.3f） ======
+
+/** 后端 wall.go postDTO 行结构 */
+interface ApiWallPost {
+  id: string
+  user_id: string
+  content: string
+  category: string
+  tags: string[] | null
+  media_urls: string[] | null
+  is_anonymous: boolean
+  anonymous_seed: string
+  likes_count: number
+  comments_count: number
+  status: string
+  created_at: string
+  author_nickname: string
+  author_avatar: string
+  liked: boolean
+  /** 仅 /api/wall/recommended 响应携带 */
+  reason?: string
+}
+
+/** 后端 wall.go commentDTO 行结构 */
+interface ApiWallComment {
+  id: string
+  post_id: string
+  user_id: string
+  content: string
+  media_urls: string[] | null
+  is_anonymous: boolean
+  anonymous_seed: string
+  reply_to_name: string
+  like_count: number
+  created_at: string
+  author_nickname: string
+  author_avatar: string
+  liked: boolean
+}
+
+/** 后端返回的 /uploads/xx 相对路径转绝对；已是绝对 URL 原样返回 */
+const resolveMediaUrl = (url: string): string =>
+  url.startsWith('http') ? url : `${API_BASE}${url}`
+
+/** 后端 postDTO → 页面 WallPost 视图模型 */
+const mapApiPost = (p: ApiWallPost): Post => {
+  const isAnon = inferAnonymousState({ author_name: p.author_nickname, is_anonymous: p.is_anonymous })
+  const catInfo = resolveCategoryDisplay(p.category)
+  const display = resolveAuthorDisplay({
+    anonymous: isAnon,
+    authorId: isAnon ? undefined : p.user_id,
+    authorName: p.author_nickname,
+    anonymousSeed: p.anonymous_seed || p.id,
+    fallbackSeed: p.id,
+  })
+  return {
+    id: p.id,
+    author: p.author_nickname || display.name,
+    authorId: p.user_id,
+    anonymousSeed: p.anonymous_seed || undefined,
+    authorInitial: display.initial,
+    avatarBg: display.avatarBg,
+    isAnonymous: isAnon,
+    categoryLabel: catInfo.label,
+    categoryClass: catInfo.cls,
+    mood: null,
+    school: null,
+    region: null,
+    isOfficial: false,
+    isVerified: false,
+    time: formatTime(p.created_at),
+    createdAt: p.created_at,
+    content: p.content,
+    tags: p.tags || [],
+    mediaUrls: (p.media_urls || []).filter(url => !!url).map(resolveMediaUrl),
+    likes: p.likes_count || 0,
+    comments: p.comments_count || 0,
+    liked: p.liked || false,
+    category: p.category || 'general',
+    reason: p.reason,
+  }
+}
+
 const fetchPosts = async () => {
   isLoading.value = true
   try {
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select('*, likes(count), comments(count)')
-      .neq('is_hidden', true)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    if (postsError) throw postsError
-
-    if (postsData) {
-      // 获取当前用户的点赞列表
-      let likedPostIds = new Set<string>()
-      if (user.value) {
-        const { data: userLikes } = await supabase
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', user.value.id)
-        likedPostIds = new Set(userLikes?.map(l => l.post_id) || [])
-      }
-
-      posts.value = postsData.map(p => {
-        const isAnon = inferAnonymousState(p)
-        const catInfo = resolveCategoryDisplay(p.category)
-        return {
-          id: p.id,
-          author: p.author_name,
-          authorId: p.author_id,
-          anonymousSeed: p.anonymous_seed,
-          authorInitial: isAnon ? '' : p.author_name.charAt(0).toUpperCase(),
-          avatarBg: isAnon ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-purple))',
-          isAnonymous: isAnon,
-          categoryLabel: catInfo.label,
-          categoryClass: catInfo.cls,
-          mood: (p as { mood?: string }).mood || null,
-          school: (p as { school?: string }).school ?? null,
-          region: (p as { region?: string }).region ?? null,
-          isOfficial: (p as { is_official?: boolean }).is_official ?? false,
-          isVerified: (p as { is_verified?: boolean }).is_verified ?? false,
-          time: formatTime(p.created_at),
-          createdAt: p.created_at,
-          content: p.content,
-          tags: p.tags || [],
-          mediaUrls: (p.media_urls || []).filter((url: string) => url && url.startsWith('http')),
-          likes: p.likes?.[0]?.count || 0,
-          comments: p.comments?.[0]?.count ?? p.comment_count ?? p.comments_count ?? 0,
-          liked: likedPostIds.has(p.id),
-          category: p.category || 'general'
-        }
-      })
-    }
+    const data = await apiFetch<{ posts: ApiWallPost[]; total: number }>('/api/wall/posts?limit=50&offset=0')
+    posts.value = (data.posts || []).map(mapApiPost)
   } catch (error) {
     console.error('获取帖子失败:', error)
   } finally {
@@ -1463,6 +1492,22 @@ const fetchPosts = async () => {
       posts.value = generateDemoPosts()
     }
     isLoading.value = false
+  }
+}
+
+// 推荐 tab 数据（GET /api/wall/recommended，服务端已按 score 排序，响应带 reason）
+const recommendedPosts = ref<Post[]>([])
+const recommendedLoaded = ref(false)
+
+const fetchRecommended = async () => {
+  try {
+    const data = await apiFetch<{ posts: ApiWallPost[] }>('/api/wall/recommended?limit=20')
+    recommendedPosts.value = (data.posts || []).map(mapApiPost)
+    recommendedLoaded.value = true
+  } catch (error) {
+    // 推荐接口失败时静默降级为全量列表客户端排序（filteredPosts 兜底）
+    console.error('获取推荐失败:', error)
+    recommendedLoaded.value = false
   }
 }
 
@@ -1550,46 +1595,20 @@ const formatTime = (dateStr: string): string => {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
+// 自建后端暂无 follows 端点：关注列表保持为空（「关注」tab 走既有空态提示）
 const fetchFollowingIds = async () => {
   if (!user.value) return
-  try {
-    const { data } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', user.value.id)
-    if (data) {
-      followingIds.value = new Set(data.map(d => d.following_id))
-    }
-  } catch {
-    // follows 表可能尚未创建，静默忽略
-  }
 }
 
 onMounted(() => {
   if (user.value) {
     fetchPosts()
+    fetchRecommended()
     fetchFollowingIds()
     loadMyProfile()
   } else {
-    setTimeout(() => { fetchPosts(); fetchFollowingIds(); loadMyProfile() }, 1000)
+    setTimeout(() => { fetchPosts(); fetchRecommended(); fetchFollowingIds(); loadMyProfile() }, 1000)
   }
-
-  // 订阅评论实时更新
-  commentsRealtimeChannel = supabase
-    .channel('campus-wall-comments')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, async (payload) => {
-      const changedPostId = (payload.new as { post_id?: string } | null)?.post_id
-        || (payload.old as { post_id?: string } | null)?.post_id
-
-      if (!changedPostId) return
-
-      await refreshPostCommentCount(changedPostId)
-
-      if (commentDrawerOpen.value && activePostForComment.value?.id === changedPostId) {
-        await fetchComments(changedPostId)
-      }
-    })
-    .subscribe()
 
   // 点击页面其他区域关闭下拉菜单
   document.addEventListener('click', closeDropdown)
@@ -1600,12 +1619,6 @@ onBeforeUnmount(() => {
   // 清理 ObjectURL
   previewUrls.value.forEach(url => URL.revokeObjectURL(url))
   commentPreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
-
-  // 清理 Realtime 订阅
-  if (commentsRealtimeChannel) {
-    supabase.removeChannel(commentsRealtimeChannel)
-    commentsRealtimeChannel = null
-  }
 
   // 移除事件监听
   document.removeEventListener('click', closeDropdown)
@@ -1849,6 +1862,7 @@ const dailyTasks = computed(() => {
 
 function refreshDailyTasks() {
   fetchPosts()
+  fetchRecommended()
 }
 
 const activityIndex = computed(() => {
@@ -2010,6 +2024,10 @@ const filteredPosts = computed(() => {
       return [...applyFilters(posts.value.filter(p => p.category === 'lost'))].sort(byTime)
     case '推荐':
     default:
+      // 推荐 tab 走服务端个性化推荐（已按 score 排序，带 reason）；未加载成功时回退客户端热度排序
+      if (recommendedLoaded.value && recommendedPosts.value.length > 0) {
+        return applyFilters(recommendedPosts.value)
+      }
       return [...applyFilters(posts.value)].sort((a, b) => {
         const heatA = a.likes * 2 + a.comments * 3
         const heatB = b.likes * 2 + b.comments * 3
@@ -2034,10 +2052,11 @@ const toggleLike = async (post: Post) => {
   post.likes += post.liked ? 1 : -1
 
   try {
-    const { error } = post.liked
-      ? await supabase.from('likes').insert({ post_id: post.id, user_id: user.value.id })
-      : await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.value.id)
-    if (error) throw error
+    const res = await apiFetch<{ liked: boolean; likes_count: number }>(
+      `/api/wall/posts/${post.id}/like`, { method: 'POST', body: {} })
+    // 以服务端计数为准校正
+    post.liked = res.liked
+    post.likes = res.likes_count
   } catch (error) {
     console.error('点赞失败:', error)
     post.liked = originalLiked
@@ -2061,7 +2080,6 @@ const commentVideoInputRef = ref<HTMLInputElement | null>(null)
 const isCommentAnonymous = ref(false)
 const isSubmittingComment = ref(false)
 const replyToComment = ref<Comment | null>(null)
-let commentsRealtimeChannel: ReturnType<typeof supabase.channel> | null = null
 
 // 图片放大
 const lightboxUrl = ref('')
@@ -2106,18 +2124,35 @@ const openComments = async (post: Post) => {
   await fetchComments(post.id)
 }
 
-const refreshPostCommentCount = async (postId: string) => {
-  const { count, error } = await supabase
-    .from('comments')
-    .select('*', { count: 'exact', head: true })
-    .eq('post_id', postId)
-
-  if (error || typeof count !== 'number') return
-
-  const targetPost = posts.value.find(post => post.id === postId)
-  if (targetPost) targetPost.comments = count
-  if (activePostForComment.value?.id === postId) {
-    activePostForComment.value.comments = count
+/** 后端 commentDTO → 页面 WallComment 视图模型 */
+const mapApiComment = (c: ApiWallComment): Comment => {
+  const isAnon = inferAnonymousState({ author_name: c.author_nickname, is_anonymous: c.is_anonymous })
+  const display = resolveAuthorDisplay({
+    anonymous: isAnon,
+    authorId: isAnon ? undefined : c.user_id,
+    authorName: c.author_nickname,
+    anonymousSeed: c.anonymous_seed || c.id,
+    fallbackSeed: c.id,
+  })
+  return {
+    id: c.id,
+    authorId: c.user_id,
+    authorName: c.author_nickname || display.name,
+    anonymousSeed: c.anonymous_seed || undefined,
+    authorInitial: display.initial,
+    avatarBg: display.avatarBg,
+    isAnonymous: isAnon,
+    content: c.content || '',
+    mediaUrls: (c.media_urls || []).filter(url => !!url).map(resolveMediaUrl),
+    time: formatTime(c.created_at),
+    createdAt: c.created_at,
+    isOwn: !!user.value && user.value.id === c.user_id,
+    replyToName: c.reply_to_name || null,
+    liked: c.liked || false,
+    likeCount: c.like_count || 0,
+    // 后端只下发 is_hidden=false 的评论
+    isHidden: false,
+    reportCount: 0,
   }
 }
 
@@ -2125,66 +2160,13 @@ const refreshPostCommentCount = async (postId: string) => {
 const fetchComments = async (postId: string) => {
   commentLoading.value = true
   try {
-    const { data, error } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true })
-    if (!error && data) {
-      // 查询当前用户已点赞的评论
-      let likedCommentIds = new Set<string>()
-      if (user.value) {
-        const { data: userCLikes } = await supabase
-          .from('comment_likes')
-          .select('comment_id')
-          .eq('user_id', user.value.id)
-        likedCommentIds = new Set(userCLikes?.map(l => l.comment_id) || [])
-      }
-      // 构建回复名称映射
-      const idNameMap: Record<string, string> = {}
-      data.forEach(c => {
-        idNameMap[c.id] = resolveAuthorDisplay({
-          anonymous: inferAnonymousState(c),
-          authorId: c.is_anonymous ? undefined : c.author_id,
-          authorName: c.author_name,
-          anonymousSeed: c.anonymous_seed || c.id,
-          fallbackSeed: c.id,
-        }).name
-      })
-      commentList.value = data.map(c => {
-        const isAnon = inferAnonymousState(c)
-        const display = resolveAuthorDisplay({
-          anonymous: isAnon,
-          authorId: isAnon ? undefined : c.author_id,
-          authorName: c.author_name,
-          anonymousSeed: c.anonymous_seed || c.id,
-          fallbackSeed: c.id,
-        })
-        return {
-        id: c.id,
-        authorId: c.author_id,
-        authorName: c.author_name,
-        anonymousSeed: c.anonymous_seed,
-        authorInitial: display.initial,
-        avatarBg: display.avatarBg,
-        isAnonymous: isAnon,
-        content: c.content || '',
-        mediaUrls: (c.media_urls || []).filter((url: string) => url && url.startsWith('http')),
-        time: formatTime(c.created_at),
-        createdAt: c.created_at,
-        isOwn: user.value?.id === c.author_id,
-        replyToName: c.reply_to ? (idNameMap[c.reply_to] || '某同学') : null,
-        liked: likedCommentIds.has(c.id),
-        likeCount: c.like_count || 0,
-        isHidden: c.is_hidden || false,
-        reportCount: c.report_count || 0
-      }})
-      const realCommentCount = data.length
-      const targetPost = posts.value.find(post => post.id === postId)
-      if (targetPost) targetPost.comments = realCommentCount
-      if (activePostForComment.value?.id === postId) {
-        activePostForComment.value.comments = realCommentCount
-      }
+    const data = await apiFetch<{ comments: ApiWallComment[] }>(`/api/wall/posts/${postId}/comments?limit=50&offset=0`)
+    commentList.value = (data.comments || []).map(mapApiComment)
+    const realCommentCount = commentList.value.length
+    const targetPost = posts.value.find(post => post.id === postId)
+    if (targetPost) targetPost.comments = realCommentCount
+    if (activePostForComment.value?.id === postId) {
+      activePostForComment.value.comments = realCommentCount
     }
   } catch (err) {
     console.error('获取评论失败:', err)
@@ -2193,61 +2175,34 @@ const fetchComments = async (postId: string) => {
   }
 }
 
-// 提交评论
+// 提交评论（POST /api/wall/posts/:id/comments）
 const submitComment = async () => {
   if (!newCommentText.value.trim() && commentFiles.value.length === 0) return
   if (!user.value) { showToast('请先登录', 'error'); return }
   if (!activePostForComment.value) return
-  const { data: sanctions } = await supabase
-    .from('user_sanctions')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .in('type', ['comment_ban', 'full_ban'])
-    .gt('expires_at', new Date().toISOString())
-    .limit(1)
-  if (sanctions && sanctions.length > 0) {
-    const expiresAt = new Date(sanctions[0].expires_at)
-    const remainDays = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
-    showToast(`评论权限已被限制，还剩 ${remainDays} 天恢复`, 'error')
-    return
-  }
   isSubmittingComment.value = true
   try {
     const uploadedUrls: string[] = []
     let commentUploadFails = 0
     for (const file of commentFiles.value) {
-      const path = createStorageObjectPath('comments', user.value.id, file)
-      const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
-        uploadedUrls.push(urlData.publicUrl)
-      } else {
+      try {
+        uploadedUrls.push(await apiUpload(file))
+      } catch {
         commentUploadFails++
       }
     }
     if (commentUploadFails > 0) {
       showToast(`${commentUploadFails} 个附件上传失败`, 'error')
     }
-    const authorName = isCommentAnonymous.value ? ANONYMOUS_PLACEHOLDER_NAME : displayName.value
-    const anonymousSeed = isCommentAnonymous.value ? createAnonymousSeed() : null
-    const commentPayload = {
-      post_id: activePostForComment.value.id,
-      author_id: user.value.id,
-      author_name: authorName,
-      content: newCommentText.value.trim(),
-      media_urls: uploadedUrls,
-      is_anonymous: isCommentAnonymous.value,
-      anonymous_seed: anonymousSeed,
-      reply_to: replyToComment.value?.id || null
-    }
-    let { error } = await supabase.from('comments').insert(commentPayload)
-    if (error && /anonymous_seed|is_anonymous/i.test(error.message || '')) {
-      const { anonymous_seed, is_anonymous, ...legacyCommentPayload } = commentPayload
-      ;({ error } = await supabase.from('comments').insert(legacyCommentPayload))
-    }
-    if (error) throw error
-    // 更新本地帖子评论数
-    void activePostForComment.value
+    await apiFetch<ApiWallComment>(`/api/wall/posts/${activePostForComment.value.id}/comments`, {
+      method: 'POST',
+      body: {
+        content: newCommentText.value.trim(),
+        is_anonymous: isCommentAnonymous.value,
+        reply_to_name: replyToComment.value ? getCommentAuthorDisplay(replyToComment.value).name : '',
+        media_urls: uploadedUrls,
+      },
+    })
     // 重置输入
     newCommentText.value = ''
     commentFiles.value = []
@@ -2256,21 +2211,21 @@ const submitComment = async () => {
     isCommentAnonymous.value = false
     replyToComment.value = null
     showEmojiPicker.value = false
+    // 成功后拉取最新评论（含刚发的一条）并同步本地评论数
     await fetchComments(activePostForComment.value.id)
     showToast('评论成功', 'success')
-  } catch {
-    showToast('评论失败，请重试', 'error')
+  } catch (error) {
+    showToast(error instanceof ApiError ? `评论失败：${error.message}` : '评论失败，请重试', 'error')
   } finally {
     isSubmittingComment.value = false
   }
 }
 
-// 删除评论
+// 删除评论（后端契约 §4.2 暂无评论删除端点，先按 REST 惯例调用，404 时明确提示）
 const deleteComment = async (commentId: string) => {
   if (!user.value || !activePostForComment.value) return
   try {
-    const { error } = await supabase.from('comments').delete().eq('id', commentId).eq('author_id', user.value.id)
-    if (error) throw error
+    await apiFetch(`/api/wall/comments/${commentId}`, { method: 'DELETE' })
     // 更新本地评论数
     const post = posts.value.find(p => p.id === activePostForComment.value!.id)
     commentList.value = commentList.value.filter(c => c.id !== commentId)
@@ -2278,8 +2233,12 @@ const deleteComment = async (commentId: string) => {
     if (post) post.comments = realCommentCount
     activePostForComment.value.comments = realCommentCount
     showToast('评论已删除', 'success')
-  } catch {
-    showToast('删除失败', 'error')
+  } catch (error) {
+    if (error instanceof ApiError && error.httpStatus === 404) {
+      showToast('评论删除暂未开放', 'error')
+    } else {
+      showToast('删除失败', 'error')
+    }
   }
 }
 
@@ -2291,11 +2250,11 @@ const onCommentFileSelected = (e: Event) => {
   const nextFiles = [...commentFiles.value, ...validation.accepted]
 
   if (validation.skippedLargeFiles.length > 0) {
-    showToast('Some attachments are larger than 50MB and were skipped.', 'error')
+    showToast('部分附件超过 5MB 已跳过', 'error')
   } else if (validation.skippedVideoFiles.length > 0) {
-    showToast('Comment videos must be MP4, WebM, or Ogg.', 'error')
+    showToast('仅支持 png/jpg/jpeg/webp/gif/mp4/webm 格式', 'error')
   } else if (validation.skippedOverflowCount > 0) {
-    showToast('You can upload up to 4 attachments per comment.', 'error')
+    showToast('每条评论最多 4 个附件', 'error')
   }
 
   applySelectedFiles(commentFiles, commentPreviewUrls, nextFiles)
@@ -2307,7 +2266,7 @@ const removeCommentFile = (i: number) => {
   commentPreviewUrls.value.splice(i, 1)
 }
 
-// 评论点赞
+// 评论点赞（POST /api/wall/comments/:id/like，toggle）
 const toggleCommentLike = async (comment: Comment) => {
   if (!user.value) { showToast('请先登录', 'error'); return }
   // 乐观更新
@@ -2316,10 +2275,10 @@ const toggleCommentLike = async (comment: Comment) => {
   comment.liked = !comment.liked
   comment.likeCount += comment.liked ? 1 : -1
   try {
-    const { error } = comment.liked
-      ? await supabase.from('comment_likes').insert({ comment_id: comment.id, user_id: user.value.id })
-      : await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', user.value.id)
-    if (error) throw error
+    const res = await apiFetch<{ liked: boolean; like_count: number }>(
+      `/api/wall/comments/${comment.id}/like`, { method: 'POST', body: {} })
+    comment.liked = res.liked
+    comment.likeCount = res.like_count
   } catch {
     comment.liked = originalLiked
     comment.likeCount = originalCount
@@ -2397,22 +2356,20 @@ const openAppeal = (comment: Comment) => {
   appealModalOpen.value = true
 }
 
+// 申诉走举报通道落库（reports 表），管理员在举报列表可见（后端暂无独立申诉端点）
 const submitAppeal = async () => {
   if (!user.value || !appealComment.value || !appealReason.value.trim()) return
   isSubmittingAppeal.value = true
   try {
-    const { error } = await supabase.from('content_appeals').insert({
-      user_id: user.value.id,
-      comment_id: appealComment.value.id,
-      reason: appealReason.value.trim()
+    await apiFetch('/api/wall/reports', {
+      method: 'POST',
+      body: {
+        comment_id: appealComment.value.id,
+        reason: `【申诉评论隐藏】${appealReason.value.trim()}`,
+      },
     })
-    if (error) {
-      if (error.code === '23505') showToast('你已对此评论申诉过', 'error')
-      else throw error
-    } else {
-      appealModalOpen.value = false
-      showToast('申诉已提交，我们将尽快处理', 'success')
-    }
+    appealModalOpen.value = false
+    showToast('申诉已提交，我们将尽快处理', 'success')
   } catch {
     showToast('申诉提交失败', 'error')
   } finally {
@@ -2420,7 +2377,7 @@ const submitAppeal = async () => {
   }
 }
 
-// 提交举报
+// 提交举报（POST /api/wall/reports，post_id/comment_id 二选一；类型/描述/证据 URL 合入 reason 文本）
 const submitReport = async () => {
   if (!reportCategory.value) { showToast('请选择举报类型', 'error'); return }
   if (!user.value || !activePostForReport.value) return
@@ -2429,48 +2386,33 @@ const submitReport = async () => {
     const evidenceUrls: string[] = []
     let evidenceUploadFails = 0
     for (const file of reportEvidenceFiles.value) {
-      const path = createStorageObjectPath('reports', user.value.id, file)
-      const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
-        evidenceUrls.push(urlData.publicUrl)
-      } else {
+      try {
+        evidenceUrls.push(await apiUpload(file))
+      } catch {
         evidenceUploadFails++
       }
     }
     if (evidenceUploadFails > 0) {
       showToast(`${evidenceUploadFails} 个证据文件上传失败`, 'error')
     }
-    const reportPayload: Record<string, unknown> = {
-      reporter_id: user.value.id,
-      reason: reportCategory.value,
-      reason_category: reportCategory.value,
-      description: reportDescription.value.trim(),
-      evidence_urls: evidenceUrls,
-      status: 'pending'
-    }
-    // 区分帖子举报 vs 评论举报
+    const catLabel = reportCategories.find(c => c.value === reportCategory.value)?.label || reportCategory.value
+    let reason = `【${catLabel}】`
+    if (reportDescription.value.trim()) reason += reportDescription.value.trim()
+    if (evidenceUrls.length > 0) reason += `（证据：${evidenceUrls.join('，')}）`
+
+    const body: Record<string, unknown> = { reason }
+    // 区分帖子举报 vs 评论举报（后端要求二选一）
     if (activeCommentForReport.value) {
-      reportPayload.comment_id = activeCommentForReport.value.id
-      reportPayload.post_id = activePostForReport.value.id
+      body.comment_id = activeCommentForReport.value.id
     } else {
-      reportPayload.post_id = activePostForReport.value.id
+      body.post_id = activePostForReport.value.id
     }
-    const { error } = await supabase.from('reports').insert(reportPayload)
-    if (error) {
-      // UNIQUE 冲突 = 已举报过
-      if (error.code === '23505') {
-        const targetId = activeCommentForReport.value?.id || activePostForReport.value.id
-        reportedPostIds.value.add(targetId)
-        showToast('你已举报过该内容', 'error')
-      } else throw error
-    } else {
-      const targetId = activeCommentForReport.value?.id || activePostForReport.value.id
-      reportedPostIds.value.add(targetId)
-      activeCommentForReport.value = null
-      reportModalOpen.value = false
-      showToast('举报已提交，我们将在 24 小时内处理', 'success')
-    }
+    await apiFetch('/api/wall/reports', { method: 'POST', body })
+    const targetId = activeCommentForReport.value?.id || activePostForReport.value.id
+    reportedPostIds.value.add(targetId)
+    activeCommentForReport.value = null
+    reportModalOpen.value = false
+    showToast('举报已提交，我们将在 24 小时内处理', 'success')
   } catch {
     showToast('提交失败，请重试', 'error')
   } finally {
@@ -2522,7 +2464,7 @@ const toggleDropdown = (postId: string) => {
 // 点击页面其他区域关闭下拉
 const closeDropdown = () => { activeDropdown.value = null }
 
-// ====== 删除帖子 ======
+// ====== 删除帖子（DELETE /api/wall/posts/:id，后端软删 status='deleted'） ======
 const deletePost = async (post: Post) => {
   activeDropdown.value = null
   if (!user.value || post.authorId !== user.value.id) {
@@ -2531,20 +2473,10 @@ const deletePost = async (post: Post) => {
   }
 
   try {
-    const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('author_id', user.value.id)
-    if (error) throw error
+    await apiFetch(`/api/wall/posts/${post.id}`, { method: 'DELETE' })
     posts.value = posts.value.filter(p => p.id !== post.id)
+    recommendedPosts.value = recommendedPosts.value.filter(p => p.id !== post.id)
     showToast('帖子已删除', 'success')
-
-    // DB 删除成功后再清理 Storage（失败不影响用户体验）
-    if (post.mediaUrls.length > 0) {
-      const paths = post.mediaUrls
-        .map(url => extractStoragePathFromPublicUrl(url))
-        .filter((p): p is string => !!p)
-      if (paths.length > 0) {
-        await supabase.storage.from('campus-wall').remove(paths).catch(() => {})
-      }
-    }
   } catch (error) {
     console.error('删除失败:', error)
     showToast('删除失败，请稍后重试', 'error')
@@ -2565,68 +2497,10 @@ const isReliableVideoUrl = (url: string): boolean => {
   return reliableExts.some(ext => lower.endsWith(ext))
 }
 
-const isColumnError = (err: { message?: string; code?: string } | null): boolean => {
-  if (!err) return false
-  const s = `${err.message || ''} ${err.code || ''}`
-  return /42703|PGRST204|schema cache|column|undefined/i.test(s)
-}
-
-const tryInsertPost = async (payload: Record<string, unknown>): Promise<{ error: any }> => {
-  const full = { ...payload }
-  let { error } = await supabase.from('posts').insert(full)
-  if (!error) return { error: null }
-
-  // 降级1：去掉 anonymous_seed / is_anonymous（migration_v2 未执行）
-  if (isColumnError(error) || /anonymous_seed|is_anonymous/i.test(error.message || '')) {
-    const p1 = { ...full }
-    delete p1.anonymous_seed
-    delete p1.is_anonymous
-    ;({ error } = await supabase.from('posts').insert(p1))
-    if (!error) return { error: null }
-
-    // 降级2：再去掉 mood / school / region（migration_v3 未执行）
-    if (isColumnError(error) || /mood|school|region/i.test(error.message || '')) {
-      const p2 = { ...p1 }
-      delete p2.mood
-      delete p2.school
-      delete p2.region
-      ;({ error } = await supabase.from('posts').insert(p2))
-      if (!error) return { error: null }
-
-      // 降级3：只保留最基本字段（极端降级）
-      if (isColumnError(error) || /category|tags|media_urls/i.test(error.message || '')) {
-        const p3: Record<string, unknown> = {
-          content: full.content,
-          author_id: full.author_id,
-          author_name: full.author_name,
-        }
-        ;({ error } = await supabase.from('posts').insert(p3))
-      }
-    }
-  }
-  // 降级分支: 从 mood/school/region 开始
-  else if (/mood|school|region/i.test(error.message || '')) {
-    const p2 = { ...full }
-    delete p2.mood
-    delete p2.school
-    delete p2.region
-    ;({ error } = await supabase.from('posts').insert(p2))
-  }
-
-  return { error }
-}
-
 const submitPost = async () => {
   if (!newPostContent.value.trim()) return
   if (!user.value) {
     showToast('请先登录后再发布', 'error')
-    return
-  }
-
-  // 确保 session 有效
-  const { data: sessionData } = await supabase.auth.getSession()
-  if (!sessionData.session) {
-    showToast('登录状态已过期，请重新登录', 'error')
     return
   }
 
@@ -2640,36 +2514,15 @@ const submitPost = async () => {
     return
   }
 
-  try {
-    const { data: postSanctions } = await supabase
-      .from('user_sanctions')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .in('type', ['post_ban', 'full_ban'])
-      .gt('expires_at', new Date().toISOString())
-      .limit(1)
-    if (postSanctions && postSanctions.length > 0) {
-      const expiresAt = new Date(postSanctions[0].expires_at)
-      const remainDays = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
-      showToast(`发帖权限已被限制，还剩 ${remainDays} 天恢复`, 'error')
-      return
-    }
-  } catch {
-    // user_sanctions 表不存在时忽略，不阻塞发帖
-  }
-
   isSubmitting.value = true
 
   try {
     const uploadedUrls: string[] = []
     let uploadFailCount = 0
     for (const file of selectedFiles.value) {
-      const path = createStorageObjectPath('posts', user.value.id, file)
-      const { data, error } = await supabase.storage.from('campus-wall').upload(path, file, buildCampusWallUploadOptions(file))
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
-        uploadedUrls.push(urlData.publicUrl)
-      } else {
+      try {
+        uploadedUrls.push(await apiUpload(file))
+      } catch {
         uploadFailCount++
       }
     }
@@ -2677,31 +2530,24 @@ const submitPost = async () => {
       showToast(`${uploadFailCount} 个附件上传失败，帖子将不含这些附件`, 'error')
     }
 
-    const authorName = isAnonymous.value ? ANONYMOUS_PLACEHOLDER_NAME : displayName.value
-    const anonymousSeed = isAnonymous.value ? createAnonymousSeed() : null
-
-    const meta = user.value.user_metadata || {}
-    const schoolSnapshot = (meta.university || meta.school || '').trim() || null
-    const regionSnapshot = (meta.region || meta.city || '').trim() || null
     const moodVal = effectivePostMood()
     const catVal = effectivePostCategory()
 
-    const newPostData: Record<string, unknown> = {
-      content: newPostContent.value.trim(),
-      author_id: user.value.id,
-      author_name: authorName,
-      is_anonymous: isAnonymous.value,
-      tags: customTags.value.length ? customTags.value : [],
-      media_urls: uploadedUrls,
-      category: catVal,
-    }
-    if (isAnonymous.value && anonymousSeed) newPostData.anonymous_seed = anonymousSeed
-    if (moodVal) newPostData.mood = moodVal
-    if (schoolSnapshot) newPostData.school = schoolSnapshot
-    if (regionSnapshot) newPostData.region = regionSnapshot
+    const created = await apiFetch<ApiWallPost>('/api/wall/posts', {
+      method: 'POST',
+      body: {
+        content: newPostContent.value.trim(),
+        category: catVal,
+        tags: customTags.value.length ? customTags.value : [],
+        media_urls: uploadedUrls,
+        is_anonymous: isAnonymous.value,
+      },
+    })
 
-    const { error } = await tryInsertPost(newPostData)
-    if (error) throw error
+    // 成功后本地插入到列表头部（POST 响应不含作者昵称，补当前用户展示信息）
+    const localPost = mapApiPost({ ...created, author_nickname: created.author_nickname || displayName.value })
+    localPost.mood = moodVal
+    posts.value = [localPost, ...posts.value.filter(p => p.id !== localPost.id)]
 
     composerExpanded.value = false
     resetComposerState()
@@ -2709,22 +2555,19 @@ const submitPost = async () => {
     fetchPosts()
   } catch (error: unknown) {
     console.error('发布失败:', error)
-    const err = error as { message?: string; code?: string }
-    const msg = err?.message || ''
-    const code = err?.code || ''
     let hint: string
-    if (/JWT|session|expired|refresh/i.test(msg)) {
-      hint = '登录已失效，请重新登录后再试'
-    } else if (/permission|policy|row-level|denied|403|42501/i.test(`${msg}${code}`)) {
-      hint = '无发帖权限，请确认已登录且账号未被限制。如问题持续，请联系管理员检查数据库权限策略'
-    } else if (/42703|column|schema/i.test(`${msg}${code}`)) {
-      hint = '数据库版本与客户端不一致，请联系管理员执行最新迁移脚本'
-    } else if (/network|fetch|timeout|abort/i.test(msg)) {
-      hint = '网络连接异常，请检查网络后重试'
-    } else if (/duplicate|unique|23505/i.test(`${msg}${code}`)) {
-      hint = '帖子可能已发布，请刷新页面查看'
+    if (error instanceof ApiError) {
+      if (error.httpStatus === 401) {
+        hint = '登录已失效，请重新登录后再试'
+      } else if (error.httpStatus === 403) {
+        hint = '无发帖权限，请确认已登录且账号未被限制'
+      } else if (error.code === 'NETWORK_ERROR') {
+        hint = '网络连接异常，请检查网络后重试'
+      } else {
+        hint = `发布失败：${error.message.slice(0, 80)}`
+      }
     } else {
-      hint = `发布失败：${msg.slice(0, 80) || '未知错误，请稍后重试'}`
+      hint = '发布失败：未知错误，请稍后重试'
     }
     showToast(hint, 'error')
   } finally {
@@ -3390,6 +3233,17 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   cursor: pointer; transition: all 0.15s;
 }
 .p-tag:hover { background: rgba(79,142,247,0.22); }
+
+/* 推荐理由 chip（仅推荐 tab；与 tag chip 同形的淡紫小胶囊） */
+.reason-chip {
+  display: inline-block;
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+  padding: 2px 10px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 500;
+  vertical-align: middle;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* 操作栏 */
 .post-actions {

@@ -68,8 +68,8 @@ export function useAuth() {
     return u
   }
 
-  const register = async (email: string, password: string, nickname: string): Promise<SparkUser> => {
-    const u = toSparkUser(await apiRegister(email, password, nickname))
+  const register = async (email: string, password: string, nickname: string, emailCode?: string): Promise<SparkUser> => {
+    const u = toSparkUser(await apiRegister(email, password, nickname, emailCode))
     user.value = u
     return u
   }

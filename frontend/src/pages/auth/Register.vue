@@ -218,6 +218,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
+import { apiSendEmailCode } from '../../api/auth'
 import { ApiError } from '../../api/client'
 
 const router = useRouter()
@@ -318,10 +319,23 @@ const isStep2Ok = computed(() =>
 // ====== 方法 ======
 function goStep(s: number) { if (s < step.value) step.value = s }
 
-function sendCode() {
+async function sendCode() {
   if (!isEmailValid.value || codeCooldown.value > 0) return
-  codeCooldown.value = 60
-  const t = setInterval(() => { codeCooldown.value--; if (codeCooldown.value <= 0) clearInterval(t) }, 1000)
+  errorMsg.value = ''
+  try {
+    const res = await apiSendEmailCode(form.email, 'register')
+    codeCooldown.value = 60
+    const t = setInterval(() => { codeCooldown.value--; if (codeCooldown.value <= 0) clearInterval(t) }, 1000)
+    if (res.dev_mode && res.code) {
+      form.emailCode = res.code
+      successMsg.value = '开发模式：验证码已自动填入（生产环境将发送到邮箱）'
+    } else {
+      successMsg.value = '验证码已发送到你的邮箱，10 分钟内有效'
+    }
+  } catch (e: unknown) {
+    if (e instanceof ApiError && e.code === 'CODE_COOLDOWN') errorMsg.value = '发送太频繁，请稍后再试'
+    else errorMsg.value = '验证码发送失败: ' + ((e as Error)?.message || '网络错误')
+  }
 }
 
 async function handleRegister() {
@@ -329,7 +343,7 @@ async function handleRegister() {
   if (!form.agreed) form.agreed = true
   isLoading.value = true; errorMsg.value = ''; successMsg.value = ''
   try {
-    await register(form.email, form.password, form.nickname)
+    await register(form.email, form.password, form.nickname, form.emailCode || undefined)
     // 附加资料（学校/城市）写入个人档案；失败不阻塞注册主流程
     const school = form.university || form.company || undefined
     const region = form.city || undefined
