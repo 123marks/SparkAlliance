@@ -9,7 +9,8 @@ let failed = 0
 const fail = (name, detail) => { failed++; console.error(`✗ ${name}: ${detail}`) }
 const ok = (name) => { passed++; console.log(`✓ ${name}`) }
 
-async function req(method, path, { token, body, expect = 200 } = {}) {
+async function req(method, path, { token, body, expect = [200, 201, 204] } = {}) {
+  const allowed = Array.isArray(expect) ? expect : [expect]
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: {
@@ -20,8 +21,8 @@ async function req(method, path, { token, body, expect = 200 } = {}) {
   })
   let json = null
   try { json = await res.json() } catch { /* 204 等 */ }
-  if (res.status !== expect) {
-    throw new Error(`${method} ${path} -> HTTP ${res.status}（期望 ${expect}）: ${JSON.stringify(json)}`)
+  if (!allowed.includes(res.status)) {
+    throw new Error(`${method} ${path} -> HTTP ${res.status}（期望 ${allowed.join('/')}）: ${JSON.stringify(json)}`)
   }
   return json
 }

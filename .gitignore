@@ -58,3 +58,8 @@ admin/dist/
 
 # ====== Supabase 本地运行时状态 ======
 supabase/.branches/
+
+# ====== 自建后端（backend/server） ======
+backend/server/.env
+backend/server/uploads/
+backend/server/server.exe
