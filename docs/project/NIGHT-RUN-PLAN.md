@@ -16,7 +16,13 @@
 | B4 | AppHome 主控台聚合迁移 + Register/ForgotPassword 邮箱验证码链路接通 | 大脑 | ⬜ 等 B3 |
 | B5 | Shop 迁移 + 下单/支付/订单状态闭环 UI（沙箱支付全流程可点通） | worker#5 | ⬜ 等 B4 |
 | B5 | AI 助手接 /api/ai/chat（流式），无配置时真实降级；useSparkAI 去 supabase 化 | 大脑 | ⬜ 等 B4 |
-| B6 | admin 补订单管理页；全链路回归：冒烟脚本 + 三视口截图 + 测试 + handoff + 最终 push | 大脑 | ⬜ 等 B5 |
+| B6 | admin 补订单管理页 + AI 供应商管理页；DEPLOYMENT.md（Nginx/systemd 三站点拓扑）；全链路回归：冒烟脚本 + 三视口截图 + 测试 + handoff + 最终 push | 大脑 | ⬜ 等 B5 |
+
+## 监督纪律（大脑对 worker）
+
+- 任何 worker 交付先过我三道验收：编译/类型零错、冒烟脚本真实输出、不越权改契约外文件；不合格就地返工或我亲自修。
+- 并行 worker ≤ 2；重编译/测试串行跑，避免 CPU 峰值卡机。
+- worker 只许改自己领地（backend/server、admin、指定前端文件），.gitignore/契约/调度板只有大脑动。
 
 ## 联调冒烟清单（B2，脚本化）
 
