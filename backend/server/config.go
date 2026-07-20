@@ -14,6 +14,32 @@ type config struct {
 	CORSOrigins       []string
 	AdminInitPassword string
 	UploadDir         string
+
+	// v2
+	SecretKey        string // AES-GCM 主密钥原文（缺省由 JWT_SECRET 派生）
+	SMTPHost         string
+	SMTPPort         string
+	SMTPUser         string
+	SMTPPass         string
+	SMTPFrom         string
+	SandboxPaySecret string
+	AlipayAppID      string
+	AlipayPrivateKey string // 商户应用私钥 PEM（PKCS1/PKCS8）
+	AlipayPublicKey  string // 支付宝公钥 PEM
+	AlipayGateway    string
+	AlipayNotifyURL  string
+	AIBaseURL        string // 首启 seed 用
+	AIAPIKey         string
+}
+
+// smtpConfigured SMTP 五项 env 齐全才真发邮件，否则 dev_mode。
+func (c config) smtpConfigured() bool {
+	return c.SMTPHost != "" && c.SMTPPort != "" && c.SMTPUser != "" &&
+		c.SMTPPass != "" && c.SMTPFrom != ""
+}
+
+func (c config) alipayConfigured() bool {
+	return c.AlipayAppID != "" && c.AlipayPrivateKey != "" && c.AlipayPublicKey != ""
 }
 
 // loadDotEnv 手写解析 KEY=VALUE 格式的 .env；已存在的环境变量优先，不被覆盖。
@@ -65,6 +91,21 @@ func loadConfig() config {
 		Port:              envOr("PORT", "8787"),
 		AdminInitPassword: envOr("ADMIN_INIT_PASSWORD", "SparkAdmin2026!"),
 		UploadDir:         envOr("UPLOAD_DIR", "uploads"),
+
+		SecretKey:        os.Getenv("SECRET_KEY"),
+		SMTPHost:         os.Getenv("SMTP_HOST"),
+		SMTPPort:         os.Getenv("SMTP_PORT"),
+		SMTPUser:         os.Getenv("SMTP_USER"),
+		SMTPPass:         os.Getenv("SMTP_PASS"),
+		SMTPFrom:         os.Getenv("SMTP_FROM"),
+		SandboxPaySecret: envOr("SANDBOX_PAY_SECRET", "sandbox_pay_dev_secret_2026"),
+		AlipayAppID:      os.Getenv("ALIPAY_APP_ID"),
+		AlipayPrivateKey: os.Getenv("ALIPAY_PRIVATE_KEY"),
+		AlipayPublicKey:  os.Getenv("ALIPAY_PUBLIC_KEY"),
+		AlipayGateway:    envOr("ALIPAY_GATEWAY", "https://openapi.alipay.com/gateway.do"),
+		AlipayNotifyURL:  os.Getenv("ALIPAY_NOTIFY_URL"),
+		AIBaseURL:        os.Getenv("AI_BASE_URL"),
+		AIAPIKey:         os.Getenv("AI_API_KEY"),
 	}
 	for _, o := range strings.Split(envOr("CORS_ORIGINS", ""), ",") {
 		if o = strings.TrimSpace(o); o != "" {

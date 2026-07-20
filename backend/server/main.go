@@ -47,6 +47,10 @@ func main() {
 	go a.globalRL.cleanupLoop()
 	go a.authRL.cleanupLoop()
 
+	if err := a.seedAIProvider(ctx, pool); err != nil {
+		log.Fatalf("[启动失败] AI 供应商 seed: %v", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// 健康检查
@@ -57,6 +61,8 @@ func main() {
 	mux.HandleFunc("POST /api/auth/login", a.authRate(a.handleLogin))
 	mux.HandleFunc("GET /api/auth/me", a.requireAuth(a.handleMe))
 	mux.HandleFunc("PATCH /api/auth/me", a.requireAuth(a.handleUpdateMe))
+	mux.HandleFunc("POST /api/auth/email-code", a.authRate(a.handleEmailCode))
+	mux.HandleFunc("POST /api/auth/verify-reset", a.authRate(a.handleVerifyReset))
 
 	// 校园墙
 	mux.HandleFunc("GET /api/wall/posts", a.handleListPosts)
@@ -84,9 +90,38 @@ func main() {
 	mux.HandleFunc("PATCH /api/planner/tasks/{id}", a.requireAuth(a.handleUpdateTask))
 	mux.HandleFunc("DELETE /api/planner/tasks/{id}", a.requireAuth(a.handleDeleteTask))
 
+	// 规划扩展（v2：里程碑 + 复盘）
+	mux.HandleFunc("GET /api/planner/goals/{id}/milestones", a.requireAuth(a.handleListMilestones))
+	mux.HandleFunc("POST /api/planner/goals/{id}/milestones", a.requireAuth(a.handleCreateMilestone))
+	mux.HandleFunc("PATCH /api/planner/milestones/{id}", a.requireAuth(a.handleUpdateMilestone))
+	mux.HandleFunc("DELETE /api/planner/milestones/{id}", a.requireAuth(a.handleDeleteMilestone))
+	mux.HandleFunc("GET /api/planner/goals/{id}/reviews", a.requireAuth(a.handleListReviews))
+	mux.HandleFunc("POST /api/planner/goals/{id}/reviews", a.requireAuth(a.handleCreateReview))
+
 	// 健康打卡
 	mux.HandleFunc("GET /api/health/checkins", a.requireAuth(a.handleListCheckins))
 	mux.HandleFunc("POST /api/health/checkins", a.requireAuth(a.handleUpsertCheckin))
+	mux.HandleFunc("GET /api/health/streak", a.requireAuth(a.handleHealthStreak))
+	mux.HandleFunc("GET /api/health/challenges", a.requireAuth(a.handleListChallenges))
+	mux.HandleFunc("POST /api/health/challenges", a.requireAuth(a.handleCreateChallenge))
+	mux.HandleFunc("PATCH /api/health/challenges/{id}", a.requireAuth(a.handleUpdateChallenge))
+
+	// AI 代理（v2：多供应商故障转移）
+	mux.HandleFunc("POST /api/ai/chat", a.requireAuth(a.handleAIChat))
+
+	// 校园集市与支付（v2）
+	mux.HandleFunc("GET /api/shop/items", a.handleListShopItems)
+	mux.HandleFunc("POST /api/shop/items", a.requireAuth(a.handleCreateShopItem))
+	mux.HandleFunc("PATCH /api/shop/items/{id}", a.requireAuth(a.handleUpdateShopItem))
+	mux.HandleFunc("POST /api/shop/orders", a.requireAuth(a.handleCreateOrder))
+	mux.HandleFunc("GET /api/shop/orders", a.requireAuth(a.handleListOrders))
+	mux.HandleFunc("POST /api/shop/orders/{id}/pay", a.requireAuth(a.handlePayOrder))
+	mux.HandleFunc("POST /api/shop/orders/{id}/cancel", a.requireAuth(a.handleCancelOrder))
+	mux.HandleFunc("POST /api/pay/sandbox/{order_id}/confirm", a.handleSandboxConfirm)
+	mux.HandleFunc("POST /api/pay/alipay/notify", a.handleAlipayNotify)
+
+	// 推荐（v2：登录个性化，未登录热度榜）
+	mux.HandleFunc("GET /api/wall/recommended", a.handleRecommended)
 
 	// Admin
 	mux.HandleFunc("GET /api/admin/stats/overview", a.requireAdmin(a.handleAdminOverview))
@@ -98,6 +133,12 @@ func main() {
 	mux.HandleFunc("PATCH /api/admin/posts/{id}", a.requireAdmin(a.handleAdminUpdatePost))
 	mux.HandleFunc("GET /api/admin/reports", a.requireAdmin(a.handleAdminListReports))
 	mux.HandleFunc("PATCH /api/admin/reports/{id}", a.requireAdmin(a.handleAdminUpdateReport))
+	mux.HandleFunc("GET /api/admin/orders", a.requireAdmin(a.handleAdminListOrders))
+	mux.HandleFunc("GET /api/admin/ai-providers", a.requireAdmin(a.handleAdminListAIProviders))
+	mux.HandleFunc("POST /api/admin/ai-providers", a.requireAdmin(a.handleAdminCreateAIProvider))
+	mux.HandleFunc("PATCH /api/admin/ai-providers/{id}", a.requireAdmin(a.handleAdminUpdateAIProvider))
+	mux.HandleFunc("DELETE /api/admin/ai-providers/{id}", a.requireAdmin(a.handleAdminDeleteAIProvider))
+	mux.HandleFunc("POST /api/admin/ai-providers/{id}/test", a.requireAdmin(a.handleAdminTestAIProvider))
 
 	// 上传
 	mux.HandleFunc("POST /api/uploads", a.requireAuth(a.handleUpload))

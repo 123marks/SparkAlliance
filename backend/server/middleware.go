@@ -164,10 +164,11 @@ func (a *app) wrap(next http.Handler) http.Handler {
 
 // ---- JWT ----
 
-func (a *app) signToken(uid, role string) (string, error) {
+func (a *app) signToken(uid, role string, tokenVersion int) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":  uid,
 		"role": role,
+		"tv":   tokenVersion,
 		"exp":  time.Now().Add(24 * time.Hour).Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.cfg.JWTSecret))
@@ -195,12 +196,19 @@ func (a *app) authenticate(r *http.Request) (uid, role string, ok bool) {
 	if !isValidUUID(sub) {
 		return "", "", false
 	}
+	// v1 旧 token 无 tv claim，视为 0 兼容
+	tokenVersion := 0
+	if tvRaw, ok := claims["tv"].(float64); ok {
+		tokenVersion = int(tvRaw)
+	}
 	var dbRole, dbStatus string
+	var dbTV int
 	if err := a.pool.QueryRow(r.Context(),
-		`SELECT role, status FROM users WHERE id = $1`, sub).Scan(&dbRole, &dbStatus); err != nil {
+		`SELECT role, status, token_version FROM users WHERE id = $1`, sub).
+		Scan(&dbRole, &dbStatus, &dbTV); err != nil {
 		return "", "", false
 	}
-	if dbStatus != "active" {
+	if dbStatus != "active" || dbTV != tokenVersion {
 		return "", "", false
 	}
 	return sub, dbRole, true

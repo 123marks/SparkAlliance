@@ -16,7 +16,24 @@ type milestoneDTO struct {
 	TargetDate  *string `json:"target_date"`
 	Weight      float64 `json:"weight"`
 	SortOrder   int     `json:"sort_order"`
+	Status      string  `json:"status"`
 	CreatedAt   string  `json:"created_at"`
+}
+
+const milestoneCols = `id, goal_id, title, description, target_date, weight, sort_order, status, created_at`
+
+func scanMilestone(row rowScanner) (milestoneDTO, error) {
+	var m milestoneDTO
+	var target *time.Time
+	var created time.Time
+	err := row.Scan(&m.ID, &m.GoalID, &m.Title, &m.Description, &target,
+		&m.Weight, &m.SortOrder, &m.Status, &created)
+	if err != nil {
+		return m, err
+	}
+	m.TargetDate = fmtDatePtr(target)
+	m.CreatedAt = fmtTime(created)
+	return m, nil
 }
 
 type goalDTO struct {
@@ -81,8 +98,7 @@ func (a *app) handleListGoals(w http.ResponseWriter, r *http.Request) {
 
 	if len(goals) > 0 {
 		mrows, err := a.pool.Query(r.Context(),
-			`SELECT id, goal_id, title, description, target_date, weight, sort_order, created_at
-			 FROM goal_milestones WHERE user_id = $1
+			`SELECT `+milestoneCols+` FROM goal_milestones WHERE user_id = $1
 			 ORDER BY sort_order ASC, created_at ASC`, userID(r))
 		if err != nil {
 			writeDBError(w, err)
@@ -90,16 +106,11 @@ func (a *app) handleListGoals(w http.ResponseWriter, r *http.Request) {
 		}
 		defer mrows.Close()
 		for mrows.Next() {
-			var m milestoneDTO
-			var target *time.Time
-			var created time.Time
-			if err := mrows.Scan(&m.ID, &m.GoalID, &m.Title, &m.Description,
-				&target, &m.Weight, &m.SortOrder, &created); err != nil {
+			m, err := scanMilestone(mrows)
+			if err != nil {
 				writeDBError(w, err)
 				return
 			}
-			m.TargetDate = fmtDatePtr(target)
-			m.CreatedAt = fmtTime(created)
 			if i, ok := index[m.GoalID]; ok {
 				goals[i].Milestones = append(goals[i].Milestones, m)
 			}
@@ -558,4 +569,270 @@ func (a *app) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+// ---- v2 里程碑 goal_milestones ----
+
+// requireOwnGoal 校验目标存在且属于当前用户。
+func (a *app) requireOwnGoal(w http.ResponseWriter, r *http.Request, goalID string) bool {
+	ok, err := a.ownRef(r, "goals", goalID)
+	if err != nil {
+		writeDBError(w, err)
+		return false
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "目标不存在")
+		return false
+	}
+	return true
+}
+
+// GET /api/planner/goals/{id}/milestones
+func (a *app) handleListMilestones(w http.ResponseWriter, r *http.Request) {
+	goalID, ok := pathUUID(w, r, "id")
+	if !ok || !a.requireOwnGoal(w, r, goalID) {
+		return
+	}
+	rows, err := a.pool.Query(r.Context(),
+		`SELECT `+milestoneCols+` FROM goal_milestones
+		 WHERE goal_id = $1 AND user_id = $2
+		 ORDER BY sort_order ASC, created_at ASC`, goalID, userID(r))
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	defer rows.Close()
+	milestones := []milestoneDTO{}
+	for rows.Next() {
+		m, err := scanMilestone(rows)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		milestones = append(milestones, m)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"milestones": milestones})
+}
+
+// POST /api/planner/goals/{id}/milestones
+func (a *app) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
+	goalID, ok := pathUUID(w, r, "id")
+	if !ok || !a.requireOwnGoal(w, r, goalID) {
+		return
+	}
+	var in struct {
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		TargetDate  string   `json:"target_date"`
+		Weight      *float64 `json:"weight"`
+		SortOrder   *int     `json:"sort_order"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		writeError(w, http.StatusBadRequest, "EMPTY_TITLE", "标题不能为空")
+		return
+	}
+	var target *time.Time
+	if in.TargetDate != "" {
+		t, err := parseTimeParam(in.TargetDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_TIME", "target_date 日期格式不正确")
+			return
+		}
+		target = &t
+	}
+	weight, sortOrder := 1.0, 0
+	if in.Weight != nil {
+		weight = *in.Weight
+	}
+	if in.SortOrder != nil {
+		sortOrder = *in.SortOrder
+	}
+
+	m, err := scanMilestone(a.pool.QueryRow(r.Context(),
+		`INSERT INTO goal_milestones (goal_id, user_id, title, description, target_date, weight, sort_order)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING `+milestoneCols,
+		goalID, userID(r), in.Title, in.Description, target, weight, sortOrder))
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, m)
+}
+
+// PATCH /api/planner/milestones/{id}
+func (a *app) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Title       *string  `json:"title"`
+		Description *string  `json:"description"`
+		TargetDate  *string  `json:"target_date"`
+		Weight      *float64 `json:"weight"`
+		Status      *string  `json:"status"`
+		SortOrder   *int     `json:"sort_order"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	var b updateBuilder
+	if in.Title != nil {
+		if strings.TrimSpace(*in.Title) == "" {
+			writeError(w, http.StatusBadRequest, "EMPTY_TITLE", "标题不能为空")
+			return
+		}
+		b.add("title", strings.TrimSpace(*in.Title))
+	}
+	if in.Description != nil {
+		b.add("description", *in.Description)
+	}
+	if in.TargetDate != nil {
+		if *in.TargetDate == "" {
+			b.add("target_date", nil)
+		} else {
+			t, err := parseTimeParam(*in.TargetDate)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "BAD_TIME", "target_date 日期格式不正确")
+				return
+			}
+			b.add("target_date", t)
+		}
+	}
+	if in.Weight != nil {
+		b.add("weight", *in.Weight)
+	}
+	if in.Status != nil {
+		if *in.Status != "pending" && *in.Status != "completed" && *in.Status != "missed" {
+			writeError(w, http.StatusBadRequest, "BAD_STATUS", "status 只能是 pending、completed 或 missed")
+			return
+		}
+		b.add("status", *in.Status)
+	}
+	if in.SortOrder != nil {
+		b.add("sort_order", *in.SortOrder)
+	}
+	if b.empty() {
+		writeError(w, http.StatusBadRequest, "EMPTY_PATCH", "没有可更新的字段")
+		return
+	}
+
+	args := append(b.args, id, userID(r))
+	m, err := scanMilestone(a.pool.QueryRow(r.Context(),
+		`UPDATE goal_milestones SET `+strings.Join(b.sets, ", ")+
+			` WHERE id = $`+itoa(len(b.args)+1)+` AND user_id = $`+itoa(len(b.args)+2)+
+			` RETURNING `+milestoneCols, args...))
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+// DELETE /api/planner/milestones/{id}
+func (a *app) handleDeleteMilestone(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	tag, err := a.pool.Exec(r.Context(),
+		`DELETE FROM goal_milestones WHERE id = $1 AND user_id = $2`, id, userID(r))
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "里程碑不存在")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+// ---- v2 目标复盘 goal_reviews ----
+
+type reviewDTO struct {
+	ID           string `json:"id"`
+	GoalID       string `json:"goal_id"`
+	UserID       string `json:"user_id"`
+	Rating       int    `json:"rating"`
+	Content      string `json:"content"`
+	Improvements string `json:"improvements"`
+	SharedToWall bool   `json:"shared_to_wall"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// GET /api/planner/goals/{id}/reviews
+func (a *app) handleListReviews(w http.ResponseWriter, r *http.Request) {
+	goalID, ok := pathUUID(w, r, "id")
+	if !ok || !a.requireOwnGoal(w, r, goalID) {
+		return
+	}
+	rows, err := a.pool.Query(r.Context(),
+		`SELECT id, goal_id, user_id, rating, content, improvements, shared_to_wall, created_at
+		 FROM goal_reviews WHERE goal_id = $1 AND user_id = $2
+		 ORDER BY created_at DESC`, goalID, userID(r))
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	defer rows.Close()
+	reviews := []reviewDTO{}
+	for rows.Next() {
+		var rv reviewDTO
+		var created time.Time
+		if err := rows.Scan(&rv.ID, &rv.GoalID, &rv.UserID, &rv.Rating,
+			&rv.Content, &rv.Improvements, &rv.SharedToWall, &created); err != nil {
+			writeDBError(w, err)
+			return
+		}
+		rv.CreatedAt = fmtTime(created)
+		reviews = append(reviews, rv)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reviews": reviews})
+}
+
+// POST /api/planner/goals/{id}/reviews
+func (a *app) handleCreateReview(w http.ResponseWriter, r *http.Request) {
+	goalID, ok := pathUUID(w, r, "id")
+	if !ok || !a.requireOwnGoal(w, r, goalID) {
+		return
+	}
+	var in struct {
+		Rating       int    `json:"rating"`
+		Content      string `json:"content"`
+		Improvements string `json:"improvements"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.Rating < 1 || in.Rating > 5 {
+		writeError(w, http.StatusBadRequest, "VALIDATION", "rating 取值 1-5")
+		return
+	}
+	in.Content = strings.TrimSpace(in.Content)
+	if in.Content == "" {
+		writeError(w, http.StatusBadRequest, "EMPTY_CONTENT", "复盘内容不能为空")
+		return
+	}
+
+	var rv reviewDTO
+	var created time.Time
+	err := a.pool.QueryRow(r.Context(),
+		`INSERT INTO goal_reviews (goal_id, user_id, rating, content, improvements)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, goal_id, user_id, rating, content, improvements, shared_to_wall, created_at`,
+		goalID, userID(r), in.Rating, in.Content, in.Improvements).
+		Scan(&rv.ID, &rv.GoalID, &rv.UserID, &rv.Rating, &rv.Content,
+			&rv.Improvements, &rv.SharedToWall, &created)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	rv.CreatedAt = fmtTime(created)
+	writeJSON(w, http.StatusCreated, rv)
 }

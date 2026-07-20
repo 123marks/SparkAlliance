@@ -41,9 +41,10 @@ var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 // POST /api/auth/register
 func (a *app) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Nickname string `json:"nickname"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		Nickname  string `json:"nickname"`
+		EmailCode string `json:"email_code"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
@@ -65,6 +66,13 @@ func (a *app) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION", "昵称过长（最多 50 字）")
 		return
 	}
+	// 配置了 SMTP 才强校验验证码；dev 模式跳过（契约 §4.3d）
+	if a.cfg.smtpConfigured() {
+		if !a.consumeEmailCode(r, in.Email, "register", in.EmailCode) {
+			writeError(w, http.StatusBadRequest, "BAD_EMAIL_CODE", "邮箱验证码错误或已过期")
+			return
+		}
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), 10)
 	if err != nil {
@@ -84,7 +92,7 @@ func (a *app) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeDBError(w, err)
 		return
 	}
-	token, err := a.signToken(u.ID, u.Role)
+	token, err := a.signToken(u.ID, u.Role, 0)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "签发令牌失败")
 		return
@@ -106,10 +114,11 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var u userDTO
 	var createdAt time.Time
 	var passwordHash, status string
+	var tokenVersion int
 	err := a.pool.QueryRow(r.Context(),
-		`SELECT `+userCols+`, password_hash, status FROM users WHERE email = $1`, in.Email).
+		`SELECT `+userCols+`, password_hash, status, token_version FROM users WHERE email = $1`, in.Email).
 		Scan(&u.ID, &u.Email, &u.Nickname, &u.AvatarURL, &u.School, &u.Region,
-			&u.Role, &createdAt, &passwordHash, &status)
+			&u.Role, &createdAt, &passwordHash, &status, &tokenVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusUnauthorized, "BAD_CREDENTIALS", "邮箱或密码不正确")
 		return
@@ -127,7 +136,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.CreatedAt = fmtTime(createdAt)
-	token, err := a.signToken(u.ID, u.Role)
+	token, err := a.signToken(u.ID, u.Role, tokenVersion)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "签发令牌失败")
 		return
