@@ -45,6 +45,54 @@ export interface AnonymousHandle {
   avatarBg: string
 }
 
+/** 星火墙帖子视图模型 —— CampusWall 列表页与 WallPostDetail 详情组件共用同一契约 */
+export interface WallPost {
+  id: string
+  author: string
+  authorId: string
+  anonymousSeed?: string
+  authorInitial: string
+  avatarBg: string
+  isAnonymous: boolean
+  categoryLabel: string
+  categoryClass: string
+  time: string
+  createdAt: string
+  content: string
+  tags: string[]
+  mediaUrls: string[]
+  likes: number
+  comments: number
+  liked: boolean
+  category: string
+  mood?: string | null
+  school?: string | null
+  region?: string | null
+  isOfficial?: boolean
+  isVerified?: boolean
+}
+
+/** 星火墙评论视图模型 —— 同上共用 */
+export interface WallComment {
+  id: string
+  authorId: string
+  authorName: string
+  anonymousSeed?: string
+  authorInitial: string
+  avatarBg: string
+  isAnonymous: boolean
+  content: string
+  mediaUrls: string[]
+  time: string
+  createdAt: string
+  isOwn: boolean
+  replyToName: string | null
+  liked: boolean
+  likeCount: number
+  isHidden: boolean
+  reportCount: number
+}
+
 export interface AuthorDisplay {
   name: string
   initial: string

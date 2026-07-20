@@ -12,6 +12,10 @@
 
     <!-- 侧边栏 -->
     <aside class="chat-sidebar" :class="{ open: sidebarOpen }">
+      <div class="sb-head-row">
+        <span class="sb-head-title">对话列表</span>
+        <span class="sb-head-count">{{ conversations.length }}</span>
+      </div>
       <div class="sb-top">
         <button class="new-btn" aria-label="新建对话（Ctrl+N）" @click="handleNewChat">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -23,6 +27,19 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input id="sb-search-input" v-model="sbSearchQuery" placeholder="搜索会话或消息（Ctrl+K）" class="sb-search-input" aria-label="搜索会话" />
         <button v-if="sbSearchQuery" class="sb-search-clear" aria-label="清空搜索" @click="sbSearchQuery = ''">×</button>
+      </div>
+
+      <!-- 参考图分类筛选：全部 / 学习 / 研究 / 生活 / 规划 -->
+      <div class="sb-filters" role="tablist" aria-label="会话分类筛选">
+        <button
+          v-for="f in convFilterOptions"
+          :key="f"
+          class="sb-filter-chip"
+          :class="{ active: activeConvFilter === f }"
+          role="tab"
+          :aria-selected="activeConvFilter === f"
+          @click="activeConvFilter = f"
+        >{{ f }}</button>
       </div>
 
       <div class="sb-list">
@@ -59,11 +76,17 @@
                   @blur="confirmRename"
                 />
               </div>
-              <!-- 正常态：会话项 -->
-              <div v-else class="sb-item" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
+              <!-- 正常态：会话项（参考图两行结构：标题 + 摘要/分类） -->
+              <div v-else class="sb-item sb-item-rich" :class="{ active: c.id === currentConversationId }" @click="handleSwitch(c.id)">
                 <span v-if="c.isPinned" class="pin-dot" title="已置顶">⭐</span>
                 <span v-else class="sb-conv-dot" :style="{ background: convDotColor(c.id) }"></span>
-                <span class="sb-text">{{ c.title }}</span>
+                <span class="sb-rich-body">
+                  <span class="sb-text">{{ c.title }}</span>
+                  <span class="sb-sub">
+                    <span v-if="c.tags?.length" class="sb-tag">{{ c.tags[0] }}</span>
+                    <span class="sb-snippet">{{ convSnippet(c) }}</span>
+                  </span>
+                </span>
                 <span class="sb-time" v-if="c.updatedAt">{{ formatConvTime(c.updatedAt) }}</span>
                 <button class="sb-more" aria-label="会话操作菜单" @click.stop="toggleMenu(c.id)">⋯</button>
                 <!-- v9: 浮层菜单 -->
@@ -80,6 +103,16 @@
                   <button class="sb-menu-item" @click="openMenuId = null; duplicateConversation(c.id); toast('✓ 已克隆为新会话')">
                     <span class="mi-icon">📄</span><span>克隆会话</span>
                   </button>
+                  <div class="sb-menu-div"></div>
+                  <div class="sb-menu-tags" aria-label="设置分类">
+                    <button
+                      v-for="f in convFilterOptions.slice(1)"
+                      :key="f"
+                      class="sb-menu-tag"
+                      :class="{ active: c.tags?.includes(f) }"
+                      @click="handleSetCategory(c.id, f)"
+                    >{{ f }}</button>
+                  </div>
                   <div class="sb-menu-div"></div>
                   <button class="sb-menu-item" @click="triggerExport(c.id, 'markdown')">
                     <span class="mi-icon">📝</span><span>导出 Markdown</span>
@@ -110,6 +143,10 @@
         </template>
 
         <div v-if="conversations.length === 0" class="sb-empty">开始你的第一次对话</div>
+        <div v-else-if="activeConvFilter !== '全部' && filteredConversations.length === 0 && !sbSearchQuery.trim()" class="sb-empty">
+          「{{ activeConvFilter }}」暂无会话<br />
+          <span class="sb-empty-hint">在会话菜单里可将对话归入分类</span>
+        </div>
 
         <!-- 归档折叠开关 -->
         <button v-if="archivedCount > 0 && !sbSearchQuery.trim()" class="sb-toggle-archived" @click="showArchived = !showArchived">
@@ -230,7 +267,8 @@
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <!-- 模式切换 -->
-          <div class="top-pill" @click="chatMode = chatMode === 'general' ? 'study' : chatMode === 'study' ? 'creative' : 'general'">
+          <div class="top-pill top-pill-mode" :class="`mode-${chatMode}`" @click="chatMode = chatMode === 'general' ? 'study' : chatMode === 'study' ? 'creative' : 'general'">
+            <span class="mode-dot" aria-hidden="true"></span>
             <span>{{ chatMode === 'general' ? '通用模式' : chatMode === 'study' ? '学习模式' : '创意模式' }}</span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
@@ -616,8 +654,10 @@
 
     <!-- 右侧智能面板 -->
     <ChatRightPanel
+      :visual-fixture="isVisualFixture"
       @checkin="handleCheckinFromPanel"
       @send-message="handleQuick"
+      @open-favorites="showFavorites = true"
     />
 
     <!-- 星火小宇浮层 -->
@@ -752,7 +792,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import ChatRightPanel from '../../components/chat/ChatRightPanel.vue'
 import CheckinModal from '../../components/chat/CheckinModal.vue'
 import SparkXiaoyuWidget from '../../components/chat/SparkXiaoyuWidget.vue'
@@ -772,7 +812,7 @@ import { readCache, writeCache, makeCacheKey, fingerprintContext, replayCachedSt
 import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji, expandShortcodes } from '../../utils/emojiPack'
 
 const router = useRouter()
-const { checkinToday, isCheckedInToday: checkinDone, currentStreak: checkinStreak } = useCheckin()
+const { currentStreak: checkinStreak } = useCheckin()
 
 const showCheckinModal = ref(false)
 
@@ -790,7 +830,7 @@ const {
   streamingConvIds,
   createConversation, getCurrentConversation, switchConversation, deleteConversation,
   renameConversation, togglePinConversation, toggleArchiveConversation,
-  duplicateConversation, searchConversations, exportConversation,
+  setConversationCategory, duplicateConversation, searchConversations, exportConversation,
   toggleFavoriteMessage, isMessageFavorited, setMessageReaction, getMessageReaction, jumpToFavorite,
   sendMessage, pushUserMessageImmediately, resetStreamingState, stopGenerating,
   summarizeCurrentConversation,
@@ -1544,6 +1584,27 @@ const displayMsgs = computed(() => {
   }))
 })
 const showArchived = ref(false)
+// 参考图侧栏分类筛选
+const convFilterOptions = ['全部', '学习', '研究', '生活', '规划']
+const activeConvFilter = ref('全部')
+const filteredConversations = computed(() => {
+  if (activeConvFilter.value === '全部') return conversations.value
+  return conversations.value.filter((c) => c.tags?.includes(activeConvFilter.value))
+})
+
+function handleSetCategory(id: string, category: string) {
+  const next = setConversationCategory(id, category)
+  openMenuId.value = null
+  toast(next ? `✓ 已归入「${next}」` : '已移除分类')
+}
+
+/** 会话列表两行结构的摘要行：取最近一条消息的纯文本 */
+function convSnippet(c: Conversation): string {
+  const last = [...c.messages].reverse().find((m) => m.role !== 'system' && m.content)
+  if (!last) return '暂无消息'
+  return stripMarkdown(last.content).replace(/\s+/g, ' ').slice(0, 26)
+}
+
 const groupedConvs = computed(() => {
   const now = new Date(); const td = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const yd = td - 86400000; const wk = td - 7 * 86400000
@@ -1555,7 +1616,7 @@ const groupedConvs = computed(() => {
     { label:'更早', items:[] },
     { label:'📦 已归档', items:[], kind: 'archived' },
   ]
-  for (const c of conversations.value) {
+  for (const c of filteredConversations.value) {
     if (c.isArchived) { gs[5].items.push(c); continue }
     if (c.isPinned) { gs[0].items.push(c); continue }
     const t = new Date(c.updatedAt).getTime()
@@ -2178,7 +2239,82 @@ function onGlobalClick(e: MouseEvent) {
   if (msgExportOpen.value !== -1 && !el.closest('.msg-export-menu') && !el.closest('.msg-export-btn')) msgExportOpen.value = -1
 }
 
+// ====== 开发视觉 fixture（仅 /__visual/chat，纯内存，不写入持久化） ======
+const route = useRoute()
+const isVisualFixture = computed(() => import.meta.env.DEV && route.name === 'ChatVisualFixture')
+
+function loadChatVisualFixture() {
+  const now = Date.now()
+  const at = (minAgo: number) => new Date(now - minAgo * 60000).toISOString()
+  const mkConv = (id: string, title: string, minAgo: number, tag?: string, messages: ChatMessageLike[] = []) => ({
+    id,
+    title,
+    messages,
+    createdAt: at(minAgo + 30),
+    updatedAt: at(minAgo),
+    tags: tag ? [tag] : undefined,
+  })
+  const answer = [
+    '好的，生产者-消费者模型（Producer-Consumer Problem）是多线程编程中经典的同步问题，用于解决生产者线程和消费者线程之间的协作。其核心在于通过共享缓冲区和同步机制，确保数据安全与效率。',
+    '',
+    '**核心要点：**',
+    '',
+    '- **生产者**：生成数据并放入缓冲区',
+    '- **消费者**：从缓冲区取出数据并处理',
+    '- **缓冲区**：作为中间媒介，容量有限',
+    '- **同步机制**：使用互斥锁与条件变量确保安全性',
+    '',
+    '**C++ 实现示例**（使用 std::mutex 和 std::condition_variable）：',
+    '',
+    '```cpp',
+    '#include <iostream>',
+    '#include <queue>',
+    '#include <thread>',
+    '#include <mutex>',
+    '#include <condition_variable>',
+    'using namespace std;',
+    '',
+    'mutex mtx;',
+    'condition_variable cv;',
+    'queue<int> buffer;',
+    'const unsigned int MAX_SIZE = 10;',
+    '',
+    'void producer(int id) {',
+    '  for (int i = 0; i < 20; ++i) {',
+    '    unique_lock<mutex> lock(mtx);',
+    '    cv.wait(lock, [] { return buffer.size() < MAX_SIZE; });',
+    '    buffer.push(i);',
+    '    cv.notify_all();',
+    '  }',
+    '}',
+    '```',
+  ].join('\n')
+
+  const fixtureConvs = [
+    mkConv('vf_main', '生产者-消费者问题分析', 6, '学习', [
+      { role: 'user', content: '请使用生产者-消费者模型，并用 C++ 代码实现', id: 'vf_m1', createdAt: at(8) },
+      { role: 'assistant', content: answer, id: 'vf_m2', createdAt: at(6) },
+    ]),
+    mkConv('vf_c2', 'C++ 线程池的实现选择', 72, '学习'),
+    mkConv('vf_c3', '期末复习计划制定', 80, '规划'),
+    mkConv('vf_c4', '操作系统进程调度算法对比', 60 * 26, '研究'),
+    mkConv('vf_c5', '机器学习实战选题', 60 * 50, '研究'),
+    mkConv('vf_c6', '如何高效读科技文献', 60 * 70, '学习'),
+    mkConv('vf_c7', '生活作息优化建议', 60 * 90, '生活'),
+  ]
+  conversations.value = fixtureConvs as typeof conversations.value
+  currentConversationId.value = 'vf_main'
+}
+
+type ChatMessageLike = { role: 'user' | 'assistant'; content: string; id: string; createdAt: string }
+
 onMounted(() => {
+  if (isVisualFixture.value) {
+    loadChatVisualFixture()
+    // 取景与参考图一致：从对话开头（用户气泡）开始展示
+    nextTick(() => { if (scrollRef.value) scrollRef.value.scrollTop = 0 })
+    return
+  }
   if(conversations.value.length&&!currentConversationId.value) currentConversationId.value=conversations.value[0].id
   nextTick(scrollBot)
   window.addEventListener('online', handleOnline)
@@ -2196,7 +2332,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeyDown)
   document.removeEventListener('click', onGlobalClick)
 })
-watch(currentConversationId, () => nextTick(scrollBot))
+watch(currentConversationId, () => { if (!isVisualFixture.value) nextTick(scrollBot) })
 
 /**
  * v13: 通用二进制文件下载辅助。
@@ -2328,7 +2464,9 @@ async function exportPdfDownloadFile(html: string, filename: string) {
     })
     const body = frame.contentDocument?.body
     if (!body) throw new Error('no body')
-    await html2pdf()
+    const worker = html2pdf()
+    // pagebreak 为 html2pdf.js 运行时支持但自带类型未声明的选项，因此对 set 参数做断言
+    await worker
       .set({
         margin: [10, 10, 10, 10],
         filename,
@@ -2336,7 +2474,7 @@ async function exportPdfDownloadFile(html: string, filename: string) {
         html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-      })
+      } as Parameters<typeof worker.set>[0])
       .from(body)
       .save()
     toast('✓ 已下载 PDF')
@@ -2577,9 +2715,38 @@ async function handleInheritMemory() {
 @media(max-width:1320px) { .chat-sidebar { width:200px; } }
 .sb-top { padding:12px 10px; } .new-btn { width:100%; height:38px; background:linear-gradient(135deg, rgba(139,92,246,.08), rgba(59,130,246,.06)); border:1px solid rgba(139,92,246,.12); border-radius:12px; color:rgba(196,181,253,.75); font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; transition:all .25s; position:relative; overflow:hidden; } .new-btn::before { content:''; position:absolute; inset:-2px; background:linear-gradient(45deg, transparent 30%, rgba(255,255,255,.06) 50%, transparent 70%); animation:sbNewShimmer 3.5s infinite; } @keyframes sbNewShimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} } .new-btn:hover { background:linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.12)); border-color:rgba(139,92,246,.25); color:#c4b5fd; box-shadow:0 2px 12px rgba(139,92,246,.15); transform:translateY(-1px); }
 .sb-list { flex:1; overflow-y:auto; padding:0 6px 8px; } .sb-list::-webkit-scrollbar { width:3px; } .sb-list::-webkit-scrollbar-thumb { background:rgba(139,92,246,.08); border-radius:3px; }
+
+/* 侧栏标题行（参考图「对话列表」） */
+.sb-head-row { display:flex; align-items:center; justify-content:space-between; padding:12px 14px 0; }
+.sb-head-title { font-size:12px; font-weight:700; color:rgba(226,232,240,.82); letter-spacing:.5px; }
+.sb-head-count { min-width:20px; height:16px; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; border-radius:8px; background:rgba(139,92,246,.12); color:rgba(196,181,253,.7); font-size:9px; font-weight:700; }
+
+/* 分类筛选 chips（参考图：全部/学习/研究/生活/规划） */
+.sb-filters { display:flex; gap:4px; padding:0 10px 8px; flex-wrap:nowrap; }
+.sb-filter-chip { flex:1; min-width:0; height:24px; border-radius:8px; border:1px solid rgba(255,255,255,.05); background:rgba(255,255,255,.02); color:rgba(255,255,255,.35); font-size:10px; cursor:pointer; transition:all .18s; white-space:nowrap; }
+.sb-filter-chip:hover { color:rgba(196,181,253,.8); border-color:rgba(139,92,246,.2); background:rgba(139,92,246,.06); }
+.sb-filter-chip.active { background:linear-gradient(135deg, rgba(124,58,237,.85), rgba(79,70,229,.85)); border-color:rgba(139,92,246,.5); color:#fff; font-weight:700; box-shadow:0 2px 10px rgba(124,58,237,.25); }
+
+/* 会话菜单分类行 */
+.sb-menu-tags { display:flex; gap:4px; padding:4px 8px; }
+.sb-menu-tag { flex:1; height:22px; border-radius:6px; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.02); color:rgba(255,255,255,.5); font-size:10px; cursor:pointer; transition:all .15s; }
+.sb-menu-tag:hover { border-color:rgba(139,92,246,.3); color:#ddd6fe; }
+.sb-menu-tag.active { background:rgba(139,92,246,.2); border-color:rgba(139,92,246,.45); color:#ede9fe; font-weight:700; }
+.sb-empty-hint { display:block; margin-top:4px; font-size:10px; color:rgba(255,255,255,.16); }
 .sb-group { margin-bottom:6px; } .sb-label { font-size:9px; color:rgba(139,92,246,.25); padding:6px 8px 2px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
 .sb-item { display:flex; align-items:center; padding:8px 10px; border-radius:10px; color:rgba(255,255,255,.35); font-size:12px; cursor:pointer; transition:all .2s cubic-bezier(.4,0,.2,1); border:1px solid transparent; position:relative; animation:sbItemIn .3s ease-out both; } @keyframes sbItemIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} } .sb-group .sb-item:nth-child(1){animation-delay:0ms} .sb-group .sb-item:nth-child(2){animation-delay:35ms} .sb-group .sb-item:nth-child(3){animation-delay:70ms} .sb-group .sb-item:nth-child(4){animation-delay:105ms} .sb-group .sb-item:nth-child(5){animation-delay:140ms} .sb-group .sb-item:nth-child(6){animation-delay:175ms} .sb-group .sb-item:nth-child(7){animation-delay:210ms} .sb-group .sb-item:nth-child(8){animation-delay:245ms} .sb-item::before { content:''; position:absolute; left:0; top:50%; transform:translateY(-50%); width:3px; height:0; border-radius:0 3px 3px 0; background:linear-gradient(180deg,#8b5cf6,#3b82f6); transition:height .2s; } .sb-item:hover { background:rgba(255,255,255,.025); color:rgba(255,255,255,.55); } .sb-item:hover::before { height:18px; } .sb-item.active { background:linear-gradient(135deg, rgba(139,92,246,.08), rgba(59,130,246,.04)); color:rgba(196,181,253,.8); border-color:rgba(139,92,246,.1); box-shadow:0 2px 8px rgba(139,92,246,.08); } .sb-item.active::before { height:22px; }
 .sb-text { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .sb-del { opacity:0; background:none; border:none; color:rgba(255,255,255,.1); font-size:14px; cursor:pointer; } .sb-item:hover .sb-del { opacity:1; }
+
+/* 参考图两行会话项：标题 + 分类/摘要 */
+.sb-item-rich { align-items:flex-start; padding:9px 10px; }
+.sb-item-rich .pin-dot, .sb-item-rich .sb-conv-dot { margin-top:4px; }
+.sb-rich-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.sb-rich-body .sb-text { flex:none; display:block; color:rgba(255,255,255,.6); font-weight:600; }
+.sb-item-rich.active .sb-rich-body .sb-text { color:#e9d5ff; }
+.sb-sub { display:flex; align-items:center; gap:5px; min-width:0; }
+.sb-tag { flex-shrink:0; padding:1px 6px; border-radius:5px; background:rgba(139,92,246,.14); border:1px solid rgba(139,92,246,.2); color:rgba(196,181,253,.75); font-size:8.5px; font-weight:700; letter-spacing:.5px; }
+.sb-snippet { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:rgba(255,255,255,.22); }
+.sb-item-rich .sb-time { margin-top:3px; }
 .sb-empty { text-align:center; padding:30px 0; color:rgba(255,255,255,.1); font-size:11px; }
 
 /* 侧边栏底部功能区 */
@@ -3097,8 +3264,19 @@ async function handleInheritMemory() {
 .top-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:10px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.04); color:rgba(255,255,255,.4); font-size:11px; font-weight:600; cursor:pointer; transition:all .2s cubic-bezier(.4,0,.2,1); white-space:nowrap; user-select:none; flex-shrink:0; }
 .top-pill:hover { background:rgba(139,92,246,.08); border-color:rgba(139,92,246,.15); color:rgba(196,181,253,.8); transform:translateY(-1px); }
 .top-pill-toggle { border-color:rgba(255,255,255,.04); }
-.top-pill-toggle.active { background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.18); color:rgba(52,211,153,.85); box-shadow:0 0 8px rgba(16,185,129,.1); }
+.top-pill-toggle.active { background:rgba(16,185,129,.12); border-color:rgba(16,185,129,.3); color:#34d399; box-shadow:0 0 12px rgba(16,185,129,.16); font-weight:700; }
 .top-pill svg { flex-shrink:0; }
+
+/* 模式胶囊：当前模式高亮呈现（参考图选中态更亮） */
+.top-pill-mode { font-weight:700; }
+.mode-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.top-pill-mode.mode-general { background:linear-gradient(135deg, rgba(124,58,237,.22), rgba(79,70,229,.14)); border-color:rgba(139,92,246,.38); color:#ddd6fe; box-shadow:0 0 14px rgba(124,58,237,.18); }
+.top-pill-mode.mode-general .mode-dot { background:#a78bfa; box-shadow:0 0 6px rgba(167,139,250,.8); }
+.top-pill-mode.mode-study { background:linear-gradient(135deg, rgba(37,99,235,.22), rgba(8,145,178,.14)); border-color:rgba(59,130,246,.38); color:#bfdbfe; box-shadow:0 0 14px rgba(59,130,246,.18); }
+.top-pill-mode.mode-study .mode-dot { background:#60a5fa; box-shadow:0 0 6px rgba(96,165,250,.8); }
+.top-pill-mode.mode-creative { background:linear-gradient(135deg, rgba(219,39,119,.2), rgba(124,58,237,.14)); border-color:rgba(236,72,153,.36); color:#fbcfe8; box-shadow:0 0 14px rgba(236,72,153,.16); }
+.top-pill-mode.mode-creative .mode-dot { background:#f472b6; box-shadow:0 0 6px rgba(244,114,182,.8); }
+.top-pill-mode:hover { transform:translateY(-1px); filter:brightness(1.12); }
 .top-right { margin-left:auto; display:flex; align-items:center; gap:10px; flex-shrink:0; flex-wrap:nowrap; }
 .ctx-gauge { display:flex; align-items:center; gap:6px; padding:3px 10px; border-radius:8px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.06); }
 .ctx-label { font-size:10px; color:rgba(255,255,255,.35); font-weight:600; }

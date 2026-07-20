@@ -649,7 +649,7 @@
         </div>
         <div class="ct-dp-avatar-row">
           <SparkAvatar :avatar="selectedContact.avatar||''" :avatar-url="selectedContact.avatar_url||selectedContact.profile?.avatar_url||''" :name="selectedContact.nickname||''" size="lg" clickable @click="showProfilePopup(selectedContact)" />
-          <button class="ct-dp-star" :class="{starred:selectedContact.is_starred}" @click="toggleStarFriend(selectedContact.spark_id)">
+          <button class="ct-dp-star" :class="{starred:selectedContact.is_starred}" @click="handleContactStarToggle">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
           </button>
         </div>
@@ -657,7 +657,7 @@
           <h3>{{ selectedContact.remark ? selectedContact.nickname + '（' + selectedContact.remark + '）' : selectedContact.nickname }}</h3>
           <span class="ct-dp-online offline">离线</span>
         </div>
-        <p v-if="selectedContact.profile?.identity" class="ct-dp-identity">{{ selectedContact.profile.identity }}</p>
+        <p v-if="getContactMeta(selectedContact)" class="ct-dp-identity">{{ getContactMeta(selectedContact) }}</p>
         <p class="ct-dp-sparkid">Spark ID: {{ selectedContact.spark_id }}</p>
         <div class="ct-dp-actions">
           <button class="ct-dp-act primary" @click="openPrivateChat(selectedContact.spark_id)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>聊天</button>
@@ -2933,8 +2933,6 @@ function jumpToMessage(msgId: string) {
   })
 }
 
-// 查看联系人的星火域
-function contactMoments(sparkId:string){return moments.value.filter(m=>m.author_id===sparkId)}
 function ctxMenuAction(action:string){
   ctxMenu.show=false
   if(action==='delete'){

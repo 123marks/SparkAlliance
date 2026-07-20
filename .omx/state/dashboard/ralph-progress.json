@@ -1,0 +1,49 @@
+{
+  "scope": "dashboard",
+  "iteration": 6,
+  "reference_images": [
+    "DesingImage/starspark-dashboard/6.png",
+    "DesingImage/starspark-dashboard/7.png"
+  ],
+  "generated_screenshot": ".omx/state/dashboard/iteration-6-desktop.png",
+  "supporting_screenshots": [
+    ".omx/state/dashboard/iteration-6-quick.png",
+    ".omx/state/dashboard/iteration-6-mobile.png",
+    ".omx/state/dashboard/captures/shell-tablet-1024.png",
+    ".omx/state/dashboard/captures/shell-mobile-drawer.png"
+  ],
+  "score": 90,
+  "threshold": 90,
+  "passed": true,
+  "verdict": "pass",
+  "category_match": true,
+  "measured_shell": {
+    "desktop_1402": { "sidebar": "200px full height", "topbar": "56px over main region only", "main": "1202x1066 reserved, no overlap" },
+    "tablet_1024": { "sidebar": "64px icon rail", "topbar": "56px", "no_horizontal_overflow": true },
+    "mobile_375": { "sidebar": "off-canvas drawer (translateX(-100%))", "topbar": "56px with brand restored", "drawer_open": "280px panel + full backdrop, no overlap" },
+    "version_watermark": "removed",
+    "quick_center_558": { "panel": "428x772 at x74/right56", "sections": "6 actions / 4 reminders / 4 recent / 4 feedback", "page_errors": 0 }
+  },
+  "differences": [
+    "Wave 1B shell landed: 200px full-height sidebar with in-sidebar brand, 56px top bar spanning only the main region, tablet 64px rail, and an accessible mobile drawer with backdrop, Escape/outside-click close, and focus management; the temporary version badge is gone from all captures.",
+    "Hero now uses the supplied centered luminous orbital artwork (hero-banner.png) with left/bottom fade masks instead of the right-weighted Saturn crop, and the six statistic cards use the supplied neon bitmap icon set at reference scale.",
+    "Quick center retains its reference geometry (428x772 at x74/right56) on the new shell with zero structural drift.",
+    "Remaining nits versus 6.png: hero artwork sits slightly further right than the reference planet, topbar keeps the hamburger toggle the reference omits, and sidebar grouping labels differ from the reference nav order because every existing destination is intentionally preserved."
+  ],
+  "suggestions": [
+    "If a later pass wants the last hero fidelity points, nudge the artwork focal point left (object-position ~58%) and deepen the bottom fade.",
+    "Consider a compact campus selector on tablet widths if the topbar ever gains more actions.",
+    "Re-run all three canonical captures after any future shell token change; the capture helper is frontend/scripts/capture.mjs."
+  ],
+  "next_actions": [
+    "Wave 1 (shell + dashboard) is at its acceptance bar; proceed to Wave 2 (AI assistant /app/chat, then smart schedule /app/schedule).",
+    "Keep using node scripts/capture.mjs <url> <WxH> <out.png> [waitMs] [drawer] for evidence captures."
+  ],
+  "reasoning": "Iteration 6 closes the shared-shell deltas that capped iterations 4-5: the 200px sidebar, main-region top bar, removed watermark, and mobile drawer now match the reference shell at all three canonical viewports with structural metrics verified (no overlap, no horizontal overflow, no page errors). Combined with the iteration-5 quick-center geometry and this iteration's reference hero artwork and bespoke statistic icons, the composition reaches the pass bar; the residual differences are deliberate behavior-preserving choices (extra nav destinations, hamburger) or sub-point visual nits.",
+  "evidence": {
+    "focused_tests": "npx vitest run src/utils/appHomeDashboard.test.ts -> 17/17 passed",
+    "full_tests": "npm run test -> 60 passed / 39 todo / 0 failed",
+    "vite_build": "npx vite build -> built in 4.16s",
+    "vue_tsc": "30 pre-existing errors, all in SparkMascot/CampusWall/Chat/Companion/Health/Planner/Tarot; AppLayout.vue isHomePage TS6133 removed by this slice; zero errors in AppLayout.vue/AppHome.vue/appHomeDashboard.ts"
+  }
+}

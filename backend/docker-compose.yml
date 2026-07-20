@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: spark-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spark
+      POSTGRES_PASSWORD: spark_dev_2026
+      POSTGRES_DB: spark_alliance
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # PG18 镜像要求挂载 /var/lib/postgresql（数据实际落在其下 18/docker 子目录）
+      - spark_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spark -d spark_alliance"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  spark_pgdata:

@@ -240,7 +240,7 @@ async function handleCreate() {
 
 <style scoped>
 .gcs-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(6px);padding:20px}
-.gcs-sheet{width:100%;max-width:440px;max-height:85vh;background:linear-gradient(160deg,#0d0b1e,#12102a);border:1px solid rgba(139,92,246,.12);border-radius:24px;padding:24px;overflow-y:auto;position:relative}
+.gcs-sheet{width:100%;max-width:440px;max-height:85vh;background:linear-gradient(160deg,rgba(13,11,30,.97),rgba(18,16,42,.97));backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(139,92,246,.15);border-radius:24px;padding:24px;overflow-y:auto;position:relative;box-shadow:0 24px 64px rgba(0,0,0,.5),0 0 12px rgba(139,92,246,.05)}
 .gcs-close{position:absolute;top:16px;right:16px;background:none;border:none;color:rgba(255,255,255,.3);font-size:18px;cursor:pointer}
 .gcs-steps{display:flex;gap:8px;justify-content:center;margin-bottom:18px}
 .gcs-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.1);transition:all .3s}
@@ -249,10 +249,11 @@ async function handleCreate() {
 .gcs-body{display:flex;flex-direction:column;gap:14px}
 .gcs-title{font-size:17px;font-weight:600;color:rgba(255,255,255,.85);text-align:center;margin:0}
 .gcs-input{width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:14px;outline:none;resize:none;box-sizing:border-box;font-family:inherit}
-.gcs-input:focus{border-color:rgba(139,92,246,.25)}
+.gcs-input:focus{border-color:rgba(139,92,246,.25);box-shadow:0 0 0 3px rgba(139,92,246,.06)}
 .gcs-types{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
 .gcs-type-btn{padding:6px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:rgba(255,255,255,.4);font-size:12px;cursor:pointer;transition:all .2s}
-.gcs-type-btn.selected{border-color:rgba(139,92,246,.3);background:rgba(139,92,246,.1);color:rgba(139,92,246,.8)}
+.gcs-type-btn:hover{border-color:rgba(139,92,246,.1);background:rgba(139,92,246,.04)}
+.gcs-type-btn.selected{border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.12);color:rgba(139,92,246,.85);box-shadow:0 2px 10px rgba(139,92,246,.1),0 0 6px rgba(139,92,246,.05)}
 .gcs-deadline-row{display:flex;flex-direction:column;gap:6px}
 .gcs-label{font-size:12px;color:rgba(255,255,255,.3)}
 .gcs-date-input{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:14px;outline:none;box-sizing:border-box}
@@ -266,7 +267,9 @@ async function handleCreate() {
 .gcs-custom-input::placeholder{color:rgba(255,255,255,.25)}
 .gcs-error-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);font-size:12px;color:rgba(239,68,68,.8)}
 .gcs-error-close{background:none;border:none;color:rgba(239,68,68,.5);cursor:pointer;font-size:14px;padding:0 2px}
-.gcs-next{padding:11px;border-radius:12px;border:none;background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.gcs-next{padding:11px;border-radius:12px;border:none;background:linear-gradient(135deg,#6d28d9,#8b5cf6,#3b82f6);color:white;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s cubic-bezier(.4,0,.2,1);box-shadow:0 2px 12px rgba(109,40,217,.25)}
+.gcs-next:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 18px rgba(109,40,217,.35)}
+.gcs-next:active:not(:disabled){transform:scale(.98)}
 .fade-enter-active,.fade-leave-active{transition:all .2s ease}
 .fade-enter-from,.fade-leave-to{opacity:0;transform:translateY(-4px)}
 .gcs-next:disabled{opacity:.3;cursor:default}

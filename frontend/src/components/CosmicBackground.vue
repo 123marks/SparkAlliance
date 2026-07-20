@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let animationId: number
 let w = 0, h = 0
+const prefersReducedMotion = ref(false)
 
 interface Star {
   x: number; y: number; size: number
@@ -569,20 +570,75 @@ function handleResize() {
   init()
 }
 
+function drawStaticFrame(ctx: CanvasRenderingContext2D) {
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, h)
+  bgGrad.addColorStop(0, "#06050e")
+  bgGrad.addColorStop(0.4, "#0a0818")
+  bgGrad.addColorStop(0.7, "#0d0a1a")
+  bgGrad.addColorStop(1, "#080612")
+  ctx.fillStyle = bgGrad
+  ctx.fillRect(0, 0, w, h)
+
+  for (const n of nebulae) {
+    const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius)
+    grad.addColorStop(0, n.color + n.alpha + ")")
+    grad.addColorStop(1, "transparent")
+    ctx.globalAlpha = 1
+    ctx.fillStyle = grad
+    ctx.fillRect(n.x - n.radius, n.y - n.radius, n.radius * 2, n.radius * 2)
+  }
+
+  for (const s of stars) {
+    ctx.globalAlpha = s.baseAlpha
+    ctx.fillStyle = s.color
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+}
+
 onMounted(() => {
   if (!canvasRef.value) return
   const ctx = canvasRef.value.getContext('2d')
   if (!ctx) return
   w = canvasRef.value.width = window.innerWidth
   h = canvasRef.value.height = window.innerHeight
-  if (props.enabled) { init(); animate(ctx) }
+
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+  prefersReducedMotion.value = mq.matches
+  mq.addEventListener("change", (e) => {
+    prefersReducedMotion.value = e.matches
+    if (e.matches) {
+      cancelAnimationFrame(animationId)
+      init()
+      drawStaticFrame(ctx)
+    } else if (props.enabled) {
+      init()
+      animate(ctx)
+    }
+  })
+
+  if (props.enabled) {
+    init()
+    if (prefersReducedMotion.value) {
+      drawStaticFrame(ctx)
+    } else {
+      animate(ctx)
+    }
+  }
   window.addEventListener('resize', handleResize)
   watch(() => props.enabled, (enabled) => {
     if (enabled) {
       if (!canvasRef.value) return
       const c = canvasRef.value.getContext('2d')
       if (!c) return
-      init(); animate(c)
+      init()
+      if (prefersReducedMotion.value) {
+        drawStaticFrame(c)
+      } else {
+        animate(c)
+      }
     } else {
       cancelAnimationFrame(animationId)
       if (canvasRef.value) {

@@ -127,8 +127,9 @@ watch(expanded, async (v) => {
 </script>
 
 <style scoped>
-.goal-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:14px;transition:all .3s;overflow:hidden}
-.goal-card.expanded{border-color:rgba(139,92,246,.12)}
+.goal-card{background:rgba(15,12,30,.6);border:1px solid rgba(255,255,255,.05);border-radius:16px;transition:all .3s cubic-bezier(.4,0,.2,1);overflow:hidden;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.goal-card:hover{border-color:rgba(139,92,246,.08);box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.goal-card.expanded{border-color:rgba(139,92,246,.15);box-shadow:0 4px 20px rgba(139,92,246,.06)}
 .gc-top{padding:14px;cursor:pointer}
 .gc-top:hover{background:rgba(255,255,255,.01)}
 .gc-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -139,7 +140,7 @@ watch(expanded, async (v) => {
 .gc-days.urgent{color:#ef4444;background:rgba(239,68,68,.08)}
 .gc-title{font-size:14px;font-weight:600;color:rgba(255,255,255,.8);margin:0 0 8px}
 .gc-progress{width:100%;height:3px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden}
-.gc-bar{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.gc-bar{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1);box-shadow:0 0 6px rgba(139,92,246,.15)}
 .gc-pct-row{display:flex;justify-content:space-between;margin-top:4px}
 .gc-pct{font-size:10px;color:rgba(255,255,255,.25)}
 .gc-expand-hint{font-size:10px;color:rgba(139,92,246,.3)}
@@ -170,7 +171,7 @@ watch(expanded, async (v) => {
 .gc-tact.del:hover{opacity:.9}
 
 .gc-bottom{display:flex;gap:6px;margin-top:10px}
-.gc-act-btn{flex:1;padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:11px;cursor:pointer;transition:all .2s}
+.gc-act-btn{flex:1;padding:7px;border-radius:10px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:11px;cursor:pointer;transition:all .2s cubic-bezier(.4,0,.2,1)}
 .gc-act-btn:hover{background:rgba(139,92,246,.06);color:rgba(255,255,255,.55)}
 .gc-act-btn.add:hover{background:rgba(139,92,246,.08)}
 .gc-act-btn.arch:hover{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.1)}

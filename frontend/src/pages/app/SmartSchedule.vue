@@ -2,7 +2,9 @@
   <div class="smart-schedule">
     <!-- 子模块内容区 -->
     <div class="ss-content">
-      <component :is="currentModule" @back-to-calendar="backToCalendar" />
+      <Transition name="ss-module-fade" mode="out-in">
+        <component :is="currentModule" :key="activeModule" :visual-fixture="visualFixture" @back-to-calendar="backToCalendar" />
+      </Transition>
     </div>
 
     <!-- 辅助模块侧滑面板（仅规划使用） -->
@@ -62,6 +64,11 @@ import { useRoute, useRouter } from 'vue-router'
 const Schedule = defineAsyncComponent(() => import('./Schedule.vue'))
 const Planner = defineAsyncComponent(() => import('./Planner.vue'))
 const Tarot = defineAsyncComponent(() => import('./Tarot.vue'))
+
+withDefaults(defineProps<{
+  /** 开发视觉 fixture：透传给日历模块 */
+  visualFixture?: boolean
+}>(), { visualFixture: false })
 
 const route = useRoute()
 const router = useRouter()
@@ -149,7 +156,7 @@ if (routeModule === 'tarot') {
   overflow: hidden;
 }
 
-/* ===== 底部浮动辅助入口（水平排列，不遮挡侧栏） ===== */
+/* ===== 底部浮动辅助入口 ===== */
 .ss-aux-fab {
   position: fixed;
   bottom: 24px;
@@ -157,54 +164,58 @@ if (routeModule === 'tarot') {
   transform: translateX(-50%);
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: 6px;
   z-index: 100;
-  padding: 6px;
-  background: rgba(15, 12, 30, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  padding: 5px;
+  background: linear-gradient(135deg, rgba(15, 12, 30, 0.85), rgba(20, 16, 40, 0.85));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(139, 92, 246, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .ss-aux-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 10px 18px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 14px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
+  position: relative;
+  overflow: hidden;
 }
 
 .ss-aux-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .ss-aux-btn.planner-btn:hover,
 .ss-aux-btn.planner-btn.active {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(139, 92, 246, 0.12);
-  color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.25);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(99, 102, 241, 0.08));
+  color: #c4b5fd;
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
 }
 
 .ss-aux-btn.tarot-btn:hover,
 .ss-aux-btn.tarot-btn.active {
-  border-color: rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.25);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 197, 94, 0.06));
   color: #fbbf24;
+  box-shadow: 0 2px 12px rgba(251, 191, 36, 0.12);
 }
 
 .ss-aux-label {
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 /* ===== 侧滑面板 ===== */
@@ -212,8 +223,8 @@ if (routeModule === 'tarot') {
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
 }
 
 .ss-panel {
@@ -222,11 +233,11 @@ if (routeModule === 'tarot') {
   right: 0;
   width: min(520px, 85vw);
   height: 100vh;
-  background: rgba(12, 10, 24, 0.98);
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(14, 11, 28, 0.99), rgba(10, 8, 20, 0.99));
+  border-left: 1px solid rgba(139, 92, 246, 0.06);
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
+  box-shadow: -12px 0 48px rgba(0, 0, 0, 0.55), -2px 0 0 rgba(139, 92, 246, 0.04);
   overflow: hidden;
 }
 
@@ -235,22 +246,26 @@ if (routeModule === 'tarot') {
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.06);
   flex-shrink: 0;
+  background: rgba(139, 92, 246, 0.02);
 }
 
 .ss-panel-title {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
+  background: linear-gradient(135deg, #c4b5fd, #93c5fd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin: 0;
 }
 
 .ss-panel-close {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.4);
   width: 34px;
   height: 34px;
   display: flex;
@@ -261,8 +276,9 @@ if (routeModule === 'tarot') {
 }
 
 .ss-panel-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: white;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .ss-panel-body {
@@ -290,6 +306,17 @@ if (routeModule === 'tarot') {
 /* fab 过渡 */
 .fab-fade-enter-active, .fab-fade-leave-active { transition: all 0.3s ease }
 .fab-fade-enter-from, .fab-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(10px) }
+
+/* 模块切换淡入 */
+.ss-module-fade-enter-active { transition: opacity 0.3s ease-out, transform 0.3s ease-out; }
+.ss-module-fade-leave-active { transition: opacity 0.15s ease-in, transform 0.15s ease-in; }
+.ss-module-fade-enter-from { opacity: 0; transform: translateY(8px); }
+.ss-module-fade-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* 桌面宽屏时日历 hero 已内置规划/卡罗牌入口，隐藏底部浮动入口避免重复 */
+@media (min-width: 1281px) {
+  .ss-aux-fab { display: none; }
+}
 
 /* 响应式 */
 @media (max-width: 640px) {

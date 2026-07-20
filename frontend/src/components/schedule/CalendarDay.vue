@@ -42,6 +42,7 @@
               <template v-if="layout.event.location"> · {{ layout.event.location }}</template>
             </span>
           </div>
+          <span v-if="focusTag(layout.event)" class="cd-event-tag" :class="focusTag(layout.event)?.cls">{{ focusTag(layout.event)?.label }}</span>
         </div>
       </div>
 
@@ -128,6 +129,15 @@ const priorityBadge = (e: ScheduleEvent): string => {
   if (e.priority >= 2) return '🔥 '
   if (e.priority === 1) return '⬆️ '
   return ''
+}
+
+/** 派生事件标签（参考图「高专注/缓冲时间」）：高优先级长事件 = 高专注；低优先级生活/提醒短事件 = 缓冲 */
+const focusTag = (e: ScheduleEvent): { label: string; cls: string } | null => {
+  if (!e.end_time) return null
+  const durMin = (new Date(e.end_time).getTime() - new Date(e.start_time).getTime()) / 60000
+  if (e.priority >= 1 && durMin >= 60) return { label: '高专注', cls: 'cd-tag-focus' }
+  if ((e.event_type === 'life' || e.event_type === 'reminder') && durMin <= 45) return { label: '缓冲', cls: 'cd-tag-buffer' }
+  return null
 }
 
 const blockStyle = (layout: TimedEventLayout<ScheduleEvent>) => {
@@ -239,6 +249,30 @@ onUnmounted(() => clearInterval(timer))
 .cd-event-meta {
   font-size: 11px; color: rgba(255,255,255,0.6);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 派生标签：高专注 / 缓冲 */
+.cd-event-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.cd-tag-focus {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.12);
+}
+.cd-tag-buffer {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.24);
 }
 
 .cd-now-line {

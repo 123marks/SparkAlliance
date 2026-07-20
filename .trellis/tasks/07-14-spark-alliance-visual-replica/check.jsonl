@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/07-14-spark-alliance-visual-replica/research/visual-direction.md","reason":"Review source priority, canonical viewports, and explicit anti-directions."}
+{"file":"tasks/dashboard-blueprints.md","reason":"Check required regions, interaction states, and responsive compositions."}
+{"file":"tasks/dashboard-design-tokens.md","reason":"Check exact visual tokens and motion values."}
+{"file":"design-system/spark-alliance/pages/dashboard.md","reason":"Check the authoritative dashboard override and forbidden patterns."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend quality and regression review layer."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check Vue and TypeScript errors introduced by touched code."}

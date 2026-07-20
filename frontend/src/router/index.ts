@@ -130,6 +130,55 @@ const routes: Array<RouteRecordRaw> = [
   }
 ]
 
+if (import.meta.env.DEV) {
+  routes.splice(routes.length - 1, 0, {
+    path: '/__visual/dashboard',
+    component: AppLayout,
+    children: [
+      {
+        path: '',
+        name: 'DashboardVisualFixture',
+        component: AppHome,
+        props: { visualFixture: true },
+      },
+    ],
+  })
+  routes.splice(routes.length - 1, 0, {
+    path: '/__visual/chat',
+    component: AppLayout,
+    children: [
+      {
+        path: '',
+        name: 'ChatVisualFixture',
+        component: () => import('../pages/app/Chat.vue'),
+      },
+    ],
+  })
+  routes.splice(routes.length - 1, 0, {
+    path: '/__visual/schedule',
+    component: AppLayout,
+    children: [
+      {
+        path: '',
+        name: 'ScheduleVisualFixture',
+        component: () => import('../pages/app/SmartSchedule.vue'),
+        props: { visualFixture: true },
+      },
+    ],
+  })
+  routes.splice(routes.length - 1, 0, {
+    path: '/__visual/wall',
+    component: AppLayout,
+    children: [
+      {
+        path: '',
+        name: 'WallVisualFixture',
+        component: () => import('../pages/app/CampusWall.vue'),
+      },
+    ],
+  })
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes

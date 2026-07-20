@@ -1,115 +1,162 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ACTIVE_GOAL_STATUSES,
   buildDashboardActions,
   buildDashboardStats,
+  categorizeWeeklyTasks,
   createCoreFeatures,
+  getLocalWeekDateRange,
+  resolveScheduleStatus,
   summarizeWeeklyProgress,
   type DashboardSnapshot,
 } from './appHomeDashboard'
 
-describe('createCoreFeatures', () => {
-  it('marks planner and shop as live features', () => {
-    const features = createCoreFeatures()
-    const planner = features.find((feature) => feature.title === '星火规划')
-    const shop = features.find((feature) => feature.title === '星火购物')
+function createSnapshot(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot {
+  return {
+    overdueTasks: 0,
+    todayTasks: 0,
+    activeGoals: 0,
+    todayEvents: 0,
+    streakDays: 0,
+    weeklyCompletedTasks: 0,
+    weeklyInProgressTasks: 0,
+    weeklyNotStartedTasks: 0,
+    weeklyTotalTasks: 0,
+    weeklyFocusMinutes: null,
+    activeListings: 0,
+    pendingTransactions: 0,
+    unreadShopMessages: 0,
+    quickNoteLength: 0,
+    metricStates: {},
+    ...overrides,
+  }
+}
 
-    expect(planner?.active).toBe(true)
-    expect(shop?.active).toBe(true)
+describe('createCoreFeatures', () => {
+  it('returns the twelve live dashboard destinations', () => {
+    const features = createCoreFeatures()
+    expect(features).toHaveLength(12)
+    expect(features.every((feature) => feature.active)).toBe(true)
+    expect(features.some((feature) => feature.to === '/app/schedule')).toBe(true)
+    expect(features.some((feature) => feature.to === '/app/shop')).toBe(true)
   })
 })
 
 describe('buildDashboardActions', () => {
   it('prioritizes overdue planner tasks over other actions', () => {
-    const snapshot: DashboardSnapshot = {
+    const actions = buildDashboardActions(createSnapshot({
       overdueTasks: 3,
       todayTasks: 2,
       activeGoals: 1,
-      todayEvents: 1,
-      streakDays: 4,
-      weeklyCompletedTasks: 5,
-      weeklyTotalTasks: 8,
-      activeListings: 2,
       pendingTransactions: 1,
-      unreadShopMessages: 0,
       quickNoteLength: 20,
-    }
-
-    const actions = buildDashboardActions(snapshot)
-
-    expect(actions[0]?.to).toBe('/app/planner')
+    }))
+    expect(actions[0]?.to).toBe('/app/schedule?module=planner')
     expect(actions[0]?.emphasis).toBe('high')
     expect(actions[0]?.title).toContain('3')
   })
 
-  it('falls back to a creation path when user has no active goals or listings', () => {
-    const snapshot: DashboardSnapshot = {
-      overdueTasks: 0,
-      todayTasks: 0,
-      activeGoals: 0,
-      todayEvents: 0,
-      streakDays: 0,
-      weeklyCompletedTasks: 0,
-      weeklyTotalTasks: 0,
-      activeListings: 0,
-      pendingTransactions: 0,
-      unreadShopMessages: 0,
-      quickNoteLength: 0,
-    }
+  it('falls back to creation paths when known counts are empty', () => {
+    const actions = buildDashboardActions(createSnapshot())
+    expect(actions.some((action) => action.id === 'create-goal')).toBe(true)
+    expect(actions.some((action) => action.id === 'publish-listing')).toBe(true)
+  })
 
-    const actions = buildDashboardActions(snapshot)
-
-    expect(actions.some((action) => action.to === '/app/planner')).toBe(true)
-    expect(actions.some((action) => action.to === '/app/shop')).toBe(true)
-    expect(actions.every((action) => !action.title.includes('即将上线'))).toBe(true)
+  it('does not present failed or unavailable zeroes as empty real state', () => {
+    const actions = buildDashboardActions(createSnapshot({
+      metricStates: { activeGoals: 'error', activeListings: 'unavailable' },
+    }))
+    expect(actions.some((action) => action.id === 'create-goal')).toBe(false)
+    expect(actions.some((action) => action.id === 'publish-listing')).toBe(false)
   })
 
   it('suggests converting a quick note into a task when note content exists', () => {
-    const snapshot: DashboardSnapshot = {
-      overdueTasks: 0,
-      todayTasks: 0,
+    const actions = buildDashboardActions(createSnapshot({
       activeGoals: 2,
-      todayEvents: 0,
-      streakDays: 2,
-      weeklyCompletedTasks: 1,
-      weeklyTotalTasks: 4,
       activeListings: 1,
-      pendingTransactions: 0,
-      unreadShopMessages: 0,
       quickNoteLength: 42,
-    }
-
-    const actions = buildDashboardActions(snapshot)
-
+    }))
     expect(actions.some((action) => action.id === 'note-to-task')).toBe(true)
   })
 })
 
 describe('buildDashboardStats', () => {
-  it('builds readable stats from the dashboard snapshot', () => {
-    const snapshot: DashboardSnapshot = {
-      overdueTasks: 1,
+  it('keeps the canonical six-stat order', () => {
+    const stats = buildDashboardStats(createSnapshot({
       todayTasks: 4,
       activeGoals: 3,
-      todayEvents: 2,
-      streakDays: 7,
-      weeklyCompletedTasks: 6,
-      weeklyTotalTasks: 10,
       activeListings: 5,
       pendingTransactions: 2,
       unreadShopMessages: 3,
-      quickNoteLength: 0,
-    }
-
-    const stats = buildDashboardStats(snapshot)
-
+      streakDays: 7,
+      weeklyFocusMinutes: 744,
+    }))
     expect(stats.map((stat) => stat.label)).toEqual([
-      '今日任务',
-      '活跃目标',
-      '在售商品',
-      '待处理交易',
+      '今日任务', '活跃目标', '在售商品', '待处理交流', '本周专注时长', '连续执行天数',
     ])
-    expect(stats[0]?.value).toBe('4')
-    expect(stats[3]?.value).toBe('2')
+    expect(stats.map((stat) => stat.value)).toEqual(['4', '3', '5', '2', '12.4', '7'])
+  })
+
+  it('renders unavailable and failed metrics explicitly', () => {
+    const stats = buildDashboardStats(createSnapshot({
+      metricStates: { activeGoals: 'error', weeklyFocusMinutes: 'unavailable' },
+    }))
+    expect(stats[1]).toMatchObject({ value: '—', state: 'error', sub: '加载失败' })
+    expect(stats[4]).toMatchObject({ value: '—', state: 'unavailable', sub: '暂无专注数据' })
+  })
+})
+
+describe('categorizeWeeklyTasks', () => {
+  it('uses task status for the three execution categories', () => {
+    expect(categorizeWeeklyTasks([
+      { is_completed: true, status: 'completed' },
+      { is_completed: false, status: 'in_progress' },
+      { is_completed: false, status: 'pending' },
+      { is_completed: null, status: null },
+    ])).toEqual({ completed: 1, inProgress: 1, notStarted: 2, total: 4 })
+  })
+})
+
+describe('resolveScheduleStatus', () => {
+  const now = new Date('2026-04-26T08:30:00.000Z')
+
+  it('marks an event active only while the current time is inside its range', () => {
+    expect(resolveScheduleStatus('2026-04-26T08:00:00.000Z', '2026-04-26T09:00:00.000Z', now)).toBe('active')
+  })
+
+  it('marks a future event upcoming only within the next hour', () => {
+    expect(resolveScheduleStatus('2026-04-26T09:00:00.000Z', null, now)).toBe('upcoming')
+    expect(resolveScheduleStatus('2026-04-26T12:00:00.000Z', null, now)).toBe('pending')
+  })
+
+  it('marks an event ended once its explicit end time is reached', () => {
+    expect(resolveScheduleStatus('2026-04-26T07:00:00.000Z', '2026-04-26T08:30:00.000Z', now)).toBe('ended')
+  })
+
+  it('marks a point-in-time event ended once its start time has passed', () => {
+    expect(resolveScheduleStatus('2026-04-26T08:00:00.000Z', null, now)).toBe('ended')
+  })
+})
+
+describe('getLocalWeekDateRange', () => {
+  it('returns the Monday-to-Sunday range when the reference date is Sunday', () => {
+    expect(getLocalWeekDateRange(new Date(2026, 3, 26, 12))).toEqual({
+      start: '2026-04-20',
+      end: '2026-04-26',
+    })
+  })
+
+  it('keeps both local boundaries correct when the week crosses a month', () => {
+    expect(getLocalWeekDateRange(new Date(2026, 4, 1, 12))).toEqual({
+      start: '2026-04-27',
+      end: '2026-05-03',
+    })
+  })
+})
+
+describe('ACTIVE_GOAL_STATUSES', () => {
+  it('counts only active goals', () => {
+    expect(ACTIVE_GOAL_STATUSES).toEqual(['active'])
   })
 })
 

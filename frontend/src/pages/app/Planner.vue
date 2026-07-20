@@ -1,10 +1,14 @@
 <template>
   <div class="planner-page">
-    <!-- 顶栏 -->
-    <div class="pl-topbar">
-      <div class="pl-greeting">
-        <h1 class="pl-title">星火规划</h1>
-        <p class="pl-hello">{{ greeting }}</p>
+    <!-- Hero 横幅 -->
+    <div class="pl-hero">
+      <div class="pl-hero-bg">
+        <div class="pl-hero-orb orb-1"></div>
+        <div class="pl-hero-orb orb-2"></div>
+      </div>
+      <div class="pl-hero-content">
+        <h1 class="pl-hero-title">星火规划</h1>
+        <p class="pl-hero-sub">把远方的目标，拆成今天能抵达的路径</p>
       </div>
       <button class="pl-create-btn" @click="showCreate = true">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -14,12 +18,39 @@
       </button>
     </div>
 
+    <!-- 数据卡片 -->
+    <div class="pl-stats-row">
+      <div class="pl-stat-card">
+        <span class="pl-stat-icon">🎯</span>
+        <span class="pl-stat-val">{{ activeGoals.length }}</span>
+        <span class="pl-stat-label">进行中目标</span>
+      </div>
+      <div class="pl-stat-card">
+        <span class="pl-stat-icon">📋</span>
+        <span class="pl-stat-val">{{ todayTasks.length }}</span>
+        <span class="pl-stat-label">今日任务</span>
+      </div>
+      <div class="pl-stat-card">
+        <span class="pl-stat-icon">✅</span>
+        <span class="pl-stat-val">{{ todayTasks.filter(t => t.is_completed).length }}</span>
+        <span class="pl-stat-label">已完成</span>
+      </div>
+      <div class="pl-stat-card">
+        <span class="pl-stat-icon">🏆</span>
+        <span class="pl-stat-val">{{ historyGoals.length }}</span>
+        <span class="pl-stat-label">已归档</span>
+      </div>
+    </div>
+
     <!-- Tab 切换 -->
     <div class="pl-tabs">
-      <button v-for="tab in tabs" :key="tab.key" class="pl-tab" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">
-        {{ tab.icon }} {{ tab.label }}
-        <span v-if="tab.key === 'today' && todayTasks.length" class="pl-badge">{{ todayTasks.length }}</span>
-      </button>
+      <div class="pl-tab-track">
+        <button v-for="tab in tabs" :key="tab.key" class="pl-tab" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">
+          <span class="pl-tab-icon">{{ tab.icon }}</span>
+          <span class="pl-tab-text">{{ tab.label }}</span>
+          <span v-if="tab.key === 'today' && todayTasks.length" class="pl-badge">{{ todayTasks.length }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- ===== 今日任务 Tab ===== -->
@@ -276,7 +307,7 @@ const {
   pushTaskToSchedule, archiveGoal, deleteGoal, addReview,
   createFromTemplate, shareGoalToWall, aiReviewTask,
   uploadEvidence, aiReviewEvidence,
-  getGreeting, getLocalDate,
+  getLocalDate,
 } = usePlanner()
 
 const { checkAndUnlockAchievements, fetchUserAchievements } = useAchievements()
@@ -290,7 +321,6 @@ const activeTab = ref<'today' | 'goals' | 'history' | 'habits' | 'achievements'>
   allowedTabs.has(routeTab) ? routeTab as 'today' | 'goals' | 'history' | 'habits' | 'achievements' : 'today',
 )
 const showCreate = ref(false)
-const greeting = getGreeting()
 const statsCardRef = ref<InstanceType<typeof StatsCard> | null>(null)
 
 // 快速添加
@@ -755,19 +785,40 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.planner-page{min-height:100vh;padding:0 16px 80px;max-width:520px;margin:0 auto;position:relative}
-.pl-topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 0 10px}
-.pl-greeting{flex:1}
-.pl-title{font-size:20px;font-weight:700;color:rgba(255,255,255,.88);margin:0;letter-spacing:1px}
-.pl-hello{font-size:12px;color:rgba(255,255,255,.3);margin:2px 0 0}
-.pl-create-btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:18px;border:1px solid rgba(139,92,246,.2);background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(245,197,94,.05));color:rgba(139,92,246,.75);font-size:12px;font-weight:600;cursor:pointer;transition:all .25s;white-space:nowrap}
-.pl-create-btn:hover{background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(245,197,94,.1));color:rgba(139,92,246,.95);box-shadow:0 0 16px rgba(139,92,246,.15)}
+.planner-page{min-height:100vh;padding:0 16px 80px;max-width:560px;margin:0 auto;position:relative}
+
+/* Hero */
+.pl-hero{position:relative;padding:22px 20px;border-radius:20px;overflow:hidden;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border:1px solid rgba(139,92,246,.1);box-shadow:0 4px 24px rgba(0,0,0,.2),0 0 12px rgba(139,92,246,.04)}
+.pl-hero-bg{position:absolute;inset:0;background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(59,130,246,.08),rgba(139,92,246,.06));z-index:0}
+.pl-hero-orb{position:absolute;border-radius:50%;filter:blur(40px);opacity:.5}
+.pl-hero-orb.orb-1{width:120px;height:120px;background:rgba(139,92,246,.15);top:-30px;right:20px;animation:orbFloat 6s ease-in-out infinite}
+.pl-hero-orb.orb-2{width:80px;height:80px;background:rgba(59,130,246,.1);bottom:-20px;left:30px;animation:orbFloat 8s ease-in-out infinite reverse}
+@keyframes orbFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.pl-hero-content{position:relative;z-index:1}
+.pl-hero-title{font-size:22px;font-weight:800;margin:0;background:linear-gradient(135deg,#c4b5fd,#93c5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:2px;text-shadow:0 0 20px rgba(196,181,253,.15)}
+.pl-hero-sub{font-size:12px;color:rgba(255,255,255,.3);margin:4px 0 0;letter-spacing:.5px}
+.pl-create-btn{position:relative;z-index:1;display:flex;align-items:center;gap:5px;padding:9px 18px;border-radius:14px;border:none;background:linear-gradient(135deg,#7c3aed,#6366f1,#3b82f6);color:white;font-size:12px;font-weight:700;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);white-space:nowrap;box-shadow:0 4px 16px rgba(124,58,237,.3),0 0 8px rgba(139,92,246,.1);overflow:hidden}
+.pl-create-btn::before{content:'';position:absolute;inset:-2px;background:linear-gradient(45deg,transparent 30%,rgba(255,255,255,.1) 50%,transparent 70%);animation:plShimmer 3s infinite}
+@keyframes plShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.pl-create-btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(124,58,237,.4),0 0 16px rgba(139,92,246,.15)}
+.pl-create-btn:active{transform:scale(.98);transition-duration:.1s}
+
+/* 数据卡 */
+.pl-stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.pl-stat-card{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 4px;border-radius:14px;background:rgba(15,12,30,.6);border:1px solid rgba(255,255,255,.03);transition:all .25s cubic-bezier(.4,0,.2,1);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pl-stat-card:hover{background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.12);box-shadow:0 4px 16px rgba(139,92,246,.08);transform:translateY(-1px)}
+.pl-stat-icon{font-size:18px}
+.pl-stat-val{font-size:20px;font-weight:800;background:linear-gradient(135deg,#c4b5fd,#93c5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.pl-stat-label{font-size:10px;color:rgba(255,255,255,.25);white-space:nowrap}
 
 /* Tab */
-.pl-tabs{display:flex;gap:0;padding:3px;background:rgba(255,255,255,.025);border-radius:12px;border:1px solid rgba(255,255,255,.04);margin-bottom:14px}
-.pl-tab{flex:1;padding:8px 0;border-radius:9px;border:none;background:transparent;color:rgba(255,255,255,.3);font-size:12px;font-weight:500;cursor:pointer;transition:all .25s;position:relative}
-.pl-tab.active{background:rgba(139,92,246,.12);color:rgba(139,92,246,.85);font-weight:600}
-.pl-badge{position:absolute;top:2px;right:6px;min-width:15px;height:15px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.pl-tabs{padding:3px;background:rgba(255,255,255,.02);border-radius:14px;border:1px solid rgba(255,255,255,.04);margin-bottom:14px}
+.pl-tab-track{display:flex;gap:0}
+.pl-tab{flex:1;padding:9px 0;border-radius:10px;border:none;background:transparent;color:rgba(255,255,255,.3);font-size:12px;font-weight:500;cursor:pointer;transition:all .25s;position:relative;display:flex;align-items:center;justify-content:center;gap:4px}
+.pl-tab.active{background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(99,102,241,.1));color:#c4b5fd;font-weight:700;box-shadow:0 2px 8px rgba(124,58,237,.15);text-shadow:0 0 8px rgba(196,181,253,.25)}
+.pl-tab-icon{font-size:14px}
+.pl-tab-text{font-size:12px}
+.pl-badge{position:absolute;top:2px;right:6px;min-width:15px;height:15px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 2px 6px rgba(239,68,68,.3)}
 
 /* 快速添加 */
 .pl-quick-add{display:flex;gap:8px;margin-bottom:12px}
@@ -782,7 +833,7 @@ onMounted(async () => {
 
 /* 通用弹窗 */
 .pl-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px);padding:20px}
-.pl-modal{width:100%;max-width:400px;background:linear-gradient(160deg,#0d0b1e,#12102a);border:1px solid rgba(139,92,246,.12);border-radius:20px;padding:20px}
+.pl-modal{width:100%;max-width:400px;background:linear-gradient(160deg,rgba(13,11,30,.97),rgba(18,16,42,.97));backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(139,92,246,.12);border-radius:20px;padding:20px;box-shadow:0 24px 64px rgba(0,0,0,.5),0 0 12px rgba(139,92,246,.04)}
 .pl-modal h3{font-size:16px;color:rgba(255,255,255,.8);font-weight:600;margin:0 0 14px;text-align:center}
 .pl-modal-desc{font-size:12px;color:rgba(255,255,255,.35);text-align:center;margin:0 0 12px}
 .pl-modal-input,.pl-modal-textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:white;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:10px;font-family:inherit}
@@ -792,7 +843,7 @@ onMounted(async () => {
 .pl-modal-actions{display:flex;gap:8px;margin-top:4px}
 .pl-modal-cancel,.pl-modal-confirm{flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none}
 .pl-modal-cancel{background:rgba(255,255,255,.03);color:rgba(255,255,255,.4)}
-.pl-modal-confirm{background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white}
+.pl-modal-confirm{background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:white;box-shadow:0 2px 10px rgba(109,40,217,.3)}
 .pl-modal-confirm:disabled{opacity:.3;cursor:default}
 .pl-rating{display:flex;gap:4px;justify-content:center;margin-bottom:12px}
 .pl-star{background:none;border:none;font-size:22px;cursor:pointer;opacity:.3;transition:opacity .2s}
@@ -800,8 +851,8 @@ onMounted(async () => {
 
 /* 拖拽上传区 */
 .pl-record-modal{max-width:440px}
-.pl-upload-zone{border-radius:14px;border:2px dashed rgba(139,92,246,.12);background:rgba(139,92,246,.03);cursor:pointer;margin-bottom:10px;transition:all .25s;min-height:80px}
-.pl-upload-zone.dragover{border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.08);transform:scale(1.01)}
+.pl-upload-zone{border-radius:14px;border:2px dashed rgba(139,92,246,.12);background:rgba(139,92,246,.03);cursor:pointer;margin-bottom:10px;transition:all .25s cubic-bezier(.4,0,.2,1);min-height:80px}
+.pl-upload-zone.dragover{border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.1);transform:scale(1.01);box-shadow:0 0 20px rgba(139,92,246,.12)}
 .pl-upload-zone.has-files{border-style:solid;border-color:rgba(139,92,246,.15)}
 .pl-upload-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:4px}
 .pl-upload-icon{font-size:28px;opacity:.5}
@@ -859,4 +910,33 @@ onMounted(async () => {
 .notify-leave-active{animation:notifyOut .25s ease forwards}
 @keyframes notifyIn{0%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.9)}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
 @keyframes notifyOut{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(20px) scale(.9)}}
+
+/* Hero 星轨装饰线 */
+.pl-hero::after{content:'';position:absolute;top:0;right:0;width:180px;height:180px;background:radial-gradient(circle,rgba(139,92,246,.04) 0%,transparent 70%);border-radius:50%;pointer-events:none;z-index:0;animation:plHeroGlow 4s ease-in-out infinite alternate}
+@keyframes plHeroGlow{0%{opacity:.3;transform:scale(1)}100%{opacity:.8;transform:scale(1.1)}}
+
+/* 数据卡入场 stagger */
+.pl-stat-card{animation:plStatIn .5s ease both}
+.pl-stat-card:nth-child(1){animation-delay:0ms}
+.pl-stat-card:nth-child(2){animation-delay:80ms}
+.pl-stat-card:nth-child(3){animation-delay:160ms}
+.pl-stat-card:nth-child(4){animation-delay:240ms}
+@keyframes plStatIn{from{opacity:0;transform:translateY(8px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* 目标卡入场 stagger */
+.pl-goal-anchor{animation:plGoalIn .4s ease both}
+.pl-goal-anchor:nth-child(1){animation-delay:0ms}
+.pl-goal-anchor:nth-child(2){animation-delay:100ms}
+.pl-goal-anchor:nth-child(3){animation-delay:200ms}
+.pl-goal-anchor:nth-child(4){animation-delay:300ms}
+.pl-goal-anchor:nth-child(5){animation-delay:400ms}
+@keyframes plGoalIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* Tab 切换滑动指示器增强 */
+.pl-tab:hover:not(.active){color:rgba(255,255,255,.5);background:rgba(255,255,255,.02)}
+
+@media(prefers-reduced-motion:reduce){
+  .pl-stat-card,.pl-goal-anchor,.pl-hero-orb,.pl-create-btn::before,.pl-spinner,.pl-notify-bar,.pl-hero::after{animation:none!important}
+  .pl-stat-card,.pl-tab,.pl-create-btn,.pl-modal-overlay,.pl-upload-zone,.pl-notify{transition:none!important}
+}
 </style>

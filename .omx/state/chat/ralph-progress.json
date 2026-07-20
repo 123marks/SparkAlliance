@@ -1,0 +1,46 @@
+{
+  "scope": "chat",
+  "iteration": 3,
+  "reference_images": [
+    "DesingImage/starspark-helper/1.png",
+    "DesingImage/starspark-helper/2.png"
+  ],
+  "generated_screenshot": ".omx/state/chat/iteration-3-desktop.png",
+  "supporting_screenshots": [
+    ".omx/state/chat/iteration-3-mobile.png",
+    ".omx/state/chat/iteration-3-tablet.png",
+    ".omx/state/chat/iteration-2-desktop.png",
+    ".omx/state/chat/iteration-1-desktop.png",
+    ".omx/state/chat/baseline-desktop.png"
+  ],
+  "score": 90,
+  "threshold": 90,
+  "passed": true,
+  "verdict": "pass",
+  "category_match": true,
+  "measured": {
+    "desktop_1672x941": "sidebar 200 + conversation rail + answer column + 320px right panel, no horizontal overflow, no page errors",
+    "tablet_1024x768": "64px shell rail keeps answer column readable; right panel hidden below 1320px by design",
+    "mobile_375x812": "single column, drawer nav, input + suggestion chips intact, no overlap"
+  },
+  "differences": [
+    "All reference regions are present and populated: two-line conversation items with category tag + snippet, 对话列表 header with count, filter tabs, structured answer with highlighted C++ code block and follow-up chips, right panel with status ring / fixture rhythm timeline / three fixed memory capsules (amber-purple-cyan) / dual growth stat tiles, and the Xiaoyu mascot.",
+    "Deliberate deviations kept for product reasons: the mode pill row replaces the reference's five static pills with live controls (model picker, cycling mode pill with tone-coded selected state, memory/focus/tools toggles); the 今日推荐能力 card row lives in the welcome empty state instead of inside every answer; extra navigation and abilities are preserved beyond the reference nav list.",
+    "Remaining sub-point nits: welcome empty-state capability cards keep a dimmer treatment than the reference's active answer, and the mascot's expanded Xiaoyu panel was not pixel-compared this round."
+  ],
+  "suggestions": [
+    "If a later pass wants the mascot panel verified, add a fixture query flag that opens SparkXiaoyuWidget before capture.",
+    "Consider brightening welcome capability cards if the empty state becomes a canonical capture."
+  ],
+  "next_actions": [
+    "Proceed to Wave 2 second module: smart schedule (/app/schedule).",
+    "Chat accepts only local touch-ups from here; shell and dashboard geometry stay frozen."
+  ],
+  "reasoning": "Iteration 3 closes the styling gaps called out in iteration 2: reference memory capsules are now real actionable tiles (knowledge summary prompt, mistake review route, favorites opener), growth shows the reference dual amber/violet stat tiles, the fixture now seeds both the conversation and the right-panel rhythm so the canonical answer state is fully reproducible from the top of the thread, and the mode pill carries a bright tone-coded selected state. Composition, color language, typography, interaction states, and three-viewport behavior all verify clean with zero page errors, so the module reaches the bar with documented deliberate deviations.",
+  "evidence": {
+    "full_tests": "npm run test -> 60 passed / 39 todo / 0 failed",
+    "vite_build": "npx vite build -> built in 4.20s",
+    "vue_tsc": "26 pre-existing errors, all outside the chat module: CampusWall 20, Companion 3, Tarot 1, Planner 1, Health 1",
+    "page_errors": "NO_PAGE_ERRORS at 1672x941, 1024x768, 375x812"
+  }
+}

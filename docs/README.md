@@ -32,6 +32,7 @@ docs/
 | `PROJECT-IMPROVEMENTS.md` | 🔧 项目改进记录 |
 | `FILE-LIST.md` | 📄 文件清单 |
 | `GIT-GUIDE.md` | 🔀 Git使用规范 |
+| `DEVELOPMENT-HANDOFF.md` | 🧭 当前开发交接总览：过去/现在/未来、模块阶段、验收证据、下一步 |
 
 ## 🗃️ database/ — 数据库脚本
 

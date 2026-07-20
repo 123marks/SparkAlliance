@@ -180,52 +180,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-
-interface Post {
-  id: string
-  author: string
-  authorId: string
-  anonymousSeed?: string
-  authorInitial: string
-  avatarBg: string
-  isAnonymous: boolean
-  categoryLabel: string
-  categoryClass: string
-  time: string
-  createdAt?: string
-  content: string
-  tags: string[]
-  mediaUrls: string[]
-  likes: number
-  comments: number
-  liked: boolean
-  category: string
-  mood?: string | null
-  school?: string | null
-  region?: string | null
-  isOfficial?: boolean
-  isVerified?: boolean
-}
-
-interface Comment {
-  id: string
-  authorName: string
-  authorId: string
-  isAnonymous: boolean
-  anonymousSeed?: string
-  authorInitial?: string
-  avatarBg?: string
-  content: string
-  time: string
-  createdAt?: string
-  liked: boolean
-  likeCount: number
-  replyToName?: string | null
-  isOwn?: boolean
-  mediaUrls: string[]
-  isHidden?: boolean
-  reportCount?: number
-}
+import type { WallPost as Post, WallComment as Comment } from '../../utils/campusWall'
 
 const props = defineProps<{
   post: Post

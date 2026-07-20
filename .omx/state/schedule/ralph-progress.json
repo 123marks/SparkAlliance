@@ -1,0 +1,49 @@
+{
+  "scope": "schedule",
+  "iteration": 3,
+  "reference_images": [
+    "DesingImage/starspark-schedule/1.png",
+    "DesingImage/starspark-schedule/4.png"
+  ],
+  "generated_screenshot": ".omx/state/schedule/iteration-3-desktop.png",
+  "supporting_screenshots": [
+    ".omx/state/schedule/iteration-3-tablet.png",
+    ".omx/state/schedule/iteration-3-mobile.png",
+    ".omx/state/schedule/planner-panel-baseline.png",
+    ".omx/state/schedule/tarot-baseline.png"
+  ],
+  "score": 90,
+  "threshold": 90,
+  "passed": true,
+  "verdict": "pass",
+  "category_match": true,
+  "measured": {
+    "desktop_1672x941": "hero strip + day timeline + intelligence column + status rail + bottom quick row, no horizontal overflow, no page errors",
+    "tablet_1024x768": "intelligence column hidden by design, calendar + sidebar intact",
+    "mobile_375x812": "single column with stacked hero stats, drawer nav, quick row single-column",
+    "planner_panel": "side drawer opens via ?module=planner with stats/tabs/today progress; baseline captured",
+    "tarot_view": "?module=tarot renders question/guidance flow with draw modes; baseline captured"
+  },
+  "differences": [
+    "Iteration 3 completes the reference's remaining bands: the bottom quick-card row (今日复盘/习惯打卡/学习资源推荐/专注模式) links to real planner tabs and routes, with live copy (completed count feeds the review card, the computed best focus window feeds the focus card); day-view events now carry derived 高专注/缓冲 tags from priority, type, and duration.",
+    "All four reference bands are now present with honest data: hero overview, timeline with tags, intelligence column (backlog scheduling + conflict reflow), status rail, quick row.",
+    "Deliberate deviations recorded: rhythm score formula is explicit rather than the reference's unexplained 甜甜圈 value; the intelligence column hides under 1440px to protect readability; planner/tarot open in their existing panel/view architecture instead of separate pages.",
+    "Planner panel and tarot view render correctly on the new shell (baselines captured); their deep visual alignment against schedule-planner.png / schedule-card.png remains a separate follow-up and does not block the calendar workbench acceptance."
+  ],
+  "suggestions": [
+    "Run the planner panel visual pass against schedule-planner.png as its own slice (goal map, milestone route, weekly plan).",
+    "Run the tarot view pass against schedule-card.png (card assets, ritual polish).",
+    "Optionally feed habit streak counts into the quick-row habit card once a cheap query path exists."
+  ],
+  "next_actions": [
+    "Schedule calendar workbench accepted; planner panel and tarot view are follow-up slices tracked in the handoff.",
+    "Proceed to Wave 3 first module: campus wall (clear its 20 type errors, then visual alignment)."
+  ],
+  "reasoning": "Iteration 3 lands the last missing reference band (quick row) plus derived event tags, on top of the live hero and real intelligence column. Composition, data honesty, interaction states, and three-viewport behavior verify clean; sibling views open correctly with baselines recorded. The calendar workbench reaches the bar with documented deviations; deep planner/tarot visual alignment is scoped as its own follow-up.",
+  "evidence": {
+    "full_tests": "npm run test -> 60 passed / 39 todo / 0 failed",
+    "vite_build": "npx vite build -> built in 4.62s",
+    "vue_tsc": "24 pre-existing errors, none in schedule module files: CampusWall 20, Companion 3, Health 1",
+    "page_errors": "NO_PAGE_ERRORS at 1672x941, 1024x768, 375x812, and both module views"
+  }
+}

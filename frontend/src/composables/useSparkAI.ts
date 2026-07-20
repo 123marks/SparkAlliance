@@ -658,6 +658,17 @@ export function useSparkAI() {
     return !!c.isArchived
   }
 
+  /** 设置会话分类标签（参考图侧栏筛选：学习/研究/生活/规划）；再次设置同名标签则取消 */
+  function setConversationCategory(id: string, category: string): string | null {
+    const c = conversations.value.find((item) => item.id === id)
+    if (!c) return null
+    const current = c.tags?.[0] ?? null
+    const next = current === category ? null : category
+    c.tags = next ? [next] : undefined
+    saveConversations()
+    return next
+  }
+
   /** 克隆会话（v9：复制完整消息列表到新会话，方便做"从此分支"类型探索） */
   function duplicateConversation(id: string): Conversation | null {
     const src = conversations.value.find((item) => item.id === id)
@@ -1463,6 +1474,7 @@ export function useSparkAI() {
     renameConversation,
     togglePinConversation,
     toggleArchiveConversation,
+    setConversationCategory,
     duplicateConversation,
     searchConversations,
     exportConversation,

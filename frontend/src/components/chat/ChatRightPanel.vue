@@ -73,14 +73,30 @@
           <span class="rp-link rp-link-btn" @click="refreshMemory">刷新</span>
         </div>
         <div class="rp-memory-list">
-          <div v-for="(mem, idx) in memoryCapsules" :key="idx" class="rp-mem-item">
+          <!-- 固定功能胶囊（参考图：知识点总结 / 错题回顾 / 收藏模块） -->
+          <button
+            v-for="cap in fixedCapsules"
+            :key="cap.label"
+            class="rp-mem-item"
+            :class="`rp-mem-${cap.tone}`"
+            type="button"
+            @click="cap.action()"
+          >
+            <span class="rp-mem-icon">{{ cap.icon }}</span>
+            <div class="rp-mem-text">
+              <span>{{ cap.label }}</span>
+              <span class="rp-mem-time">{{ cap.desc }}</span>
+            </div>
+            <svg class="rp-mem-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <!-- 真实待办记忆（有数据时追加） -->
+          <div v-for="(mem, idx) in memoryCapsules" :key="'m' + idx" class="rp-mem-item rp-mem-task">
             <span class="rp-mem-icon">{{ mem.icon }}</span>
             <div class="rp-mem-text">
               <span>{{ mem.text }}</span>
               <span class="rp-mem-time">{{ mem.time }}</span>
             </div>
           </div>
-          <p v-if="memoryCapsules.length === 0" class="rp-empty">暂无记忆记录</p>
         </div>
       </section>
 
@@ -100,11 +116,11 @@
           </div>
         </div>
         <div class="rp-growth-stats">
-          <div class="rp-gs-item">
+          <div class="rp-gs-item rp-gs-amber">
             <strong>🔥 {{ streakDays }} 天</strong>
             <span>连续陪伴</span>
           </div>
-          <div class="rp-gs-item">
+          <div class="rp-gs-item rp-gs-violet">
             <strong>📅 {{ weeklyActiveDays }} 天</strong>
             <span>本周活跃</span>
           </div>
@@ -190,9 +206,15 @@ import { useCheckin, MOOD_META, type Mood } from '../../composables/useCheckin'
 import { supabase } from '../../supabase'
 import { useAuth } from '../../composables/useAuth'
 
+const props = withDefaults(defineProps<{
+  /** 开发视觉 fixture：使用确定性数据，不请求 Supabase */
+  visualFixture?: boolean
+}>(), { visualFixture: false })
+
 const emit = defineEmits<{
   (e: 'checkin'): void
   (e: 'send-message', msg: string): void
+  (e: 'open-favorites'): void
 }>()
 
 const router = useRouter()
@@ -260,6 +282,31 @@ interface MemoryCapsule {
 }
 
 const memoryCapsules = ref<MemoryCapsule[]>([])
+
+/** 参考图固定功能胶囊：知识点总结 / 错题回顾 / 收藏模块 */
+const fixedCapsules = [
+  {
+    icon: '📖',
+    label: '知识点总结',
+    desc: '提取当前会话核心知识',
+    tone: 'amber',
+    action: () => emit('send-message', '请把当前会话涉及的核心知识点整理成一份结构化总结'),
+  },
+  {
+    icon: '📝',
+    label: '错题回顾',
+    desc: '进入学习中心复盘',
+    tone: 'purple',
+    action: () => router.push('/app/learn'),
+  },
+  {
+    icon: '⭐',
+    label: '收藏模块',
+    desc: '查看收藏的回答',
+    tone: 'cyan',
+    action: () => emit('open-favorites'),
+  },
+]
 
 const userLevel = computed(() => {
   const base = streakDays.value * 15 + weeklyActiveDays.value * 50
@@ -366,7 +413,25 @@ function writeDailySummary() {
   emit('send-message', '请帮我写一份今日总结，回顾今天完成的任务和学习收获')
 }
 
+/** fixture：参考图 1.png 的今日节奏（10:00 高数课程 / 14:00 算法作业 / 16:30 实验报告截止） */
+function loadVisualFixtureData() {
+  todayEvents.value = [
+    { timeLabel: '10:00 - 11:40', title: '高数课程', isNow: true, isUpcoming: false, statusLabel: '进行中' },
+    { timeLabel: '14:00 - 15:30', title: '算法设计作业', isNow: false, isUpcoming: true, statusLabel: '即将开始' },
+    { timeLabel: '16:30 截止', title: '实验报告提交', isNow: false, isUpcoming: false, statusLabel: '待开始' },
+  ]
+  memoryCapsules.value = [
+    { icon: '📌', text: '完成《AI 项目提案》并提交评审', time: '今天' },
+    { icon: '⚠️', text: '读书计划 · 每日阅读打卡', time: '3天前' },
+  ]
+  weeklyActiveDays.value = 5
+}
+
 onMounted(async () => {
+  if (props.visualFixture) {
+    loadVisualFixtureData()
+    return
+  }
   await fetchCheckinData()
   await Promise.all([loadSchedule(), loadMemory()])
 })
@@ -690,15 +755,73 @@ onMounted(async () => {
 
 .rp-mem-item {
   display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 11px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid rgba(255, 255, 255, 0.03);
+  cursor: pointer;
 }
 
-.rp-mem-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+/* 参考图琥珀/紫色系小卡质感 */
+.rp-mem-amber {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.09), rgba(249, 115, 22, 0.03));
+  border-color: rgba(245, 158, 11, 0.16);
+}
+.rp-mem-purple {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.09), rgba(99, 102, 241, 0.03));
+  border-color: rgba(139, 92, 246, 0.16);
+}
+.rp-mem-cyan {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(59, 130, 246, 0.03));
+  border-color: rgba(6, 182, 212, 0.14);
+}
+.rp-mem-pink {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.08), rgba(139, 92, 246, 0.03));
+  border-color: rgba(236, 72, 153, 0.14);
+}
+
+.rp-mem-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.rp-mem-arrow {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.18);
+  transition: transform 0.2s, color 0.2s;
+}
+.rp-mem-item:hover .rp-mem-arrow {
+  color: rgba(255, 255, 255, 0.5);
+  transform: translateX(2px);
+}
+
+.rp-mem-task {
+  cursor: default;
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+/* 功能胶囊是按钮：重置原生样式并统一字体 */
+button.rp-mem-item {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+button.rp-mem-item:hover {
+  transform: translateX(3px);
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.08);
+}
 
 .rp-mem-text {
   display: flex;
@@ -819,22 +942,37 @@ onMounted(async () => {
 
 .rp-gs-item {
   text-align: center;
-  padding: 8px;
-  border-radius: 10px;
+  padding: 10px 8px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: transform 0.2s, box-shadow 0.2s;
 }
+.rp-gs-item:hover { transform: translateY(-2px); }
+
+/* 参考图双统计块：琥珀 / 紫罗兰 */
+.rp-gs-amber {
+  background: linear-gradient(160deg, rgba(245, 158, 11, 0.1), rgba(249, 115, 22, 0.03));
+  border-color: rgba(245, 158, 11, 0.18);
+}
+.rp-gs-amber:hover { box-shadow: 0 4px 14px rgba(245, 158, 11, 0.12); }
+.rp-gs-violet {
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.12), rgba(99, 102, 241, 0.04));
+  border-color: rgba(139, 92, 246, 0.2);
+}
+.rp-gs-violet:hover { box-shadow: 0 4px 14px rgba(139, 92, 246, 0.14); }
 
 .rp-gs-item strong {
   display: block;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
 }
 
 .rp-gs-item span {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.32);
 }
 
 .rp-badge-row {

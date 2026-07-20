@@ -503,6 +503,8 @@ let spinRaf = 0
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+// 模板 ref 占位：隐藏 canvas 保留给手势帧处理扩展，避免 TS6133
+void canvasEl
 const handDetected = ref(false)
 const gestureHL = ref(-1)
 const gesturePicked = ref(-1)
@@ -1010,20 +1012,22 @@ function toRoman(n: number): string {
 }
 
 .mc-1 {
-  border: 1px solid rgba(139,92,246,0.04);
+  border: 1px solid rgba(139,92,246,0.06);
   animation: mcRotate 40s linear infinite;
-  background: conic-gradient(from 0deg, transparent, rgba(139,92,246,0.02), transparent, rgba(245,197,94,0.015), transparent);
+  background: conic-gradient(from 0deg, transparent, rgba(139,92,246,0.03), transparent, rgba(245,197,94,0.02), transparent);
+  box-shadow: 0 0 60px rgba(139,92,246,0.03);
 }
 
 .mc-2 {
   inset: 60px;
-  border: 1px dashed rgba(245,197,94,0.03);
+  border: 1px dashed rgba(245,197,94,0.05);
   animation: mcRotate 25s linear infinite reverse;
+  box-shadow: inset 0 0 40px rgba(245,197,94,0.02);
 }
 
 .mc-3 {
   inset: 120px;
-  border: 1px solid rgba(99,102,241,0.03);
+  border: 1px solid rgba(99,102,241,0.05);
   animation: mcRotate 35s linear infinite;
 }
 
@@ -1045,6 +1049,10 @@ function toRoman(n: number): string {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
+  background: rgba(6, 3, 15, 0.6);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.04);
 }
 
 .hdr-btn {
@@ -1064,8 +1072,10 @@ function toRoman(n: number): string {
 }
 
 .hdr-btn:hover {
-  background: rgba(255,255,255,0.06);
-  color: white;
+  background: rgba(139, 92, 246, 0.08);
+  color: rgba(196, 181, 253, 0.9);
+  border-color: rgba(139, 92, 246, 0.15);
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.1);
 }
 
 .hdr-center {
@@ -1073,20 +1083,27 @@ function toRoman(n: number): string {
 }
 
 .realm-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: 6px;
-  background: linear-gradient(135deg, #c4b5fd 0%, #fbbf24 50%, #a78bfa 100%);
+  letter-spacing: 8px;
+  background: linear-gradient(135deg, #c4b5fd 0%, #fbbf24 40%, #c084fc 70%, #a78bfa 100%);
+  background-size: 200% 200%;
+  animation: titleShift 6s ease-in-out infinite;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  filter: drop-shadow(0 0 12px rgba(245,197,94,0.15));
+}
+@keyframes titleShift {
+  0%, 100% { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
 }
 
 .realm-sub {
   font-size: 11px;
-  color: rgba(255,255,255,0.15);
-  margin-top: 2px;
-  letter-spacing: 2px;
+  color: rgba(255,255,255,0.18);
+  margin-top: 3px;
+  letter-spacing: 3px;
 }
 
 /* ====== 历史侧栏 ====== */
@@ -1097,12 +1114,14 @@ function toRoman(n: number): string {
   width: 340px;
   max-width: 85vw;
   height: 100%;
-  background: rgba(6,3,15,0.97);
-  backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(139,92,246,0.06);
+  background: rgba(6, 3, 15, 0.95);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border-left: 1px solid rgba(139, 92, 246, 0.08);
   z-index: 100;
   padding: 24px 16px;
   overflow-y: auto;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
 }
 
 .hp-header {
@@ -1162,8 +1181,10 @@ function toRoman(n: number): string {
 }
 
 .hp-item:hover {
-  background: rgba(139,92,246,0.04);
-  border-color: rgba(139,92,246,0.08);
+  background: rgba(139, 92, 246, 0.06);
+  border-color: rgba(139, 92, 246, 0.12);
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.06);
+  transform: translateX(-2px);
 }
 
 .hpi-card {
@@ -1291,11 +1312,13 @@ function toRoman(n: number): string {
 .center-panel {
   position: relative;
   z-index: 1;
-  background: rgba(255,255,255,0.01);
-  border: 1px solid rgba(255,255,255,0.03);
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.03), rgba(255, 255, 255, 0.01), rgba(245, 197, 94, 0.015));
+  border: 1px solid rgba(139, 92, 246, 0.08);
   border-radius: 24px;
   padding: 28px 24px;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .mode-switch {
@@ -1325,9 +1348,10 @@ function toRoman(n: number): string {
 }
 
 .mode-switch button.active {
-  background: rgba(139,92,246,0.1);
+  background: rgba(139, 92, 246, 0.12);
   color: #c4b5fd;
-  box-shadow: 0 2px 12px rgba(139,92,246,0.15);
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
+  text-shadow: 0 0 8px rgba(196, 181, 253, 0.2);
 }
 
 .ms-icon {
@@ -1358,7 +1382,8 @@ function toRoman(n: number): string {
 }
 
 .qz-textarea:focus {
-  border-color: rgba(139,92,246,0.25);
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.06), 0 0 12px rgba(139, 92, 246, 0.04);
 }
 
 .qz-textarea::placeholder {
@@ -1457,9 +1482,10 @@ function toRoman(n: number): string {
 }
 
 .method-btn.active {
-  border-color: rgba(139,92,246,0.12);
-  background: rgba(139,92,246,0.05);
-  color: rgba(196,181,253,0.7);
+  border-color: rgba(139,92,246,0.18);
+  background: rgba(139,92,246,0.07);
+  color: rgba(196,181,253,0.8);
+  box-shadow: 0 2px 10px rgba(139,92,246,0.08);
 }
 
 .mb-icon { font-size: 16px }
@@ -1467,21 +1493,27 @@ function toRoman(n: number): string {
 .start-ritual {
   width: 100%;
   padding: 16px;
-  border-radius: 14px;
-  border: none;
+  border-radius: 16px;
+  border: 1px solid rgba(139,92,246,0.2);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   color: white;
-  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  background: linear-gradient(135deg, #6d28d9, #7c3aed, #8b5cf6);
   position: relative;
   overflow: hidden;
   transition: all 0.3s;
+  box-shadow: 0 4px 20px rgba(139,92,246,0.25);
+  letter-spacing: 2px;
 }
 
 .start-ritual:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 40px rgba(139,92,246,0.45), 0 0 0 1px rgba(139,92,246,0.3), 0 0 20px rgba(139,92,246,0.15);
+}
+.start-ritual:active:not(:disabled) {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
 }
 
 .start-ritual:disabled {
@@ -1532,11 +1564,14 @@ function toRoman(n: number): string {
 }
 
 .insight-card {
-  background: rgba(139,92,246,0.02);
-  border: 1px solid rgba(139,92,246,0.06);
+  background: rgba(139,92,246,0.025);
+  border: 1px solid rgba(139,92,246,0.08);
   border-radius: 18px;
   overflow: hidden;
   margin-bottom: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15), 0 0 8px rgba(139,92,246,0.03);
 }
 
 .ic-header {
@@ -1624,12 +1659,17 @@ function toRoman(n: number): string {
 
 .ca-btn.primary {
   border: none;
-  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6, #7c3aed);
   color: white;
+  box-shadow: 0 2px 12px rgba(139,92,246,0.2);
 }
 
 .ca-btn.primary:hover {
-  box-shadow: 0 4px 20px rgba(139,92,246,0.3);
+  box-shadow: 0 4px 20px rgba(139,92,246,0.35), 0 0 12px rgba(139,92,246,0.1);
+  transform: translateY(-1px);
+}
+.ca-btn.primary:active {
+  transform: scale(0.98);
 }
 
 .refine-area {
@@ -1805,7 +1845,12 @@ function toRoman(n: number): string {
 
 .reveal-ritual:hover {
   background: rgba(245,197,94,0.08);
-  box-shadow: 0 0 30px rgba(245,197,94,0.15);
+  box-shadow: 0 0 30px rgba(245,197,94,0.15), 0 0 60px rgba(245,197,94,0.05);
+  transform: translateY(-2px);
+}
+.reveal-ritual:active {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
 }
 
 .rr-glow {
@@ -2041,11 +2086,12 @@ function toRoman(n: number): string {
   height: 310px;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .rc-card.flipped {
   transform: rotateY(180deg);
+  filter: drop-shadow(0 0 30px rgba(245,197,94,0.25)) drop-shadow(0 0 60px rgba(139,92,246,0.1));
 }
 
 /* 逆位不翻转卡牌，只通过标签和边框颜色区分 */
@@ -2066,8 +2112,8 @@ function toRoman(n: number): string {
   gap: 8px;
   padding: 24px;
   background: linear-gradient(160deg, var(--c1, #0c0518), #150a2e, var(--c2, #0c0518));
-  border: 1.5px solid rgba(245,197,94,0.15);
-  box-shadow: 0 0 40px var(--card-glow, rgba(139,92,246,0.2)), inset 0 0 40px rgba(0,0,0,0.4);
+  border: 1.5px solid rgba(245,197,94,0.18);
+  box-shadow: 0 0 40px var(--card-glow, rgba(139,92,246,0.2)), 0 0 80px rgba(245,197,94,0.05), inset 0 0 40px rgba(0,0,0,0.4);
 }
 
 .rcf-frame {
@@ -2238,11 +2284,14 @@ function toRoman(n: number): string {
 @keyframes riseUp { from { opacity: 0; transform: translateY(20px) } }
 
 .reading-panel {
-  background: rgba(139,92,246,0.02);
-  border: 1px solid rgba(139,92,246,0.04);
+  background: rgba(139,92,246,0.025);
+  border: 1px solid rgba(139,92,246,0.06);
   border-radius: 16px;
   padding: 22px 26px;
   margin-bottom: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
 .rp-header {
@@ -2294,12 +2343,18 @@ function toRoman(n: number): string {
 .ra-btn:hover {
   background: rgba(255,255,255,0.04);
   color: rgba(255,255,255,0.6);
+  border-color: rgba(139,92,246,0.08);
 }
 
 .ra-btn.primary {
   border: none;
   background: linear-gradient(135deg, #6d28d9, #8b5cf6);
   color: white;
+  box-shadow: 0 2px 10px rgba(139,92,246,0.2);
+}
+.ra-btn.primary:hover {
+  box-shadow: 0 4px 18px rgba(139,92,246,0.3);
+  transform: translateY(-1px);
 }
 
 .ra-btn.accent {
@@ -2337,14 +2392,17 @@ function toRoman(n: number): string {
 }
 
 .modal-content {
-  background: #0c0a18;
-  border: 1px solid rgba(255,255,255,0.04);
+  background: rgba(12,10,24,0.97);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border: 1px solid rgba(139,92,246,0.08);
   border-radius: 20px;
   padding: 24px;
   width: 460px;
   max-width: 90vw;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 0 12px rgba(139,92,246,0.04);
 }
 
 .modal-content.compact {
@@ -2602,5 +2660,91 @@ function toRoman(n: number): string {
   .ri-reading-section {
     max-width: 680px;
   }
+}
+
+/* 翻牌金色光扫 */
+.rc-card.flipped .rc-front::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  background: linear-gradient(45deg, transparent 30%, rgba(245,197,94,0.12) 50%, transparent 70%);
+  animation: cardGoldSweep 1.5s ease-out;
+  pointer-events: none;
+  border-radius: 16px;
+  z-index: 10;
+}
+@keyframes cardGoldSweep {
+  0% { transform: translateX(-100%); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+/* 卡背星图微弱闪烁 */
+.csc-pattern::before {
+  animation: cardBackTwinkle 3s ease-in-out infinite alternate;
+}
+@keyframes cardBackTwinkle {
+  0% { border-color: rgba(245,197,94,0.03); }
+  100% { border-color: rgba(245,197,94,0.08); }
+}
+
+/* 浮动牌入场 stagger */
+.float-card {
+  animation: floatCardIn 0.6s ease both;
+}
+.float-card:nth-child(1) { animation-delay: 0ms; }
+.float-card:nth-child(2) { animation-delay: 120ms; }
+.float-card:nth-child(3) { animation-delay: 240ms; }
+.float-card:nth-child(4) { animation-delay: 360ms; }
+.float-card:nth-child(5) { animation-delay: 480ms; }
+@keyframes floatCardIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.8) rotate(-5deg); }
+  to { opacity: 1; }
+}
+
+/* 解读文字打字机淡入 */
+.mcb-reading {
+  animation: readingFadeIn 0.8s ease both;
+}
+@keyframes readingFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 选中牌星尘光效 */
+.cs-card.chosen::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 14px;
+  background: radial-gradient(circle, rgba(245,197,94,0.15) 0%, transparent 60%);
+  animation: chosenGlow 1.5s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes chosenGlow {
+  0% { opacity: 0.4; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1.05); }
+}
+
+/* 历史侧栏卡片 stagger */
+.hp-item {
+  animation: hpItemIn 0.3s ease both;
+}
+.hp-item:nth-child(1) { animation-delay: 0ms; }
+.hp-item:nth-child(2) { animation-delay: 60ms; }
+.hp-item:nth-child(3) { animation-delay: 120ms; }
+.hp-item:nth-child(4) { animation-delay: 180ms; }
+.hp-item:nth-child(5) { animation-delay: 240ms; }
+@keyframes hpItemIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-card, .hp-item, .mcb-reading, .magic-circle, .pentagram-svg,
+  .qz-hint, .orb-glow, .sr-glow, .rr-glow, .rune-dot, .ao-ring,
+  .realm-title, .rcf-symbol, .cs-card.chosen::after { animation: none !important; }
+  .rc-card { transition-duration: 0.01ms !important; }
+  .hdr-btn, .hp-item, .mode-switch button, .method-btn, .start-ritual,
+  .reveal-ritual, .ca-btn, .ra-btn { transition: none !important; }
 }
 </style>

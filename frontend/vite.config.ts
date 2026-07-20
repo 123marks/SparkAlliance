@@ -6,8 +6,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
-    // v9: 固定端口 5173，被占用时直接报错而非自动切换，确保用户能察觉
-    port: 5173,
+    // v9: 固定端口 5180，被占用时直接报错而非自动切换，确保用户能察觉
+    port: 5180,
     strictPort: true,
     host: true,
     // 禁止浏览器缓存，确保每次加载最新代码

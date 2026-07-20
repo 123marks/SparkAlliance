@@ -77,7 +77,54 @@
       </div>
     </div>
     <Transition name="bubble">
-      <div v-if="bubbleText" class="mascot-bubble">{{ bubbleText }}</div>
+      <div v-if="bubbleText && !panelOpen" class="mascot-bubble">{{ bubbleText }}</div>
+    </Transition>
+
+    <!-- 星火小宇浮层面板 -->
+    <Transition name="panel">
+      <div v-if="panelOpen" class="xiaoyu-panel">
+        <div class="xp-header">
+          <h3 class="xp-title">星火小宇</h3>
+          <button class="xp-close" @click="panelOpen = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="xp-welcome">
+          <p class="xp-greeting">👋 你好！我是星火小宇</p>
+          <p class="xp-desc">你的专属学习助手，随时为你效劳~</p>
+        </div>
+
+        <div class="xp-mood">
+          <span class="xp-mood-tag">情绪</span>
+          <span class="xp-mood-value">{{ currentMood }}</span>
+        </div>
+
+        <div class="xp-shortcuts">
+          <h4 class="xp-section-title">快捷操作</h4>
+          <div class="xp-shortcut-grid">
+            <button v-for="s in shortcuts" :key="s.label" class="xp-shortcut-btn" @click="$emit('quick', s.prompt)">
+              <span class="xp-s-icon">{{ s.icon }}</span>
+              <span>{{ s.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="xp-recent">
+          <h4 class="xp-section-title">最近使用</h4>
+          <div class="xp-recent-list">
+            <div class="xp-recent-item" v-for="r in recentItems" :key="r">
+              <span class="xp-r-dot"></span>
+              <span>{{ r }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="xp-input-row">
+          <input class="xp-input" placeholder="问小宇，输入你的问题..." v-model="panelInput" @keydown.enter="sendPanelInput" />
+          <button class="xp-send" @click="sendPanelInput" :disabled="!panelInput.trim()">›</button>
+        </div>
+      </div>
     </Transition>
   </div>
 </template>
@@ -85,10 +132,30 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 
+const emit = defineEmits<{ quick: [prompt: string] }>()
+
 const blinking = ref(false)
 const waving = ref(false)
 const isHappy = ref(true)
 const bubbleText = ref('')
+const panelOpen = ref(false)
+const panelInput = ref('')
+
+const currentMood = ref('积极 · 能量充沛 ⚡')
+
+const shortcuts = [
+  { icon: '🎯', label: '开始专注', prompt: '帮我开始一个专注学习计划' },
+  { icon: '📝', label: '总结笔记', prompt: '帮我总结今天的学习笔记' },
+  { icon: '📅', label: '整理日程', prompt: '帮我整理今天的日程安排' },
+  { icon: '📖', label: '制定复习计划', prompt: '帮我制定一份复习计划' },
+  { icon: '❓', label: '问我任何问题', prompt: '' },
+]
+
+const recentItems = ref([
+  'C++ 代码分析',
+  '复习计划制定',
+  '操作系统笔记',
+])
 
 const eyeY = computed(() => blinking.value ? 34 : 32)
 const eyePupilY = computed(() => blinking.value ? 34 : 30)
@@ -120,16 +187,30 @@ function startWave() {
   waveTimer = setInterval(() => {
     waving.value = true
     setTimeout(() => { waving.value = false }, 1800)
+    // 挥手时随机说一句鼓励语（面板未打开时）
+    if (!panelOpen.value && !bubbleText.value) {
+      bubbleText.value = greetings[Math.floor(Math.random() * greetings.length)]
+      setTimeout(() => { bubbleText.value = '' }, 4000)
+    }
   }, 15000 + Math.random() * 10000)
 }
 
 function onMascotClick() {
-  const msg = greetings[Math.floor(Math.random() * greetings.length)]
-  bubbleText.value = msg
+  if (panelOpen.value) {
+    panelOpen.value = false
+    return
+  }
+  panelOpen.value = true
   isHappy.value = true
   waving.value = true
   setTimeout(() => { waving.value = false }, 1800)
-  setTimeout(() => { bubbleText.value = '' }, 3500)
+}
+
+function sendPanelInput() {
+  if (!panelInput.value.trim()) return
+  emit('quick', panelInput.value.trim())
+  panelInput.value = ''
+  panelOpen.value = false
 }
 
 onMounted(() => {
@@ -175,7 +256,44 @@ onUnmounted(() => {
 .mascot-svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 4px 12px rgba(109, 40, 217, 0.35));
+  filter: drop-shadow(0 4px 12px rgba(109, 40, 217, 0.35)) drop-shadow(0 0 20px rgba(139, 92, 246, 0.15));
+}
+
+.mascot-body::before {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.04) 40%, transparent 70%);
+  filter: blur(8px);
+  pointer-events: none;
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.mascot-body::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  width: 48px;
+  height: 48px;
+  background:
+    radial-gradient(2px 2px at 10% 20%, rgba(196, 181, 253, 0.5), transparent 3px),
+    radial-gradient(1.5px 1.5px at 80% 15%, rgba(196, 181, 253, 0.4), transparent 3px),
+    radial-gradient(1px 1px at 45% 80%, rgba(196, 181, 253, 0.3), transparent 2px),
+    radial-gradient(2px 2px at 70% 60%, rgba(196, 181, 253, 0.35), transparent 3px);
+  pointer-events: none;
+  animation: sparkle 4s ease-in-out infinite alternate;
+}
+
+@keyframes sparkle {
+  0% { opacity: 0.3; transform: translateY(0) rotate(0); }
+  100% { opacity: 0.7; transform: translateY(-3px) rotate(5deg); }
 }
 
 .mascot-bubble {
@@ -201,6 +319,79 @@ onUnmounted(() => {
 .bubble-leave-active { transition: all 0.15s ease-in; }
 .bubble-enter-from { opacity: 0; transform: translateY(6px) scale(0.9); }
 .bubble-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* ====== 星火小宇浮层面板 ====== */
+.xiaoyu-panel {
+  position: absolute; bottom: 90px; right: -20px;
+  width: 280px; max-height: 480px;
+  background: rgba(12, 10, 30, 0.92);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 18px; padding: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(139, 92, 246, 0.1);
+  display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto; scrollbar-width: thin;
+  transform-origin: bottom right;
+}
+.xp-header { display: flex; justify-content: space-between; align-items: center; }
+.xp-title { font-size: 15px; font-weight: 700; color: white; margin: 0; }
+.xp-close { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 4px; }
+.xp-close:hover { color: white; }
+
+.xp-welcome { text-align: center; }
+.xp-greeting { font-size: 14px; font-weight: 600; color: white; margin: 0 0 4px; }
+.xp-desc { font-size: 11px; color: rgba(255,255,255,0.45); margin: 0; }
+
+.xp-mood {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.12);
+}
+.xp-mood-tag { font-size: 10px; color: rgba(255,255,255,0.4); }
+.xp-mood-value { font-size: 11px; color: #a78bfa; font-weight: 500; }
+
+.xp-section-title { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.5); margin: 0 0 6px; }
+
+.xp-shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.xp-shortcut-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px; border-radius: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.6); font-size: 11px; cursor: pointer;
+  transition: all 0.15s;
+}
+.xp-shortcut-btn:hover { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.2); color: white; }
+.xp-s-icon { font-size: 13px; }
+
+.xp-recent-list { display: flex; flex-direction: column; gap: 4px; }
+.xp-recent-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: rgba(255,255,255,0.4);
+  padding: 3px 0;
+}
+.xp-r-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(139,92,246,0.4); flex-shrink: 0; }
+
+.xp-input-row { display: flex; gap: 6px; }
+.xp-input {
+  flex: 1; padding: 7px 10px; border-radius: 10px;
+  background: rgba(20,16,48,0.5); border: 1px solid rgba(139,92,246,0.15);
+  color: white; font-size: 11px; outline: none;
+}
+.xp-input::placeholder { color: rgba(255,255,255,0.25); }
+.xp-input:focus { border-color: rgba(139,92,246,0.4); }
+.xp-send {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6); color: white;
+  font-size: 16px; font-weight: 700; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; transition: all 0.15s;
+}
+.xp-send:hover { box-shadow: 0 0 12px rgba(124,58,237,0.3); }
+.xp-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.panel-enter-active { transition: all 0.26s cubic-bezier(0.16,1,0.3,1); }
+.panel-leave-active { transition: all 0.18s ease-in; }
+.panel-enter-from { opacity: 0; transform: scale(0.85) translateY(20px); }
+.panel-leave-to { opacity: 0; transform: scale(0.9) translateY(10px); }
 
 @media (max-width: 1100px) {
   .mascot-wrap { display: none; }

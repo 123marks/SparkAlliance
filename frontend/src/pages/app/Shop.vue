@@ -1030,7 +1030,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.shop-page{min-height:100vh;padding:0 16px 100px;max-width:640px;margin:0 auto;position:relative}
+.shop-page{min-height:100vh;padding:0 16px 100px;max-width:640px;margin:0 auto;position:relative;
+  --shop-bg-card: rgba(18, 14, 45, 0.65);
+  --shop-border-card: rgba(139, 92, 246, 0.15);
+  --shop-border-hover: rgba(139, 92, 246, 0.35);
+  --shop-accent: #7c3aed;
+  --shop-accent-light: #a78bfa;
+  --shop-blue: #3b82f6;
+  --shop-glass: blur(12px) saturate(1.2);
+  --shop-radius: 12px;
+  --shop-glow: 0 0 20px rgba(124, 58, 237, 0.3);
+}
 
 /* 顶栏 */
 .sp-topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 0 10px}
@@ -1040,30 +1050,31 @@ onMounted(async () => {
 .sp-icon-btn:hover{background:rgba(79,142,247,.06)}
 
 /* Tab */
-.sp-tabs{display:flex;gap:0;padding:3px;background:rgba(255,255,255,.025);border-radius:12px;border:1px solid rgba(255,255,255,.04);margin-bottom:14px}
+.sp-tabs{display:flex;gap:0;padding:3px;background:var(--shop-bg-card);backdrop-filter:var(--shop-glass);-webkit-backdrop-filter:var(--shop-glass);border-radius:var(--shop-radius);border:1px solid var(--shop-border-card);margin-bottom:14px}
 .sp-tab{flex:1;padding:8px 0;border-radius:9px;border:none;background:transparent;color:rgba(255,255,255,.3);font-size:11px;font-weight:500;cursor:pointer;transition:all .25s;position:relative}
-.sp-tab.active{background:rgba(79,142,247,.12);color:rgba(79,142,247,.85);font-weight:600}
+.sp-tab.active{background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(59,130,246,.1));color:var(--shop-accent-light);font-weight:600;box-shadow:0 0 12px rgba(139,92,246,.1)}
 .sp-tab-badge{position:absolute;top:2px;right:12px;padding:1px 4px;border-radius:8px;background:rgba(239,68,68,.8);color:white;font-size:9px;font-weight:700}
 
 /* 搜索栏 */
-.sp-search-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);cursor:pointer;margin-bottom:10px;transition:all .2s}
-.sp-search-bar:hover{border-color:rgba(79,142,247,.1)}
+.sp-search-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:var(--shop-radius);background:var(--shop-bg-card);backdrop-filter:var(--shop-glass);-webkit-backdrop-filter:var(--shop-glass);border:1px solid var(--shop-border-card);cursor:pointer;margin-bottom:10px;transition:all .2s}
+.sp-search-bar:hover{border-color:var(--shop-border-hover);box-shadow:0 0 12px rgba(139,92,246,.08)}
 .sp-search-icon{font-size:14px}
 .sp-search-placeholder{font-size:13px;color:rgba(255,255,255,.2)}
 
 /* 分类导航 */
 .sp-categories{display:flex;gap:4px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;scrollbar-width:none}
 .sp-categories::-webkit-scrollbar{display:none}
-.sp-cat-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.03);background:rgba(255,255,255,.015);cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0}
-.sp-cat-item.active{background:rgba(79,142,247,.08);border-color:rgba(79,142,247,.15)}
+.sp-cat-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;border-radius:var(--shop-radius);border:1px solid var(--shop-border-card);background:var(--shop-bg-card);backdrop-filter:var(--shop-glass);-webkit-backdrop-filter:var(--shop-glass);cursor:pointer;transition:all .25s;white-space:nowrap;flex-shrink:0}
+.sp-cat-item:hover{border-color:var(--shop-border-hover);transform:translateY(-1px)}
+.sp-cat-item.active{background:rgba(124,58,237,.12);border-color:rgba(139,92,246,.3);box-shadow:0 0 12px rgba(139,92,246,.1)}
 .sp-cat-icon{font-size:18px}
 .sp-cat-name{font-size:9px;color:rgba(255,255,255,.3)}
 .sp-cat-item.active .sp-cat-name{color:rgba(79,142,247,.7)}
 
 /* 排序栏 */
 .sp-sort-bar{display:flex;gap:4px;margin-bottom:10px}
-.sp-sort-btn{padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);color:rgba(255,255,255,.25);font-size:10px;cursor:pointer;transition:all .2s}
-.sp-sort-btn.active{background:rgba(79,142,247,.08);border-color:rgba(79,142,247,.12);color:rgba(79,142,247,.7)}
+.sp-sort-btn{padding:5px 12px;border-radius:8px;border:1px solid var(--shop-border-card);background:rgba(18,14,45,.4);color:rgba(255,255,255,.25);font-size:10px;cursor:pointer;transition:all .2s}
+.sp-sort-btn.active{background:rgba(124,58,237,.1);border-color:rgba(139,92,246,.25);color:var(--shop-accent-light)}
 
 /* 瀑布流 */
 .sp-waterfall{display:flex;gap:8px}
@@ -1081,8 +1092,8 @@ onMounted(async () => {
 .sp-search-glass{position:absolute;inset:0;background:rgba(10,8,26,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .sp-search-inner{position:relative;z-index:1;padding:20px;max-width:640px;margin:0 auto}
 .sp-search-top{display:flex;gap:8px;margin-bottom:16px}
-.sp-search-input-wrap{flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(79,142,247,.15);transition:all .2s}
-.sp-search-input-wrap:focus-within{border-color:rgba(79,142,247,.35);box-shadow:0 0 20px rgba(79,142,247,.08)}
+.sp-search-input-wrap{flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;background:var(--shop-bg-card);border:1px solid var(--shop-border-card);transition:all .2s;backdrop-filter:var(--shop-glass);-webkit-backdrop-filter:var(--shop-glass)}
+.sp-search-input-wrap:focus-within{border-color:rgba(139,92,246,.4);box-shadow:0 0 20px rgba(139,92,246,.12)}
 .sp-si-icon{font-size:16px;opacity:.5}
 .sp-search-input{flex:1;background:none;border:none;color:white;font-size:15px;outline:none}
 .sp-search-input::placeholder{color:rgba(255,255,255,.25)}
@@ -1109,8 +1120,8 @@ onMounted(async () => {
 .sp-sf-chip{padding:6px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);color:rgba(255,255,255,.35);font-size:11px;cursor:pointer;transition:all .2s}
 .sp-sf-chip.active{background:rgba(79,142,247,.1);border-color:rgba(79,142,247,.2);color:rgba(79,142,247,.8)}
 
-.sp-search-go{width:100%;padding:12px;border-radius:14px;border:none;background:linear-gradient(135deg,#4F8EF7,#6366f1);color:white;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:20px;transition:all .2s;letter-spacing:1px}
-.sp-search-go:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(79,142,247,.3)}
+.sp-search-go{width:100%;padding:12px;border-radius:14px;border:none;background:linear-gradient(135deg,var(--shop-accent),var(--shop-blue));color:white;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:20px;transition:all .2s;letter-spacing:1px}
+.sp-search-go:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(124,58,237,.3)}
 
 .sp-search-section{margin-bottom:16px}
 .sp-ss-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -1124,7 +1135,8 @@ onMounted(async () => {
 .sp-ss-rank.top{color:rgba(249,115,22,.7)}
 
 /* ============ 卖家铺子卡片 ============ */
-.sp-shop-card{position:relative;border-radius:18px;overflow:hidden;margin-bottom:14px;border:1px solid rgba(79,142,247,.1)}
+.sp-shop-card{position:relative;border-radius:var(--shop-radius);overflow:hidden;margin-bottom:14px;border:1px solid var(--shop-border-card);backdrop-filter:var(--shop-glass);-webkit-backdrop-filter:var(--shop-glass);transition:all .25s}
+.sp-shop-card:hover{border-color:var(--shop-border-hover);box-shadow:var(--shop-glow)}
 .sp-shop-bg{position:absolute;inset:0;background:linear-gradient(160deg,rgba(79,142,247,.12),rgba(139,92,246,.08),rgba(249,115,22,.05));z-index:0}
 .sp-shop-body{position:relative;z-index:1;padding:18px}
 .sp-shop-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}

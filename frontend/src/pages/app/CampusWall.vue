@@ -474,6 +474,45 @@
           </div>
         </div>
 
+        <!-- 星火洞察（全部由真实发帖数据统计） -->
+        <div class="right-section insight-panel">
+          <button class="rs-title insight-head" type="button" :aria-expanded="insightExpanded" @click="insightExpanded = !insightExpanded">
+            ✨ 星火洞察
+            <span class="insight-toggle">{{ insightExpanded ? '收起 ▲' : '展开 ▼' }}</span>
+          </button>
+          <Transition name="insight-fold">
+            <div v-if="insightExpanded" class="insight-body">
+              <div class="insight-block">
+                <span class="insight-label">话题词云</span>
+                <div class="word-cloud">
+                  <button
+                    v-for="w in wordCloudTags"
+                    :key="w.tag"
+                    class="wc-tag"
+                    :style="{ fontSize: w.size + 'px', color: w.color, opacity: w.opacity }"
+                    :title="`#${w.tag} · ${w.count} 条`"
+                    @click="filterByTag(w.tag)"
+                  >#{{ w.tag }}</button>
+                  <span v-if="wordCloudTags.length === 0" class="insight-empty">还没有话题数据，发一条带 #标签 的动态吧</span>
+                </div>
+              </div>
+              <div class="insight-block">
+                <span class="insight-label">今日活跃时段</span>
+                <div class="hour-strip" role="img" aria-label="今日各时段发帖热度">
+                  <span
+                    v-for="h in hourlyActivity"
+                    :key="h.hour"
+                    class="hour-cell"
+                    :style="{ opacity: h.intensity }"
+                    :title="`${h.hour}:00 · ${h.count} 条`"
+                  ></span>
+                </div>
+                <div class="hour-labels"><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+              </div>
+            </div>
+          </Transition>
+        </div>
+
         <!-- 实时动态 -->
         <div class="right-section">
           <h4 class="rs-title">⚡ 实时动态</h4>
@@ -510,6 +549,10 @@
               <span class="ai-sug-text">{{ s.text }}</span>
               <span class="ai-sug-arrow">›</span>
             </button>
+          </div>
+          <div class="ai-hot-tags" v-if="aiSuggestions.length">
+            <span class="ai-hot-label">正在热聊</span>
+            <button v-for="tag in aiSuggestions" :key="tag" class="ai-hot-tag" @click="applyAiSuggestion(tag)">{{ tag }}</button>
           </div>
         </div>
 
@@ -979,6 +1022,8 @@ import {
   inferAnonymousState,
   isSupportedVideoFile,
   resolveAuthorDisplay,
+  type WallPost,
+  type WallComment,
 } from '../../utils/campusWall'
 
 const { user } = useAuth()
@@ -1026,10 +1071,7 @@ const displayName = computed(() =>
   || '同学'
 )
 
-const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase())
-
 // ====== Tab 筛选 ======
-const tabList = ['推荐', '最新', '本校', '同城', '关注', '热议表白']
 const sideTabList = [
   { key: '推荐', icon: '🌟' },
   { key: '关注', icon: '👥' },
@@ -1270,31 +1312,7 @@ const containsSensitiveWords = (text: string) => {
 }
 
 // ====== 帖子数据 ======
-interface Post {
-  id: string
-  author: string
-  authorId: string
-  anonymousSeed?: string
-  authorInitial: string
-  avatarBg: string
-  isAnonymous: boolean
-  categoryLabel: string
-  categoryClass: string
-  time: string
-  createdAt: string
-  content: string
-  tags: string[]
-  mediaUrls: string[]
-  likes: number
-  comments: number
-  liked: boolean
-  category: string
-  mood?: string | null
-  school?: string | null
-  region?: string | null
-  isOfficial?: boolean
-  isVerified?: boolean
-}
+type Post = WallPost
 
 const posts = ref<Post[]>([])
 const isLoading = ref(true)
@@ -1340,19 +1358,6 @@ const expandedPosts = reactive(new Set<string>())
 const followingIds = ref(new Set<string>())
 const selectedPostForDetail = ref<Post | null>(null)
 const savedScrollPosition = ref(0)
-
-const openPostDetailV2 = (post: Post) => {
-  savedScrollPosition.value = window.scrollY
-  selectedPostForDetail.value = post
-  openComments(post)
-  window.scrollTo(0, 0)
-}
-
-const closePostDetailV2 = () => {
-  selectedPostForDetail.value = null
-  commentDrawerOpen.value = false
-  setTimeout(() => window.scrollTo(0, savedScrollPosition.value), 0)
-}
 
 const detailSimilarPosts = computed(() => {
   if (!selectedPostForDetail.value) return []
@@ -1614,10 +1619,6 @@ const mySchool = computed(() => {
   if (myProfile.value.university) return myProfile.value.university
   const meta = user.value?.user_metadata
   return meta?.university || meta?.school || ''
-})
-const myRegion = computed(() => {
-  const meta = user.value?.user_metadata
-  return meta?.region || meta?.city || ''
 })
 
 const emptyStateHint = computed(() => {
@@ -1925,18 +1926,6 @@ const rtChartAreaPath = computed(() => {
   return `${linePart} L${w},${h} L0,${h} Z`
 })
 
-const realtimeFeed = computed(() => {
-  return [...posts.value]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5)
-    .map(p => ({
-      id: p.id,
-      initial: p.isAnonymous ? '匿' : p.author.charAt(0),
-      text: `${p.isAnonymous ? '匿名同学' : p.author} 发布了新${resolveCategoryDisplay(p.category).label}`,
-      time: p.time,
-    }))
-})
-
 const aiSuggestions = computed(() => {
   const tags = trendingTags.value.slice(0, 3).map(t => `#${t.tag}`)
   if (tags.length === 0) return ['分享校园生活', '表白墙', '期末加油']
@@ -1962,7 +1951,6 @@ const scrollToPost = (postId: string) => {
 // ====== Tab 筛选逻辑 ======
 const filteredPosts = computed(() => {
   const schoolMe = normalizeCampusMeta(mySchool.value)
-  const regionMe = normalizeCampusMeta(myRegion.value)
 
   const byTime = (a: Post, b: Post) =>
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -2059,25 +2047,7 @@ const toggleLike = async (post: Post) => {
 }
 
 // ====== 评论系统 ======
-interface Comment {
-  id: string
-  authorId: string
-  authorName: string
-  anonymousSeed?: string
-  authorInitial: string
-  avatarBg: string
-  isAnonymous: boolean
-  content: string
-  mediaUrls: string[]
-  time: string
-  createdAt: string
-  isOwn: boolean
-  replyToName: string | null
-  liked: boolean
-  likeCount: number
-  isHidden: boolean
-  reportCount: number
-}
+type Comment = WallComment
 
 const commentDrawerOpen = ref(false)
 const activePostForComment = ref<Post | null>(null)
@@ -4336,4 +4306,84 @@ video.media-img { object-fit: contain; background: rgba(0, 0, 0, 0.45); }
   opacity: 0.65;
   pointer-events: none;
 }
+
+/* ====== AI 话题助手 · 正在热聊标签 ====== */
+.ai-hot-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.ai-hot-label { font-size: 10px; color: rgba(255, 255, 255, 0.28); flex-shrink: 0; }
+.ai-hot-tag {
+  padding: 2px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  background: rgba(139, 92, 246, 0.07);
+  color: rgba(196, 181, 253, 0.75);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.ai-hot-tag:hover { background: rgba(139, 92, 246, 0.18); color: #ede9fe; border-color: rgba(139, 92, 246, 0.4); }
+
+/* ====== 星火洞察面板 ====== */
+.insight-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.insight-toggle { font-size: 10px; font-weight: 400; color: rgba(255, 255, 255, 0.25); transition: color 0.15s; }
+.insight-head:hover .insight-toggle { color: rgba(196, 181, 253, 0.7); }
+
+.insight-body { padding-top: 10px; }
+.insight-block { margin-bottom: 12px; }
+.insight-block:last-child { margin-bottom: 0; }
+.insight-label { display: block; margin-bottom: 7px; font-size: 10px; font-weight: 600; color: rgba(255, 255, 255, 0.3); letter-spacing: 0.5px; }
+
+.word-cloud { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; }
+.wc-tag {
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s, filter 0.18s;
+  line-height: 1.4;
+}
+.wc-tag:hover { transform: scale(1.1); filter: brightness(1.3); }
+.insight-empty { font-size: 10.5px; color: rgba(255, 255, 255, 0.2); }
+
+.hour-strip {
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  gap: 2px;
+  height: 26px;
+}
+.hour-cell {
+  border-radius: 3px;
+  background: linear-gradient(180deg, #8b5cf6, #6d28d9);
+  min-width: 0;
+}
+.hour-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 8.5px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.insight-fold-enter-active { transition: all 0.25s ease-out; }
+.insight-fold-leave-active { transition: all 0.18s ease-in; }
+.insight-fold-enter-from, .insight-fold-leave-to { opacity: 0; max-height: 0; overflow: hidden; }
+.insight-fold-enter-to, .insight-fold-leave-from { opacity: 1; max-height: 260px; }
 </style>
