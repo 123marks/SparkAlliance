@@ -10,8 +10,8 @@
 | B1 | Go 后端 v1（契约 §4.1-4.5） | worker#1 | ✅ 完成（go vet 0 错、冒烟 12/12、admin seed 正常；提交 68798b7） |
 | B1 | admin 控制台（登录/大盘/用户/内容/举报） | worker#2 | ✅ 完成（vue-tsc 零错、build 过、5181 冒烟 200；提交 69922ef） |
 | B2 | 后端 v1 + 前端认证/日程 + admin 三方联调冒烟，修断点 | 大脑 | ✅ 完成（API 12/12 + admin UI 6/6 + app UI 6/6；修两断点：admin trend/modules 解包、EventModal 时间串 RFC3339 归一；提交 1f3959c 已推送） |
-| B3 | 后端 v2 全量：§4.3b 规划/健康扩展 + §4.3c AI 代理 + §4.3d 邮箱验证码 + §4.3e 订单支付（sandbox+支付宝协议）+ §4.3f 推荐算法 | resume worker#1 | ⬜ 等 B2 |
-| B3 | usePlanner/useHealth 前端迁移（对齐 v2 契约，优雅降级到位） | worker#3 | ⬜ 等 B2 |
+| B3 | 后端 v2 全量：§4.3b 规划/健康扩展 + §4.3c AI 代理 + §4.3d 邮箱验证码 + §4.3e 订单支付（sandbox+支付宝协议）+ §4.3f 推荐算法 | resume worker#1 | ✅ 完成（六组冒烟全过 + v1 回归 12/12；大脑复核 vet/build 0 错；提交 0b6ac5e 已推送） |
+| B3 | usePlanner/useHealth 前端迁移（对齐 v2 契约，优雅降级到位） | worker#3 | 🟡 进行中 |
 | B4 | CampusWall.vue 全量迁移 /api/wall/*（含推荐 tab 接 /wall/recommended + reason 展示） | worker#4 | ⬜ 等 B3 |
 | B4 | AppHome 主控台聚合迁移 + Register/ForgotPassword 邮箱验证码链路接通 | 大脑 | ⬜ 等 B3 |
 | B5 | Shop 迁移 + 下单/支付/订单状态闭环 UI（沙箱支付全流程可点通） | worker#5 | ⬜ 等 B4 |

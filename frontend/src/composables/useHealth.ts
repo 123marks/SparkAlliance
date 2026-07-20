@@ -1,6 +1,15 @@
+/**
+ * useHealth.ts — 健康打卡数据层
+ *
+ * 2026-07-21 迁移：数据源从 Supabase 切换到自建 Go 后端（BACKEND-CONTRACT.md §4.3 / §4.3b）。
+ * - checkins 走 GET/POST /api/health/checkins（POST 为按天 upsert）
+ * - 后端 v1 仍用老字段（checkin_date/water_cups/sleep_hours），v2 换新字段（date/water_intake/sleep_start…）：
+ *   请求体两套字段名都带、响应两套都认（见 buildCheckinBody / apiToCheckin），v2 上线无需再改
+ * - streak / challenges 走 §4.3b v2 端点；v2 未上线时（404）streak 显示 0、挑战列表为空
+ * - 文件上传改 apiUpload（POST /api/uploads），/uploads 为公开静态路径，签名 URL 不再需要
+ */
 import { ref } from 'vue'
-import { supabase } from '../supabase'
-import { useAuth } from './useAuth'
+import { apiFetch, apiUpload, getToken, ApiError, API_BASE } from '../api/client'
 
 // ====== 类型定义 ======
 
@@ -12,6 +21,8 @@ export interface HealthCheckin {
   sleep_start?: string
   sleep_end?: string
   sleep_quality?: number
+  /** v1 后端仅存睡眠时长（小时）；有 sleep_start/end 时以区间计算为准 */
+  sleep_hours?: number
   exercise_type?: string
   exercise_minutes: number
   exercise_intensity?: 'light' | 'moderate' | 'high'
@@ -119,11 +130,97 @@ export const HEALTH_ACHIEVEMENTS = [
   { key: 'early_bird', name: '早起鸟儿', description: '连续7天在6:30前起床', icon: '🌅', tier: 'bronze', reward_xp: 70 },
 ]
 
+// ====== 后端行映射（v1/v2 双兼容） ======
+
+/** 后端 checkin 行：v1 老字段（checkin_date/water_cups/sleep_hours）与 v2 新字段（date/water_intake/…）的并集 */
+interface ApiCheckinRow {
+  id: string
+  user_id: string
+  date?: string
+  checkin_date?: string
+  meals?: MealsData | null
+  sleep_hours?: number | null
+  sleep_start?: string | null
+  sleep_end?: string | null
+  sleep_quality?: number | null
+  exercise_type?: string | null
+  exercise_minutes?: number | null
+  exercise_intensity?: string | null
+  exercise_image_url?: string | null
+  water_cups?: number | null
+  water_intake?: number | null
+  is_public?: boolean | null
+  share_text?: string | null
+  share_tags?: string[] | null
+  ai_comment?: string | null
+  created_at: string
+  updated_at?: string
+}
+
+/** v1 后端以 water_cups(杯) 粗粒度存饮水，1 杯按 250ml 折算 */
+const ML_PER_CUP = 250
+
+function apiToCheckin(raw: ApiCheckinRow): HealthCheckin {
+  const str = (v: string | null | undefined) => (v ? v : undefined)
+  return {
+    id: raw.id,
+    user_id: raw.user_id,
+    date: raw.date || raw.checkin_date || '',
+    meals: raw.meals || {},
+    sleep_start: str(raw.sleep_start),
+    sleep_end: str(raw.sleep_end),
+    sleep_quality: raw.sleep_quality ?? undefined,
+    sleep_hours: raw.sleep_hours ?? undefined,
+    exercise_type: str(raw.exercise_type),
+    exercise_minutes: raw.exercise_minutes || 0,
+    exercise_intensity: (str(raw.exercise_intensity) as HealthCheckin['exercise_intensity']) ?? undefined,
+    exercise_image_url: str(raw.exercise_image_url),
+    water_intake: raw.water_intake ?? (raw.water_cups ? raw.water_cups * ML_PER_CUP : 0),
+    is_public: !!raw.is_public,
+    share_text: str(raw.share_text),
+    share_tags: raw.share_tags && raw.share_tags.length ? raw.share_tags : undefined,
+    ai_comment: str(raw.ai_comment),
+    created_at: raw.created_at,
+    updated_at: raw.updated_at || raw.created_at,
+  }
+}
+
+/** 组装 POST /api/health/checkins 请求体：v1 与 v2 字段名都带，两版后端均能解析入库 */
+function buildCheckinBody(record: Partial<HealthCheckin>, date: string): Record<string, unknown> {
+  // v1 只存 sleep_hours：从 sleep_start/end 推算，保证 v1 期间睡眠数据可回读
+  let sleepHours = record.sleep_hours ?? null
+  if (record.sleep_start && record.sleep_end) {
+    let diff = (new Date(record.sleep_end).getTime() - new Date(record.sleep_start).getTime()) / 3600000
+    if (Number.isFinite(diff)) {
+      if (diff < 0) diff += 24
+      sleepHours = Math.round(diff * 100) / 100
+    }
+  }
+  const waterMl = record.water_intake ?? 0
+  return {
+    date,
+    checkin_date: date,
+    meals: record.meals ?? {},
+    sleep_start: record.sleep_start ?? null,
+    sleep_end: record.sleep_end ?? null,
+    sleep_quality: record.sleep_quality ?? null,
+    sleep_hours: sleepHours,
+    exercise_type: record.exercise_type ?? null,
+    exercise_minutes: record.exercise_minutes ?? 0,
+    exercise_intensity: record.exercise_intensity ?? null,
+    exercise_image_url: record.exercise_image_url ?? null,
+    water_intake: waterMl,
+    water_cups: Math.round(waterMl / ML_PER_CUP),
+    is_public: record.is_public ?? false,
+    share_text: record.share_text ?? null,
+    share_tags: record.share_tags ?? null,
+    ai_comment: record.ai_comment ?? null,
+  }
+}
+
 // ====== Composable ======
 
 export function useHealth() {
-  const { user } = useAuth()
-
   // 状态
   const loading = ref(false)
   const saving = ref(false)
@@ -212,76 +309,61 @@ export function useHealth() {
   // ====== 数据库操作 ======
 
   async function loadTodayCheckin(): Promise<HealthCheckin | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
     const today = getLocalDate()
 
-    const { data, error } = await supabase
-      .from('health_checkins')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .eq('date', today)
-      .maybeSingle()
-
-    if (error) {
-      console.error('加载今日打卡失败:', error)
+    let record: HealthCheckin | null = null
+    try {
+      const data = await apiFetch<{ checkins: ApiCheckinRow[] }>(
+        `/api/health/checkins?from=${today}&to=${today}`
+      )
+      const row = (data.checkins || [])[0]
+      if (row) {
+        record = apiToCheckin(row)
+        todayCheckin.value = record
+      }
+    } catch (e) {
+      console.error('加载今日打卡失败:', e)
       return null
-    }
-
-    if (data) {
-      todayCheckin.value = data as HealthCheckin
     }
 
     // 加载连续打卡天数
     await loadStreak()
 
-    return data as HealthCheckin | null
+    return record
   }
 
+  /** 连续打卡：GET /api/health/streak（v2 由后端按天连续性计算；v2 未上线时显示 0） */
   async function loadStreak(): Promise<number> {
-    if (!user.value) return 0
+    if (!getToken()) return 0
 
-    const { data } = await supabase
-      .from('health_streaks')
-      .select('current_streak')
-      .eq('user_id', user.value.id)
-      .maybeSingle()
-
-    streak.value = data?.current_streak || 0
+    try {
+      const data = await apiFetch<{ current_streak: number }>('/api/health/streak')
+      streak.value = data.current_streak || 0
+    } catch (e) {
+      if (e instanceof ApiError && e.httpStatus === 404) {
+        // 待 v2 后端：端点未实现，streak 显示 0
+        streak.value = 0
+      } else {
+        console.error('加载连续打卡失败:', e)
+        streak.value = 0
+      }
+    }
     return streak.value
   }
 
   async function saveCheckin(checkinData: Partial<HealthCheckin>): Promise<boolean> {
-    if (!user.value) return false
+    if (!getToken()) return false
     saving.value = true
 
     try {
       const today = getLocalDate()
-      const existingId = todayCheckin.value?.id
+      // 与旧 upsert 语义一致：在已有今日记录基础上合并本次提交的字段
+      const merged: Partial<HealthCheckin> = { ...(todayCheckin.value || {}), ...checkinData }
+      await apiFetch('/api/health/checkins', { body: buildCheckinBody(merged, today) })
 
-      const record = {
-        user_id: user.value.id,
-        date: today,
-        ...checkinData,
-        updated_at: new Date().toISOString(),
-      }
-
-      if (existingId) {
-        const { error } = await supabase
-          .from('health_checkins')
-          .update(record)
-          .eq('id', existingId)
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('health_checkins')
-          .insert(record)
-        if (error) throw error
-      }
-
-      // 更新连续打卡
-      await updateStreak(today)
-
-      // 重新加载今日数据
+      // 连续打卡由后端 /api/health/streak 实时计算，前端只需刷新
+      // 重新加载今日数据（内部会顺带刷新 streak）
       await loadTodayCheckin()
 
       return true
@@ -293,93 +375,49 @@ export function useHealth() {
     }
   }
 
-  async function updateStreak(today: string): Promise<void> {
-    if (!user.value) return
+  // 旧版 updateStreak（本地读改写 health_streaks 表）已删除：连续打卡改由后端
+  // GET /api/health/streak 根据 health_checkins 按天连续性实时计算（契约 §4.3b）
 
-    const { data } = await supabase
-      .from('health_streaks')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .maybeSingle()
-
-    const yesterday = getLocalDate(-1)
-
-    if (data) {
-      let newStreak = data.current_streak
-      if (data.last_checkin_date === yesterday) {
-        newStreak++
-      } else if (data.last_checkin_date !== today) {
-        newStreak = 1
-      }
-
-      await supabase.from('health_streaks').update({
-        current_streak: newStreak,
-        longest_streak: Math.max(newStreak, data.longest_streak),
-        last_checkin_date: today,
-      }).eq('user_id', user.value.id)
-
-      streak.value = newStreak
-    } else {
-      await supabase.from('health_streaks').insert({
-        user_id: user.value.id,
-        current_streak: 1,
-        longest_streak: 1,
-        last_checkin_date: today,
-      })
-      streak.value = 1
-    }
-  }
-
-  // ====== 挑战功能 ======
+  // ====== 挑战功能（契约 §4.3b v2 端点；v2 未上线时列表为空、报名/更新静默失败） ======
 
   async function loadChallenges(): Promise<HealthChallenge[]> {
-    if (!user.value) return []
+    if (!getToken()) return []
 
-    const { data, error } = await supabase
-      .from('health_challenges')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .in('status', ['active'])
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('加载挑战失败:', error)
+    try {
+      const data = await apiFetch<{ challenges: HealthChallenge[] }>('/api/health/challenges?status=active')
+      challenges.value = data.challenges || []
+    } catch (e) {
+      if (e instanceof ApiError && e.httpStatus === 404) {
+        // 待 v2 后端：challenges 端点未实现
+        challenges.value = []
+      } else {
+        console.error('加载挑战失败:', e)
+      }
       return []
     }
-
-    challenges.value = data || []
     return challenges.value
   }
 
   async function joinChallenge(template: typeof CHALLENGE_TEMPLATES[number]): Promise<HealthChallenge | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
 
-    const startDate = getLocalDate()
-    const endDate = new Date()
-    endDate.setDate(endDate.getDate() + template.target_days)
-
-    const { data, error } = await supabase.from('health_challenges').insert({
-      user_id: user.value.id,
-      challenge_type: template.type,
-      title: template.title,
-      description: template.description,
-      target_value: 0,
-      current_value: 0,
-      target_days: template.target_days,
-      completed_days: 0,
-      start_date: startDate,
-      end_date: endDate.toISOString().slice(0, 10),
-      status: 'active',
-      reward_xp: template.reward_xp,
-    }).select().single()
-
-    if (error) {
-      console.error('参加挑战失败:', error)
+    try {
+      // start_date=今天、end_date=+target_days 由后端计算（契约 §4.3b）
+      const data = await apiFetch<HealthChallenge>('/api/health/challenges', {
+        body: {
+          challenge_type: template.type,
+          title: template.title,
+          description: template.description,
+          target_days: template.target_days,
+          reward_xp: template.reward_xp,
+        },
+      })
+      challenges.value.unshift(data)
+      return data
+    } catch (e) {
+      console.error('参加挑战失败:', e)
       return null
     }
-
-    challenges.value.unshift(data)
-    return data
   }
 
   async function updateChallengeProgress(challengeId: string, completedDays: number): Promise<void> {
@@ -388,10 +426,15 @@ export function useHealth() {
 
     const newStatus = completedDays >= challenge.target_days ? 'completed' : 'active'
 
-    await supabase.from('health_challenges').update({
-      completed_days: completedDays,
-      status: newStatus,
-    }).eq('id', challengeId)
+    try {
+      await apiFetch(`/api/health/challenges/${challengeId}`, {
+        method: 'PATCH',
+        body: { completed_days: completedDays, status: newStatus },
+      })
+    } catch (e) {
+      console.error('更新挑战进度失败:', e)
+      return
+    }
 
     // 更新本地状态
     challenge.completed_days = completedDays
@@ -400,22 +443,38 @@ export function useHealth() {
 
   // ====== 周报生成 ======
 
+  /** 单条记录的睡眠时长（小时）：优先 sleep_start/end 区间，缺失时回退 v1 的 sleep_hours */
+  function checkinSleepHours(r: HealthCheckin): number {
+    if (r.sleep_start && r.sleep_end) {
+      let diff = (new Date(r.sleep_end).getTime() - new Date(r.sleep_start).getTime()) / 3600000
+      if (Number.isFinite(diff)) {
+        if (diff < 0) diff += 24
+        return diff
+      }
+    }
+    return r.sleep_hours || 0
+  }
+
   async function generateWeeklyReport(): Promise<WeeklyReport | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
 
     const today = new Date()
     const weekStart = new Date(today)
     weekStart.setDate(today.getDate() - 6)
 
-    const { data: records } = await supabase
-      .from('health_checkins')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .gte('date', weekStart.toISOString().slice(0, 10))
-      .lte('date', today.toISOString().slice(0, 10))
-      .order('date')
+    let records: HealthCheckin[] = []
+    try {
+      const data = await apiFetch<{ checkins: ApiCheckinRow[] }>(
+        `/api/health/checkins?from=${weekStart.toISOString().slice(0, 10)}&to=${today.toISOString().slice(0, 10)}`
+      )
+      // 后端按日期倒序返回，周报按升序处理
+      records = (data.checkins || []).map(apiToCheckin).sort((a, b) => a.date.localeCompare(b.date))
+    } catch (e) {
+      console.error('加载周报数据失败:', e)
+      return null
+    }
 
-    if (!records || records.length === 0) return null
+    if (records.length === 0) return null
 
     // 计算各项平均值
     let totalSleep = 0, totalMeal = 0, totalExercise = 0, totalWater = 0
@@ -423,10 +482,9 @@ export function useHealth() {
 
     for (const r of records) {
       // 睡眠
-      if (r.sleep_start && r.sleep_end) {
-        let diff = (new Date(r.sleep_end).getTime() - new Date(r.sleep_start).getTime()) / 3600000
-        if (diff < 0) diff += 24
-        totalSleep += diff
+      const sleepH = checkinSleepHours(r)
+      if (sleepH > 0) {
+        totalSleep += sleepH
         sleepDays++
       }
       // 饮食
@@ -451,11 +509,7 @@ export function useHealth() {
     let bestScore = 0, worstScore = 100, bestDay = '', worstDay = ''
     for (const r of records) {
       const meals = r.meals as MealsData
-      let sleepH = 0
-      if (r.sleep_start && r.sleep_end) {
-        sleepH = (new Date(r.sleep_end).getTime() - new Date(r.sleep_start).getTime()) / 3600000
-        if (sleepH < 0) sleepH += 24
-      }
+      const sleepH = checkinSleepHours(r)
       const score = calculateTotalScore(
         calculateMealScore(meals),
         calculateSleepScore(sleepH),
@@ -501,20 +555,22 @@ export function useHealth() {
   // ====== 历史数据 ======
 
   async function loadWeekData(): Promise<{ sleep: number[]; meal: number[]; exercise: number[]; water: number[] }> {
-    if (!user.value) return { sleep: [], meal: [], exercise: [], water: [] }
+    if (!getToken()) return { sleep: [], meal: [], exercise: [], water: [] }
 
     const weekStart = getLocalDate(-6)
     const today = getLocalDate()
 
-    const { data: records } = await supabase
-      .from('health_checkins')
-      .select('date,meals,sleep_start,sleep_end,exercise_minutes,water_intake')
-      .eq('user_id', user.value.id)
-      .gte('date', weekStart)
-      .lte('date', today)
-      .order('date')
+    let records: HealthCheckin[] = []
+    try {
+      const data = await apiFetch<{ checkins: ApiCheckinRow[] }>(
+        `/api/health/checkins?from=${weekStart}&to=${today}`
+      )
+      records = (data.checkins || []).map(apiToCheckin)
+    } catch (e) {
+      console.error('加载本周数据失败:', e)
+    }
 
-    const recordMap = new Map((records || []).map(r => [r.date, r]))
+    const recordMap = new Map(records.map(r => [r.date, r]))
     const sArr: number[] = [], mArr: number[] = [], eArr: number[] = [], wArr: number[] = []
 
     for (let i = 6; i >= 0; i--) {
@@ -522,13 +578,8 @@ export function useHealth() {
       const data = recordMap.get(d)
 
       if (data) {
-        if (data.sleep_start && data.sleep_end) {
-          let diff = (new Date(data.sleep_end).getTime() - new Date(data.sleep_start).getTime()) / 3600000
-          if (diff < 0) diff += 24
-          sArr.push(Math.round(diff * 10) / 10)
-        } else {
-          sArr.push(0)
-        }
+        const sleepH = checkinSleepHours(data)
+        sArr.push(sleepH > 0 ? Math.round(sleepH * 10) / 10 : 0)
         const meals = data.meals as MealsData
         mArr.push(calculateMealScore(meals))
         eArr.push(Math.min(100, Math.round(((data.exercise_minutes || 0) / 30) * 100)))
@@ -545,50 +596,38 @@ export function useHealth() {
   }
 
   async function loadHistory(page: number = 0, pageSize: number = 10): Promise<HealthCheckin[]> {
-    if (!user.value) return []
+    if (!getToken()) return []
 
-    const { data, error } = await supabase
-      .from('health_checkins')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .order('date', { ascending: false })
-      .range(page * pageSize, page * pageSize + pageSize - 1)
-
-    if (error) {
-      console.error('加载历史记录失败:', error)
+    try {
+      // 后端按 date 倒序返回全部记录，前端本地分页（后端 checkins 暂无 limit/offset 参数）
+      const data = await apiFetch<{ checkins: ApiCheckinRow[] }>('/api/health/checkins')
+      const all = (data.checkins || []).map(apiToCheckin)
+      return all.slice(page * pageSize, page * pageSize + pageSize)
+    } catch (e) {
+      console.error('加载历史记录失败:', e)
       return []
     }
-
-    return data || []
   }
 
   // ====== 文件上传 ======
 
+  /** 上传到自建后端 POST /api/uploads，返回完整可访问 URL（folder 参数保留签名，自建后端统一存 /uploads） */
   async function uploadHealthFile(file: File, folder: string): Promise<string | null> {
-    if (!user.value) return null
-
-    const path = `${user.value.id}/${folder}/${Date.now()}.${file.name.split('.').pop()}`
+    void folder
+    if (!getToken()) return null
 
     try {
-      const { error: uploadError } = await supabase.storage
-        .from('health-images')
-        .upload(path, file)
-
-      if (uploadError) throw uploadError
-
-      return path
+      return await apiUpload(file)
     } catch (e) {
       console.error('文件上传失败:', e)
       return null
     }
   }
 
+  /** 自建后端 /uploads 为公开静态路径，无需签名：完整 URL 原样透传，相对路径拼 API_BASE */
   async function getSignedUrl(storagePath: string): Promise<string> {
     if (!storagePath || storagePath.startsWith('http')) return storagePath
-    const { data, error } = await supabase.storage
-      .from('health-images')
-      .createSignedUrl(storagePath, 3600)
-    return (!error && data?.signedUrl) ? data.signedUrl : ''
+    return storagePath.startsWith('/') ? `${API_BASE}${storagePath}` : `${API_BASE}/${storagePath}`
   }
 
   // ====== 工具函数 ======

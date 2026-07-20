@@ -1,6 +1,15 @@
+/**
+ * usePlanner.ts — 星火规划数据层
+ *
+ * 2026-07-21 迁移：数据源从 Supabase 切换到自建 Go 后端（BACKEND-CONTRACT.md §4.3 / §4.3b）。
+ * - goals/tasks 走 v1 既有端点（/api/planner/goals(/:id)、/api/planner/tasks(/:id)）
+ * - milestones/reviews 走 §4.3b v2 端点；v2 未上线（路由 404）时优雅降级并在控制台标注
+ * - 属主过滤由后端 JWT 兜底，前端不再传 user_id
+ * - 推送日程改走 POST /api/schedule/events + PATCH 任务写回 schedule_event_id
+ * - AI 调用（plannerDecompose/plannerReview）保持走 utils/localAI，本轮不迁
+ */
 import { ref, computed } from 'vue'
-import { supabase } from '../supabase'
-import { useAuth } from './useAuth'
+import { apiFetch, apiUpload, getToken, ApiError } from '../api/client'
 import { plannerDecompose, plannerReview } from '../utils/localAI'
 
 // ====== 类型定义 ======
@@ -45,6 +54,7 @@ export interface PlannerTask {
   source: 'manual' | 'ai' | 'template'
   sort_order: number
   schedule_event_id?: string
+  created_at?: string
   // 前端扩展字段
   goalTitle?: string
 }
@@ -173,11 +183,29 @@ export const GOAL_TEMPLATES = [
   },
 ] as const
 
+// ====== 后端响应形状 ======
+
+/** 后端 GET /api/planner/goals 返回 goal 附带 milestones 数组（契约 §4.3） */
+type ApiGoal = Goal & { milestones?: Milestone[] }
+
+/** v2 列表端点兼容「裸数组」与「{key: 数组}」两种包装 */
+function unwrapList<T>(res: unknown, key: string): T[] {
+  if (Array.isArray(res)) return res as T[]
+  if (res && typeof res === 'object') {
+    const v = (res as Record<string, unknown>)[key]
+    if (Array.isArray(v)) return v as T[]
+  }
+  return []
+}
+
+/** 是否为「v2 端点尚未上线」的 404（路由不存在），区别于业务性 404 */
+function isV2Unavailable(e: unknown): boolean {
+  return e instanceof ApiError && e.httpStatus === 404
+}
+
 // ====== 组合函数 ======
 
 export function usePlanner() {
-  const { user } = useAuth()
-
   const goals = ref<Goal[]>([])
   const loading = ref(false)
   const aiGenerating = ref(false)
@@ -193,17 +221,12 @@ export function usePlanner() {
   // ====== 目标 CRUD ======
 
   async function fetchGoals() {
-    if (!user.value) return
+    if (!getToken()) return
     loading.value = true
     try {
-      const { data, error } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', user.value.id)
-        .in('status', ['active', 'paused'])
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      goals.value = data || []
+      // 后端仅支持单一 status 过滤，一次取全量后本地过滤 active/paused（属主由 JWT 兜底）
+      const data = await apiFetch<{ goals: ApiGoal[] }>('/api/planner/goals')
+      goals.value = (data.goals || []).filter(g => g.status === 'active' || g.status === 'paused')
     } catch (e) {
       console.error('加载目标失败:', e)
     } finally {
@@ -212,7 +235,7 @@ export function usePlanner() {
   }
 
   async function createGoal(title: string, goalType: string, deadline: string, description?: string): Promise<Goal | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
 
     const today = getLocalDate()
     if (deadline <= today) {
@@ -224,14 +247,14 @@ export function usePlanner() {
     const safeType = validTypes.includes(goalType) ? goalType : 'custom'
 
     try {
-      const { data, error } = await supabase.from('goals').insert({
-        user_id: user.value.id,
-        title: title.slice(0, 200),
-        goal_type: safeType,
-        deadline,
-        description: description?.slice(0, 500),
-      }).select().single()
-      if (error) throw error
+      const data = await apiFetch<Goal>('/api/planner/goals', {
+        body: {
+          title: title.slice(0, 200),
+          goal_type: safeType,
+          deadline,
+          description: description?.slice(0, 500),
+        },
+      })
       goals.value.unshift(data)
       return data
     } catch (e) {
@@ -242,8 +265,7 @@ export function usePlanner() {
 
   async function updateGoal(goalId: string, updates: Partial<Goal>) {
     try {
-      const { error } = await supabase.from('goals').update(updates).eq('id', goalId)
-      if (error) throw error
+      await apiFetch(`/api/planner/goals/${goalId}`, { method: 'PATCH', body: updates })
       const idx = goals.value.findIndex(g => g.id === goalId)
       if (idx >= 0) Object.assign(goals.value[idx], updates)
     } catch (e) {
@@ -258,25 +280,21 @@ export function usePlanner() {
     await fetchTodayTasks() // 刷新今日列表
   }
 
-  // 删除目标（级联删除子任务+清理关联日程事件）
+  // 删除目标（同时清理子任务与关联日程事件；自建后端 goal 删除时任务是 SET NULL，需前端显式级联）
   async function deleteGoal(goalId: string) {
     try {
-      // 1. 先获取该目标下所有任务的 schedule_event_id
-      const { data: tasks } = await supabase
-        .from('planner_tasks')
-        .select('schedule_event_id')
-        .eq('goal_id', goalId)
-        .not('schedule_event_id', 'is', null)
-      // 2. 批量删除关联的日程事件
-      if (tasks && tasks.length > 0) {
-        const eventIds = tasks.map(t => t.schedule_event_id).filter(Boolean)
-        if (eventIds.length > 0) {
-          await supabase.from('schedule_events').delete().in('id', eventIds)
+      // 1. 取该目标下所有任务（后端 tasks 列表无 goal_id 过滤，本地筛）
+      const data = await apiFetch<{ tasks: PlannerTask[] }>('/api/planner/tasks')
+      const goalTasks = (data.tasks || []).filter(t => t.goal_id === goalId)
+      // 2. 逐个删除关联日程事件与任务本身
+      for (const t of goalTasks) {
+        if (t.schedule_event_id) {
+          await apiFetch(`/api/schedule/events/${t.schedule_event_id}`, { method: 'DELETE' }).catch(() => {})
         }
+        await apiFetch(`/api/planner/tasks/${t.id}`, { method: 'DELETE' }).catch(() => {})
       }
-      // 3. 删除目标（子表通过 ON DELETE CASCADE 自动清理）
-      const { error } = await supabase.from('goals').delete().eq('id', goalId)
-      if (error) throw error
+      // 3. 删除目标（milestones 由后端 ON DELETE CASCADE 清理）
+      await apiFetch(`/api/planner/goals/${goalId}`, { method: 'DELETE' })
       // 4. 实时更新本地状态
       goals.value = goals.value.filter(g => g.id !== goalId)
       await fetchTodayTasks()
@@ -287,89 +305,105 @@ export function usePlanner() {
 
   // ====== 历史（已完成+已归档） ======
 
-  async function fetchHistory() {
-    if (!user.value) return
+  /** 拉某个目标的复盘列表（v2 端点；未上线返回 null 表示不可用） */
+  async function fetchGoalReviews(goalId: string): Promise<GoalReview[] | null> {
     try {
-      const { data, error } = await supabase
-        .from('goals')
-        .select('*, goal_reviews(*)')
-        .eq('user_id', user.value.id)
-        .in('status', ['completed', 'archived'])
-        .order('updated_at', { ascending: false })
-        .limit(20)
-      if (error) throw error
-      historyGoals.value = (data || []).map((g: any) => ({
-        ...g,
-        review: g.goal_reviews?.[0] || undefined,
-      }))
+      const res = await apiFetch<unknown>(`/api/planner/goals/${goalId}/reviews`)
+      return unwrapList<GoalReview>(res, 'reviews')
+    } catch (e) {
+      if (isV2Unavailable(e)) return null
+      console.error('加载复盘失败:', e)
+      return []
+    }
+  }
+
+  async function fetchHistory() {
+    if (!getToken()) return
+    try {
+      const data = await apiFetch<{ goals: ApiGoal[] }>('/api/planner/goals')
+      const history = (data.goals || [])
+        .filter(g => g.status === 'completed' || g.status === 'archived')
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 20)
+
+      // 复盘走 v2 端点：先探测第一个，v2 未上线（404）则整批跳过，避免逐条打 404
+      const reviewsByGoal = new Map<string, GoalReview | undefined>()
+      if (history.length > 0) {
+        const first = await fetchGoalReviews(history[0].id)
+        if (first !== null) {
+          reviewsByGoal.set(history[0].id, first[0])
+          const rest = await Promise.all(
+            history.slice(1).map(async g => [g.id, ((await fetchGoalReviews(g.id)) || [])[0]] as const)
+          )
+          for (const [id, review] of rest) reviewsByGoal.set(id, review)
+        }
+        // first === null → 待 v2 后端：历史目标不带复盘展示
+      }
+
+      historyGoals.value = history.map(g => ({ ...g, review: reviewsByGoal.get(g.id) }))
     } catch (e) {
       console.error('加载历史失败:', e)
     }
   }
 
-  // 写评语/复盘
+  // 写评语/复盘（v2 端点：POST /api/planner/goals/:id/reviews）
   async function addReview(goalId: string, rating: number, content: string, improvements?: string) {
-    if (!user.value) return
+    if (!getToken()) return
     try {
-      const { error } = await supabase.from('goal_reviews').insert({
-        goal_id: goalId,
-        user_id: user.value.id,
-        rating, content, improvements,
+      await apiFetch(`/api/planner/goals/${goalId}/reviews`, {
+        body: { rating, content, improvements },
       })
-      if (error) throw error
       await fetchHistory()
     } catch (e) {
-      console.error('添加评语失败:', e)
+      if (isV2Unavailable(e)) {
+        console.warn('添加评语失败：复盘端点待 v2 后端上线')
+      } else {
+        console.error('添加评语失败:', e)
+      }
     }
   }
 
   // ====== 任务 CRUD（完整版） ======
 
   async function fetchTasks(goalId: string): Promise<PlannerTask[]> {
-    const { data, error } = await supabase
-      .from('planner_tasks')
-      .select('*')
-      .eq('goal_id', goalId)
-      .order('sort_order')
-    if (error) { console.error(error); return [] }
-    return data || []
+    try {
+      // 后端 tasks 列表无 goal_id 过滤，取回后本地筛（已按 sort_order 升序）
+      const data = await apiFetch<{ tasks: PlannerTask[] }>('/api/planner/tasks')
+      return (data.tasks || []).filter(t => t.goal_id === goalId)
+    } catch (e) {
+      console.error(e)
+      return []
+    }
   }
 
   // 今日任务：当日到期 + 目标标题（含独立快捷任务）
   async function fetchTodayTasks() {
-    if (!user.value) return
+    if (!getToken()) return
     const today = getLocalDate()
     try {
-      // 分两次查询：有目标的任务 + 无目标的独立任务
-      const { data: goalTasks, error: e1 } = await supabase
-        .from('planner_tasks')
-        .select('*, goals!inner(title)')
-        .eq('user_id', user.value.id)
-        .in('status', ['pending', 'in_progress'])
-        .lte('due_date', today)
-        .not('goal_id', 'is', null)
-        .order('due_date')
-        .limit(20)
-      if (e1) throw e1
+      // 后端仅支持单一 status 过滤：pending 与 in_progress 各查一次
+      const [pending, inProgress] = await Promise.all([
+        apiFetch<{ tasks: PlannerTask[] }>(`/api/planner/tasks?status=pending&due_before=${today}`),
+        apiFetch<{ tasks: PlannerTask[] }>(`/api/planner/tasks?status=in_progress&due_before=${today}`),
+      ])
+      const all = [...(pending.tasks || []), ...(inProgress.tasks || [])]
 
-      const { data: quickTasks, error: e2 } = await supabase
-        .from('planner_tasks')
-        .select('*')
-        .eq('user_id', user.value.id)
-        .in('status', ['pending', 'in_progress'])
-        .lte('due_date', today)
-        .is('goal_id', null)
-        .order('created_at', { ascending: false })
-        .limit(20)
-      if (e2) throw e2
+      // 目标标题映射（goals 已由 fetchGoals 加载；未命中显示「未知目标」，与旧行为一致）
+      const titleMap = new Map(goals.value.map(g => [g.id, g.title]))
 
-      const mapped1 = (goalTasks || []).map((t: any) => ({
-        ...t, goalTitle: t.goals?.title || '未知目标',
-      }))
-      const mapped2 = (quickTasks || []).map((t: any) => ({
-        ...t, goalTitle: '⚡ 快捷任务',
-      }))
-      todayTasks.value = [...mapped2, ...mapped1] // 快捷任务排前面
+      const goalTasks = all
+        .filter(t => t.goal_id)
+        .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''))
+        .slice(0, 20)
+        .map(t => ({ ...t, goalTitle: titleMap.get(t.goal_id!) || '未知目标' }))
+
+      const quickTasks = all
+        .filter(t => !t.goal_id)
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 20)
+        .map(t => ({ ...t, goalTitle: '⚡ 快捷任务' }))
+
+      todayTasks.value = [...quickTasks, ...goalTasks] // 快捷任务排前面
     } catch (e) {
       console.error('加载今日任务失败:', e)
     }
@@ -377,18 +411,18 @@ export function usePlanner() {
 
   // 创建快捷独立任务（无需目标）
   async function createQuickTask(title: string, dueDate?: string): Promise<PlannerTask | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
     try {
-      const { data, error } = await supabase.from('planner_tasks').insert({
-        user_id: user.value.id,
-        goal_id: null,  // 无目标
-        title,
-        due_date: dueDate || getLocalDate(),
-        difficulty: 2,
-        source: 'manual',
-        status: 'pending',
-      }).select().single()
-      if (error) throw error
+      const data = await apiFetch<PlannerTask>('/api/planner/tasks', {
+        body: {
+          goal_id: null,  // 无目标
+          title,
+          due_date: dueDate || getLocalDate(),
+          difficulty: 2,
+          source: 'manual',
+          status: 'pending',
+        },
+      })
       // 加入今日列表
       todayTasks.value.unshift({ ...data, goalTitle: '快捷任务' })
       return data
@@ -400,21 +434,21 @@ export function usePlanner() {
 
   // 创建目标下的任务
   async function createTask(goalId: string, task: Partial<PlannerTask>): Promise<PlannerTask | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
     try {
-      const { data, error } = await supabase.from('planner_tasks').insert({
-        goal_id: goalId,
-        user_id: user.value.id,
-        title: task.title || '未命名任务',
-        description: task.description,
-        estimated_minutes: task.estimated_minutes,
-        difficulty: task.difficulty || 3,
-        due_date: task.due_date,
-        source: task.source || 'manual',
-        sort_order: task.sort_order || 0,
-        status: 'pending',
-      }).select().single()
-      if (error) throw error
+      const data = await apiFetch<PlannerTask>('/api/planner/tasks', {
+        body: {
+          goal_id: goalId,
+          title: task.title || '未命名任务',
+          description: task.description,
+          estimated_minutes: task.estimated_minutes,
+          difficulty: task.difficulty || 3,
+          due_date: task.due_date,
+          source: task.source || 'manual',
+          sort_order: task.sort_order || 0,
+          status: 'pending',
+        },
+      })
       return data
     } catch (e) {
       console.error('创建任务失败:', e)
@@ -425,8 +459,10 @@ export function usePlanner() {
   // 编辑任务（同步更新关联日程）
   async function editTask(taskId: string, updates: Partial<PlannerTask>) {
     try {
-      const { error } = await supabase.from('planner_tasks').update(updates).eq('id', taskId)
-      if (error) throw error
+      // 剔除前端扩展字段，其余透传给后端 PATCH
+      const { goalTitle: _goalTitle, ...patch } = updates
+      void _goalTitle
+      await apiFetch(`/api/planner/tasks/${taskId}`, { method: 'PATCH', body: patch })
       // 同步更新关联日程事件
       const task = todayTasks.value.find(t => t.id === taskId)
       if (task?.schedule_event_id) {
@@ -439,7 +475,9 @@ export function usePlanner() {
           scheduleUpdates.end_time = end.toISOString()
         }
         if (Object.keys(scheduleUpdates).length > 0) {
-          await supabase.from('schedule_events').update(scheduleUpdates).eq('id', task.schedule_event_id)
+          await apiFetch(`/api/schedule/events/${task.schedule_event_id}`, {
+            method: 'PATCH', body: scheduleUpdates,
+          })
         }
       }
       // 更新本地
@@ -459,21 +497,23 @@ export function usePlanner() {
     if (task) { task.status = 'completed'; task.is_completed = true }
 
     try {
-      const { error } = await supabase.from('planner_tasks').update({
-        is_completed: true,
-        completed_at: new Date().toISOString(),
-        status: 'completed',
-        completion_note: note || null,
-      }).eq('id', taskId)
-      if (error) throw error
+      // completed_at 由后端在 is_completed=true 时写入 now()
+      await apiFetch(`/api/planner/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          is_completed: true,
+          status: 'completed',
+          completion_note: note || '',
+        },
+      })
       // 同步更新关联日程事件状态
       if (task?.schedule_event_id) {
-        await supabase.from('schedule_events').update({
-          status: 'completed',
-        }).eq('id', task.schedule_event_id)
+        await apiFetch(`/api/schedule/events/${task.schedule_event_id}`, {
+          method: 'PATCH', body: { status: 'completed' },
+        }).catch(() => {})
       }
       todayTasks.value = todayTasks.value.filter(t => t.id !== taskId)
-      await fetchGoals() // 触发器已更新进度
+      await fetchGoals() // 刷新目标进度
     } catch (e) {
       if (task) { task.status = oldStatus || 'pending'; task.is_completed = false }
       console.error('完成任务失败:', e)
@@ -486,12 +526,13 @@ export function usePlanner() {
       const task = todayTasks.value.find(t => t.id === taskId)
       // 清理关联日程事件
       if (task?.schedule_event_id) {
-        await supabase.from('schedule_events').delete().eq('id', task.schedule_event_id)
+        await apiFetch(`/api/schedule/events/${task.schedule_event_id}`, { method: 'DELETE' }).catch(() => {})
       }
-      const { error } = await supabase.from('planner_tasks').update({
-        status: 'cancelled', schedule_event_id: null,
-      }).eq('id', taskId)
-      if (error) throw error
+      // schedule_event_id 传空串 = 后端置 NULL
+      await apiFetch(`/api/planner/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: { status: 'cancelled', schedule_event_id: '' },
+      })
       todayTasks.value = todayTasks.value.filter(t => t.id !== taskId)
     } catch (e) {
       console.error('取消任务失败:', e)
@@ -503,10 +544,9 @@ export function usePlanner() {
     try {
       const task = todayTasks.value.find(t => t.id === taskId)
       if (task?.schedule_event_id) {
-        await supabase.from('schedule_events').delete().eq('id', task.schedule_event_id)
+        await apiFetch(`/api/schedule/events/${task.schedule_event_id}`, { method: 'DELETE' }).catch(() => {})
       }
-      const { error } = await supabase.from('planner_tasks').delete().eq('id', taskId)
-      if (error) throw error
+      await apiFetch(`/api/planner/tasks/${taskId}`, { method: 'DELETE' })
       todayTasks.value = todayTasks.value.filter(t => t.id !== taskId)
       await fetchGoals() // 刷新目标进度
     } catch (e) {
@@ -517,25 +557,28 @@ export function usePlanner() {
   // ====== 推送到日程 ======
 
   async function pushTaskToSchedule(task: PlannerTask) {
-    if (!user.value || !task.due_date) return
+    if (!getToken() || !task.due_date) return
     try {
       const startTime = new Date(`${task.due_date}T09:00:00`)
       const endTime = new Date(startTime.getTime() + (task.estimated_minutes || 60) * 60000)
-      const { data, error } = await supabase.from('schedule_events').insert({
-        user_id: user.value.id,
-        title: `📋 ${task.title}`,
-        description: task.description || '',
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        event_type: 'task',
-        status: 'active',
-        priority: task.difficulty >= 4 ? 1 : 0,
-      }).select().single()
-      if (error) throw error
-      await supabase.from('planner_tasks').update({ schedule_event_id: data.id }).eq('id', task.id)
+      const event = await apiFetch<{ id: string }>('/api/schedule/events', {
+        body: {
+          title: `📋 ${task.title}`,
+          description: task.description || '',
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          event_type: 'task',
+          status: 'active',
+          priority: task.difficulty >= 4 ? 1 : 0,
+        },
+      })
+      // 写回任务的 schedule_event_id
+      await apiFetch(`/api/planner/tasks/${task.id}`, {
+        method: 'PATCH', body: { schedule_event_id: event.id },
+      })
       // 更新本地
       const t = todayTasks.value.find(t => t.id === task.id)
-      if (t) t.schedule_event_id = data.id
+      if (t) t.schedule_event_id = event.id
     } catch (e) {
       console.error('推送到日程失败:', e)
     }
@@ -750,9 +793,37 @@ export function usePlanner() {
     return { milestones, tasks }
   }
 
+  /** 创建里程碑（v2 端点；未上线返回 null，任务将以 milestone_id=null 落库） */
+  async function createMilestone(goalId: string, m: {
+    title: string; description?: string; target_date: string; weight?: number; sort_order?: number
+  }): Promise<string | null> {
+    try {
+      const data = await apiFetch<{ id: string }>(`/api/planner/goals/${goalId}/milestones`, { body: m })
+      return data.id || null
+    } catch (e) {
+      if (isV2Unavailable(e)) {
+        console.warn('创建里程碑跳过：milestones 端点待 v2 后端上线')
+      } else {
+        console.error('创建里程碑失败:', e)
+      }
+      return null
+    }
+  }
+
+  /** 拉某目标下有 due_date 的任务并批量同步到日程 */
+  async function syncGoalTasksToSchedule(goalId: string) {
+    try {
+      const data = await apiFetch<{ tasks: PlannerTask[] }>('/api/planner/tasks')
+      const goalTasks = (data.tasks || []).filter(t => t.goal_id === goalId && t.due_date)
+      await syncTasksToSchedule(goalTasks)
+    } catch (e) {
+      console.error('同步任务到日程失败:', e)
+    }
+  }
+
   // 从模板一键创建目标+任务
   async function createFromTemplate(tmpl: typeof GOAL_TEMPLATES[number]): Promise<string | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
     const deadline = new Date()
     deadline.setDate(deadline.getDate() + tmpl.days)
     const deadlineStr = deadline.toISOString().split('T')[0]
@@ -764,21 +835,19 @@ export function usePlanner() {
     const today = new Date()
     const daysLeft = tmpl.days
 
-    // 插入里程碑
+    // 插入里程碑（v2 端点，未上线时 milestoneMap 为空）
     const milestoneMap: Record<string, string> = {}
     for (const [i, m] of tmpl.milestones.entries()) {
       const offset = Math.floor(daysLeft / tmpl.milestones.length * (i + 1))
       const d = new Date(today.getTime() + offset * 86400000)
-      const { data } = await supabase.from('goal_milestones').insert({
-        goal_id: goal.id,
-        user_id: user.value.id,
+      const id = await createMilestone(goal.id, {
         title: m.title,
         description: m.description,
         target_date: d.toISOString().split('T')[0],
         weight: m.weight,
         sort_order: i,
-      }).select('id').single()
-      if (data) milestoneMap[m.title] = data.id
+      })
+      if (id) milestoneMap[m.title] = id
     }
 
     // 插入任务
@@ -792,64 +861,56 @@ export function usePlanner() {
       const offset = phaseStart + Math.floor(phaseLen / tasksInPhase.length * (taskIdx + 1))
       const d = new Date(today.getTime() + offset * 86400000)
 
-      await supabase.from('planner_tasks').insert({
-        goal_id: goal.id,
-        user_id: user.value.id,
-        milestone_id: phaseMilestone ? milestoneMap[phaseMilestone.title] || null : null,
-        title: t.title,
-        difficulty: t.difficulty,
-        due_date: d.toISOString().split('T')[0],
-        source: 'template',
-        sort_order: i,
-        status: 'pending',
-      })
+      await apiFetch('/api/planner/tasks', {
+        body: {
+          goal_id: goal.id,
+          milestone_id: phaseMilestone ? milestoneMap[phaseMilestone.title] || null : null,
+          title: t.title,
+          difficulty: t.difficulty,
+          due_date: d.toISOString().split('T')[0],
+          source: 'template',
+          sort_order: i,
+          status: 'pending',
+        },
+      }).catch(e => console.error('创建模板任务失败:', e))
     }
 
     // 自动同步所有有 due_date 的任务到日程
-    const { data: allTasks } = await supabase
-      .from('planner_tasks')
-      .select('*')
-      .eq('goal_id', goal.id)
-      .not('due_date', 'is', null)
-    if (allTasks) await syncTasksToSchedule(allTasks as PlannerTask[])
+    await syncGoalTasksToSchedule(goal.id)
 
     return goal.id
   }
 
   // AI 拆解结果写入数据库
   async function savePlanToDB(goalId: string, plan: AIPlan) {
-    if (!user.value) return
+    if (!getToken()) return
     const milestoneMap: Record<string, string> = {}
     for (const [i, m] of plan.milestones.entries()) {
-      const { data } = await supabase.from('goal_milestones').insert({
-        goal_id: goalId, user_id: user.value.id,
+      const id = await createMilestone(goalId, {
         title: m.title, description: m.description,
         target_date: m.target_date, weight: m.weight || 1, sort_order: i,
-      }).select('id').single()
-      if (data) milestoneMap[m.title] = data.id
+      })
+      if (id) milestoneMap[m.title] = id
     }
     for (const [i, t] of plan.tasks.entries()) {
-      await supabase.from('planner_tasks').insert({
-        goal_id: goalId, user_id: user.value.id,
-        milestone_id: t.milestone_title ? milestoneMap[t.milestone_title] || null : null,
-        title: t.title, description: t.description,
-        estimated_minutes: t.estimated_minutes, difficulty: t.difficulty || 3,
-        due_date: t.due_date, source: 'ai', sort_order: i, status: 'pending',
-      })
+      await apiFetch('/api/planner/tasks', {
+        body: {
+          goal_id: goalId,
+          milestone_id: t.milestone_title ? milestoneMap[t.milestone_title] || null : null,
+          title: t.title, description: t.description,
+          estimated_minutes: t.estimated_minutes, difficulty: t.difficulty || 3,
+          due_date: t.due_date, source: 'ai', sort_order: i, status: 'pending',
+        },
+      }).catch(e => console.error('创建 AI 任务失败:', e))
     }
     // 创建后自动批量同步到日程
-    const { data: allTasks } = await supabase
-      .from('planner_tasks')
-      .select('*')
-      .eq('goal_id', goalId)
-      .not('due_date', 'is', null)
-    if (allTasks) await syncTasksToSchedule(allTasks as PlannerTask[])
+    await syncGoalTasksToSchedule(goalId)
   }
 
   // ====== 分享到广场 ======
 
   async function shareGoalToWall(goal: Goal, reviewContent?: string): Promise<boolean> {
-    if (!user.value) return false
+    if (!getToken()) return false
     try {
       const emoji = GOAL_TYPES.find(t => t.value === goal.goal_type)?.label.split(' ')[0] || '🎯'
       const statusText = goal.status === 'completed' ? '完成' : '归档'
@@ -857,18 +918,15 @@ export function usePlanner() {
       if (reviewContent) content += `\n\n💬 感悟：${reviewContent}`
       content += '\n\n#星火规划 #目标达成'
 
-      const authorName = user.value?.user_metadata?.nickname || user.value?.email?.split('@')[0] || '同学'
-      const { error } = await supabase.from('posts').insert({
-        content,
-        author_id: user.value.id,
-        author_name: authorName,
-        category: 'planner',
-        tags: ['星火规划', '目标达成'],
+      // 作者身份由后端从 JWT 取，无需再传 author_id/author_name
+      await apiFetch('/api/wall/posts', {
+        body: {
+          content,
+          category: 'share',
+          tags: ['星火规划', '目标达成'],
+        },
       })
-      if (error) throw error
-      // 标记已分享
-      await supabase.from('goal_reviews').update({ shared_to_wall: true })
-        .eq('goal_id', goal.id).eq('user_id', user.value.id)
+      // 注：旧版会回写 goal_reviews.shared_to_wall=true；契约 §4.3b 暂无复盘更新端点，待 v2 后端补充
       return true
     } catch (e) {
       console.error('分享到广场失败:', e)
@@ -901,32 +959,24 @@ export function usePlanner() {
     evidenceType: 'image' | 'video' | 'text' | 'file',
     options: { content?: string; file?: File }
   ): Promise<TaskEvidence | null> {
-    if (!user.value) return null
+    if (!getToken()) return null
     try {
       let mediaUrl: string | null = null
-      // 上传文件到 storage
+      // 上传文件到自建后端（POST /api/uploads，返回完整 URL）
       if (options.file) {
-        const ext = options.file.name.split('.').pop()
-        const path = `planner/${user.value.id}/${taskId}/${Date.now()}.${ext}`
-        const { data: upload, error: upErr } = await supabase.storage
-          .from('campus-wall')
-          .upload(path, options.file, { contentType: options.file.type })
-        if (upErr) throw upErr
-        if (upload) {
-          const { data: urlData } = supabase.storage.from('campus-wall').getPublicUrl(path)
-          mediaUrl = urlData.publicUrl
-        }
+        mediaUrl = await apiUpload(options.file)
       }
-      // 写入 task_evidence 记录
-      const { data, error } = await supabase.from('task_evidence').insert({
+      // 待后端：契约暂无 task_evidence 端点，记录仅在本地会话内构造（文件本体已持久化到 /uploads）
+      const evidence: TaskEvidence = {
+        id: (crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`),
         task_id: taskId,
-        user_id: user.value.id,
+        user_id: '',
         evidence_type: evidenceType,
-        content: options.content || null,
-        media_url: mediaUrl,
-      }).select().single()
-      if (error) throw error
-      return data as TaskEvidence
+        content: options.content || undefined,
+        media_url: mediaUrl || undefined,
+        created_at: new Date().toISOString(),
+      }
+      return evidence
     } catch (e) {
       console.error('上传任务记录失败:', e)
       return null
@@ -935,6 +985,8 @@ export function usePlanner() {
 
   // AI 评审任务记录（分析图片/文本，给出评分和反馈）
   async function aiReviewEvidence(evidenceId: string, taskTitle: string, content?: string, mediaUrl?: string): Promise<{ feedback: string; score: number }> {
+    // 待后端：契约暂无 task_evidence 端点，AI 评分不再回写数据库（evidenceId 保留签名）
+    void evidenceId
     try {
       let desc = `任务「${taskTitle}」的完成记录`
       if (content) desc += `：${content}`
@@ -953,32 +1005,16 @@ export function usePlanner() {
       const parsed = JSON.parse(jsonMatch[0])
       const score = Math.min(100, Math.max(1, Number(parsed.score) || 75))
       const feedback = parsed.feedback || '完成不错，继续保持！'
-
-      await supabase.from('task_evidence').update({
-        ai_feedback: feedback, ai_score: score,
-      }).eq('id', evidenceId)
-
       return { feedback, score }
     } catch {
-      const fallback = { feedback: '✅ 记录已提交，继续加油！', score: 80 }
-      try {
-        await supabase.from('task_evidence').update({
-          ai_feedback: fallback.feedback, ai_score: fallback.score,
-        }).eq('id', evidenceId)
-      } catch { /* 静默失败 */ }
-      return fallback
+      return { feedback: '✅ 记录已提交，继续加油！', score: 80 }
     }
   }
 
-  // 获取任务的所有记录
+  // 获取任务的所有记录（待后端：契约暂无 task_evidence 端点，返回空列表）
   async function fetchTaskEvidence(taskId: string): Promise<TaskEvidence[]> {
-    const { data, error } = await supabase
-      .from('task_evidence')
-      .select('*')
-      .eq('task_id', taskId)
-      .order('created_at', { ascending: false })
-    if (error) { console.error(error); return [] }
-    return data || []
+    void taskId
+    return []
   }
 
   // ====== 工具函数 ======
