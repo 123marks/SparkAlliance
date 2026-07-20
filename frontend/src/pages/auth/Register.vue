@@ -217,9 +217,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { supabase } from '../../supabase'
+import { useAuth } from '../../composables/useAuth'
+import { ApiError } from '../../api/client'
 
 const router = useRouter()
+const { register, updateProfile } = useAuth()
 
 // ====== 状态 ======
 const step = ref(1)
@@ -327,18 +329,24 @@ async function handleRegister() {
   if (!form.agreed) form.agreed = true
   isLoading.value = true; errorMsg.value = ''; successMsg.value = ''
   try {
-    const { error } = await supabase.auth.signUp({
-      email: form.email, password: form.password,
-      options: { data: {
-        nickname: form.nickname, identity: form.identity, phone: form.phone || undefined,
-        university: form.university || undefined, grade: form.grade || undefined, major: form.major || undefined,
-        company: form.company || undefined, position: form.position || undefined,
-        skill: form.skill || undefined, city: form.city || undefined,
-      }}
-    })
-    if (error) { errorMsg.value = '注册失败: ' + error.message }
-    else { successMsg.value = '🎉 注册成功！请检查邮箱完成验证。'; setTimeout(() => router.push('/login'), 2000) }
-  } catch (e: any) { errorMsg.value = '注册失败: ' + (e.message || '网络错误') }
+    await register(form.email, form.password, form.nickname)
+    // 附加资料（学校/城市）写入个人档案；失败不阻塞注册主流程
+    const school = form.university || form.company || undefined
+    const region = form.city || undefined
+    if (school || region) {
+      try { await updateProfile({ school, region }) } catch { /* 可稍后在设置中补填 */ }
+    }
+    successMsg.value = '🎉 注册成功，正在进入星火宇宙…'
+    setTimeout(() => router.push('/app/home'), 900)
+  } catch (e: unknown) {
+    if (e instanceof ApiError) {
+      if (e.code === 'EMAIL_TAKEN') errorMsg.value = '该邮箱已注册，请直接登录'
+      else if (e.code === 'NETWORK_ERROR') errorMsg.value = '无法连接服务器，请确认后端服务已启动'
+      else errorMsg.value = '注册失败: ' + e.message
+    } else {
+      errorMsg.value = '注册失败: ' + ((e as Error)?.message || '网络错误')
+    }
+  }
   finally { isLoading.value = false }
 }
 

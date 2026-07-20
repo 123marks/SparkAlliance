@@ -140,6 +140,28 @@ npm run build
 
 2026-07-20 里程碑：全仓 `vue-tsc` 错误已清零（31 -> 0），`npm run build`（vue-tsc -b && vite build）首次完整通过。后续任何新增类型错误都是新问题，必须当轮修复，不允许再堆积“既有错误”。
 
+## 3.1 架构切换（2026-07-20 晚）：Supabase → 本地 PostgreSQL + 自建 Go 后端
+
+用户决策：不再依赖 Supabase 托管服务（境外延时 + 受限风险），数据库迁到本地 PostgreSQL。
+
+- 架构契约（单一事实来源）：`docs/project/BACKEND-CONTRACT.md`
+- 数据库：Docker 容器 `spark-postgres`（PostgreSQL 18，127.0.0.1:5433，`backend/docker-compose.yml`）
+- 后端：Go 1.26（`backend/server/`，端口 8787，JWT + bcrypt + pgx）
+- 管理控制台：`admin/`（Vue 3 + ECharts，端口 5181，登录仅限 role=admin）
+- GitHub：https://github.com/123marks/SparkAlliance （master -> main 已推送；`DesingImage/`≈1GB 设计图与本地 AI 配置已 gitignore，不入库）
+
+前端迁移状态（模块 -> 数据源）：
+
+| 模块 | 状态 |
+|---|---|
+| 认证（Login/Register/useAuth/守卫/登出） | ✅ 已切自建 API（`src/api/client.ts`、`src/api/auth.ts`；token 存 `spark_api_token`；401 广播 `spark-auth-expired` 回登录页） |
+| 日程 useSchedule | ✅ 已切自建 API（区间查询由后端 from/to 完成） |
+| 校园墙 | ⏳ 待迁（下一切片：CampusWall.vue 直连 supabase 的查询全部换 `/api/wall/*`） |
+| 规划 usePlanner / 健康 useHealth / 购物 useShop / 伴侣 / AI 助手 EdgeFunction | ⏳ 未迁；当前无 supabase 会话时按既有设计显示 unavailable/空状态，不崩 |
+| persistSync 云同步 / storage 上传 | ⏳ 未迁；上传走 `/api/uploads`（contract §4.5），迁移时替换 |
+
+迁移配方（后续模块照抄）：composable 里 `supabase.from(...)` → `apiFetch('/api/...')`；`supabase.auth.getUser()` → `getToken()` 判空；属主过滤删掉（后端 JWT 兜底）；错误统一 ApiError。
+
 ### 4.4 全局壳层已识别为第一阶段剩余关键问题
 
 当前 `AppLayout.vue` 有一些已有改动，包括：

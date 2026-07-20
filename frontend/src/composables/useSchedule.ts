@@ -1,14 +1,13 @@
 /**
- * useSchedule.ts — 智能日程数据层（重构版）
+ * useSchedule.ts — 智能日程数据层
  *
- * 终审要求修复：
- * 1. ✅ 复用全局 supabase 单例，不重复 createClient()
- * 2. ✅ fetchEvents 改为区间重叠查询，不漏跨天事件
- * 3. ✅ 状态单例化（模块级 ref），避免多实例不同步
- * 4. ✅ 日历计算抽离至 useCalendar.ts
+ * 2026-07-20 迁移：数据源从 Supabase 切换到自建 Go 后端（BACKEND-CONTRACT.md §4.3）。
+ * - 区间重叠查询由后端完成（from/to 参数）
+ * - 属主校验由后端 JWT 完成，前端不再自查 user_id
+ * - 状态仍为模块级单例，避免多实例不同步
  */
 import { ref, computed } from 'vue'
-import { supabase } from '../supabase'
+import { apiFetch, getToken, ApiError } from '../api/client'
 import { expandRecurringEvents } from './useRecurrence'
 
 // 从 useCalendar 导入纯函数
@@ -123,52 +122,26 @@ const error = ref<string | null>(null)
 // ====== Composable ======
 
 export function useSchedule() {
-  /** 获取当前登录用户 */
-  const getUser = async () => {
-    const { data } = await supabase.auth.getUser()
-    return data.user
-  }
-
   // ====== CRUD ======
 
-  /**
-   * 获取日期范围内的事件
-   * 终审修复：使用区间重叠查询，不漏跨天事件
-   * 查询逻辑：start_time < rangeEnd AND coalesce(end_time, start_time) >= rangeStart
-   */
+  /** 获取日期范围内的事件（区间重叠查询由后端完成） */
   const fetchEvents = async (startDate: Date, endDate: Date) => {
     loading.value = true
     error.value = null
     try {
-      const user = await getUser()
-      if (!user) {
+      if (!getToken()) {
         error.value = '未登录'
+        events.value = []
         return
       }
-
-      // 区间重叠查询：事件的 start_time 在范围结束前，且结束时间在范围开始后
-      const { data, error: fetchError } = await supabase
-        .from('schedule_events')
-        .select('*')
-        .eq('user_id', user.id)
-        .lt('start_time', endDate.toISOString())   // 事件开始 < 范围结束
-        .eq('status', 'active')
-        .order('start_time', { ascending: true })
-
-      if (fetchError) {
-        error.value = fetchError.message
-        return
-      }
-
-      // 客户端再过滤：coalesce(end_time, start_time) >= rangeStart
-      if (data) {
-        events.value = (data as ScheduleEvent[]).filter(e => {
-          const eventEnd = e.end_time ? new Date(e.end_time) : new Date(e.start_time)
-          return eventEnd >= startDate
-        })
-      }
+      const params = new URLSearchParams({
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      })
+      const data = await apiFetch<{ events: ScheduleEvent[] }>(`/api/schedule/events?${params}`)
+      events.value = data.events || []
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '加载失败'
+      error.value = e instanceof ApiError ? e.message : e instanceof Error ? e.message : '加载失败'
     } finally {
       loading.value = false
     }
@@ -176,45 +149,49 @@ export function useSchedule() {
 
   /** 创建事件 */
   const createEvent = async (form: EventFormData): Promise<boolean> => {
-    const user = await getUser()
-    if (!user) return false
-
-    const { error: insertError } = await supabase.from('schedule_events').insert({
-      user_id: user.id,
-      title: form.title,
-      description: form.description || null,
-      location: form.location || null,
-      start_time: form.start_time,
-      end_time: form.end_time || null,
-      all_day: form.all_day,
-      event_type: form.event_type,
-      event_subtype: form.event_subtype || null,
-      color: form.color || null,
-      recurrence_type: form.recurrence_type,
-      recurrence_days: form.recurrence_days.length ? form.recurrence_days : null,
-      recurrence_end: form.recurrence_end || null,
-      reminders: form.reminders,
-      priority: form.priority,
-    })
-    return !insertError
+    try {
+      await apiFetch('/api/schedule/events', {
+        body: {
+          title: form.title,
+          description: form.description || null,
+          location: form.location || null,
+          start_time: form.start_time,
+          end_time: form.end_time || null,
+          all_day: form.all_day,
+          event_type: form.event_type,
+          event_subtype: form.event_subtype || null,
+          color: form.color || null,
+          recurrence_type: form.recurrence_type,
+          recurrence_days: form.recurrence_days.length ? form.recurrence_days : null,
+          recurrence_end: form.recurrence_end || null,
+          reminders: form.reminders,
+          priority: form.priority,
+        },
+      })
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** 更新事件 */
   const updateEvent = async (id: string, form: Partial<EventFormData>): Promise<boolean> => {
-    const { error: updateError } = await supabase
-      .from('schedule_events')
-      .update(form)
-      .eq('id', id)
-    return !updateError
+    try {
+      await apiFetch(`/api/schedule/events/${id}`, { method: 'PATCH', body: form })
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** 删除事件 */
   const deleteEvent = async (id: string): Promise<boolean> => {
-    const { error: deleteError } = await supabase
-      .from('schedule_events')
-      .delete()
-      .eq('id', id)
-    return !deleteError
+    try {
+      await apiFetch(`/api/schedule/events/${id}`, { method: 'DELETE' })
+      return true
+    } catch {
+      return false
+    }
   }
 
   // ====== 事件查询辅助 ======

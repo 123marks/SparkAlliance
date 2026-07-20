@@ -184,16 +184,12 @@ const router = createRouter({
   routes
 })
 
-import { supabase } from '../supabase'
+import { getToken } from '../api/client'
 
-// 路由守卫拦截
+// 路由守卫拦截（自建后端：本地 token 存在即视为已登录，具体有效性由 API 401 兜底）
 router.beforeEach(async (to, _from, next) => {
-  // Check if route requires auth
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-
-  // Get active session from Supabase
-  const { data: { session } } = await supabase.auth.getSession();
-  const isAuthenticated = !!session;
+  const isAuthenticated = !!getToken();
 
   if (requiresAuth && !isAuthenticated) {
     // Force to login

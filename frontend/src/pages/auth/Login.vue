@@ -95,10 +95,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { supabase } from '../../supabase'
+import { useAuth } from '../../composables/useAuth'
+import { ApiError } from '../../api/client'
 
 const router = useRouter()
 const route = useRoute()
+const { login } = useAuth()
 
 // 状态
 const loginMethod = ref<'email' | 'phone'>('email')
@@ -130,33 +132,23 @@ const handleLogin = async () => {
   isLoading.value = true
 
   try {
-    // Supabase 目前主要支持邮箱登录
-    // 手机号登录时，用 phone@sparkalliance.local 作为邮箱（后续对接按需调整）
+    // 自建后端只用邮箱登录；手机号登录沿用别名邮箱约定
     const loginEmail = loginMethod.value === 'email'
       ? email.value
       : `${phone.value}@phone.sparkalliance.local`
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: password.value,
-    })
-
-    if (error) {
-      // 友好化错误信息
-      if (error.message.includes('Invalid login credentials')) {
-        errorMsg.value = '邮箱或密码错误，请检查后重试'
-      } else if (error.message.includes('Email not confirmed')) {
-        errorMsg.value = '邮箱尚未验证，请先查收验证邮件'
-      } else {
-        errorMsg.value = '登录失败: ' + error.message
-      }
+    await login(loginEmail, password.value)
+    const redirect = route.query.redirect as string
+    router.push(redirect || '/app/home')
+  } catch (e: unknown) {
+    if (e instanceof ApiError) {
+      if (e.code === 'BAD_CREDENTIALS') errorMsg.value = '邮箱或密码错误，请检查后重试'
+      else if (e.code === 'ACCOUNT_DISABLED') errorMsg.value = '账号已被停用，请联系管理员'
+      else if (e.code === 'NETWORK_ERROR') errorMsg.value = '无法连接服务器，请确认后端服务已启动'
+      else errorMsg.value = '登录失败: ' + e.message
     } else {
-      // 登录成功，跳转到 redirect 或首页
-      const redirect = route.query.redirect as string
-      router.push(redirect || '/app/home')
+      errorMsg.value = '登录失败: ' + ((e as Error)?.message || '网络错误')
     }
-  } catch (e: any) {
-    errorMsg.value = '登录失败: ' + (e.message || '网络错误')
   } finally {
     isLoading.value = false
   }

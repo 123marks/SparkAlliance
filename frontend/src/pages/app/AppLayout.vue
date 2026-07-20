@@ -295,7 +295,6 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
-import { supabase } from '../../supabase'
 import CosmicBackground from '../../components/CosmicBackground.vue'
 import SparkAvatar from '../../components/SparkAvatar.vue'
 import { useSettings } from '../../composables/useSettings'
@@ -318,7 +317,7 @@ const searchQuery = ref('')
 const focusDuration = ref(25)
 const toolsExpanded = ref(true)
 const selectedCampus = ref('default')
-const { user } = useAuth()
+const { user, logout } = useAuth()
 
 // ====== 移动端抽屉导航 ======
 const mobileNavOpen = ref(false)
@@ -418,15 +417,22 @@ function handleClickOutside(e: MouseEvent) {
   }
 }
 
+// 会话过期（API 401）→ 回登录页
+function handleAuthExpired() {
+  router.push({ name: 'Login', query: { redirect: route.fullPath } })
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleShellKeydown)
   mobileMedia.addEventListener('change', handleMediaChange)
+  window.addEventListener('spark-auth-expired', handleAuthExpired)
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleShellKeydown)
   mobileMedia.removeEventListener('change', handleMediaChange)
+  window.removeEventListener('spark-auth-expired', handleAuthExpired)
 })
 
 // 搜索功能 — 匹配模块名跳转
@@ -486,8 +492,8 @@ const userAvatarUrl = computed(() => {
 })
 
 // 退出登录
-const handleLogout = async () => {
-  await supabase.auth.signOut()
+const handleLogout = () => {
+  logout()
   showDropdown.value = false
   router.push('/login')
 }
